@@ -1,17 +1,16 @@
+"use client";
+
 export default function OfflinePage() {
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-      <h1 className="text-2xl font-semibold mb-2">You&apos;re offline</h1>
-      <p className="text-muted-foreground mb-4">
-        Some features need a connection. Reconnect to sync and browse fully.
-      </p>
-      <button
-        type="button"
-        onClick={() => window.location.reload()}
-        className="px-4 py-2 rounded-md bg-foreground text-background font-medium"
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 p-6 text-center">
+      <h1 className="text-xl font-semibold">You are offline</h1>
+      <p className="text-zinc-500">Please check your internet connection.</p>
+      <a
+        href="/"
+        className="rounded-md bg-zinc-200 px-4 py-2 text-sm font-medium text-zinc-900 hover:bg-zinc-300"
       >
-        Retry
-      </button>
-    </main>
+        Try Again
+      </a>
+    </div>
   );
 }

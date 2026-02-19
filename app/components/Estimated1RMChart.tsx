@@ -22,8 +22,8 @@ export function Estimated1RMChart({ data }: Props) {
   if (series.length === 0) return null;
 
   return (
-    <div className="h-56 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3">
-      <ResponsiveContainer width="100%" height="100%">
+    <div className="h-56 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3" style={{ minHeight: 224 }}>
+      <ResponsiveContainer width="100%" height={224}>
         <LineChart data={series} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
           <XAxis

@@ -29,5 +29,10 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "webpack": "^5.105.2"
+  },
+  "overrides": {
+    "sourcemap-codec": "npm:@jridgewell/sourcemap-codec@^1.5.5",
+    "glob": "^13.0.0",
+    "source-map": "0.7.4"
   }
 }
