@@ -22,8 +22,10 @@ export const metadata: Metadata = {
     title: "Gym",
   },
   icons: {
-    apple: "/icons/icon-192x192.png",
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
+  themeColor: "#000000",
 };
 
 export const viewport: Viewport = {

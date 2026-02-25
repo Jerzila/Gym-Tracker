@@ -32,7 +32,9 @@ export async function createWorkout(
   }
 
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "You must be signed in to log a workout." };
 
     const { data: exercise, error: exError } = await supabase
     .from("exercises")
@@ -46,7 +48,7 @@ export async function createWorkout(
 
   const { data: workout, error: wError } = await supabase
     .from("workouts")
-    .insert({ exercise_id: exerciseId, date, weight } as Record<string, unknown>)
+    .insert({ user_id: user.id, exercise_id: exerciseId, date, weight } as Record<string, unknown>)
     .select("id")
     .single();
 
@@ -84,7 +86,7 @@ export async function deleteWorkout(
 ): Promise<{ error?: string }> {
   if (!workoutId || !exerciseId) return { error: "Missing workout or exercise id" };
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
 
     const { error: setsError } = await supabase
       .from("sets")

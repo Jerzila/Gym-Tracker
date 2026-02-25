@@ -4,10 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteExercise } from "@/app/actions/exercises";
-import type { Exercise } from "@/lib/types";
+import type { Exercise, Category } from "@/lib/types";
 import { EditExerciseModal } from "@/app/components/EditExerciseModal";
 
-export function ExerciseCard({ exercise }: { exercise: Exercise }) {
+export function ExerciseCard({ exercise, categories }: { exercise: Exercise; categories: Category[] }) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -66,6 +66,7 @@ export function ExerciseCard({ exercise }: { exercise: Exercise }) {
       {showEdit && (
         <EditExerciseModal
           exercise={exercise}
+          categories={categories}
           onClose={() => setShowEdit(false)}
           onSuccess={handleEditSuccess}
         />

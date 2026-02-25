@@ -11,7 +11,7 @@ function isConnectionError(e: unknown): boolean {
 
 export async function getExercises(): Promise<Exercise[]> {
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { data, error } = await supabase
       .from("exercises")
       .select("*")
@@ -30,16 +30,23 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
   const name = (formData.get("name") as string)?.trim();
   const repMin = Number(formData.get("rep_min"));
   const repMax = Number(formData.get("rep_max"));
+  const categoryId = (formData.get("category_id") as string)?.trim();
 
   if (!name || repMin < 1 || repMax < repMin) {
     return { error: "Invalid: name required, rep_min ≥ 1, rep_max ≥ rep_min" };
   }
+  if (!categoryId) {
+    return { error: "Please select a category." };
+  }
 
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "You must be signed in to create an exercise." };
+
     const { error } = await supabase
       .from("exercises")
-      .insert({ name, rep_min: repMin, rep_max: repMax } as Record<string, unknown>);
+      .insert({ user_id: user.id, category_id: categoryId, name, rep_min: repMin, rep_max: repMax } as Record<string, unknown>);
 
     if (error) return { error: error.message };
     revalidatePath("/");
@@ -59,18 +66,20 @@ export async function updateExercise(
   const name = (formData.get("name") as string)?.trim();
   const repMin = Number(formData.get("rep_min"));
   const repMax = Number(formData.get("rep_max"));
+  const categoryId = (formData.get("category_id") as string)?.trim();
 
   if (!name || name.length === 0) return { error: "Name is required" };
+  if (!categoryId) return { error: "Please select a category." };
   if (Number.isNaN(repMin) || Number.isNaN(repMax) || repMin < 1 || repMax < 1) {
     return { error: "Rep min and rep max must be positive numbers" };
   }
   if (repMin >= repMax) return { error: "Rep min must be less than rep max" };
 
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { error } = await supabase
       .from("exercises")
-      .update({ name, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
+      .update({ name, category_id: categoryId, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
       .eq("id", id);
 
     if (error) return { error: error.message };
@@ -88,7 +97,7 @@ export async function updateExercise(
 export async function deleteExercise(id: string): Promise<{ error?: string }> {
   if (!id) return { error: "Missing exercise id" };
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
 
     const { data: workouts, error: wError } = await supabase
       .from("workouts")
@@ -130,7 +139,7 @@ export async function getExerciseById(id: string): Promise<{
   error?: string;
 }> {
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { data: exercise, error: exError } = await supabase
     .from("exercises")
     .select("*")

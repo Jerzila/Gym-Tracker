@@ -15,5 +15,7 @@ export default withPWA({
   workboxOptions: {
     skipWaiting: true,
     clientsClaim: true,
+    // New cache namespace so updated icons/manifest are fetched after deploy
+    cacheId: "gym-tracker-v2",
   },
 })(nextConfig);

@@ -1,4 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
-  <rect width="512" height="512" fill="#000000"/>
-  <text x="256" y="320" font-family="system-ui, sans-serif" font-size="280" font-weight="bold" fill="#ffffff" text-anchor="middle">G</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <rect width="100" height="100" fill="#000000"/>
+  <!-- Dumbbell: bar + two weights. Grey #6b6b6b, centered with padding -->
+  <g fill="#6b6b6b" stroke="none">
+    <!-- Bar -->
+    <rect x="30" y="46" width="40" height="8" rx="4" ry="4"/>
+    <!-- Left weight -->
+    <circle cx="25" cy="50" r="12"/>
+    <!-- Right weight -->
+    <circle cx="75" cy="50" r="12"/>
+  </g>
 </svg>

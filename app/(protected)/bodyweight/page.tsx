@@ -21,8 +21,8 @@ export default async function BodyweightPage() {
   const chartData = [...logs].reverse().map((l) => ({ date: l.date, weight: l.weight }));
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="border-b border-zinc-800 px-4 py-4 sm:px-6">
+    <>
+      <div className="border-b border-zinc-800 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <Link
             href="/"
@@ -31,9 +31,9 @@ export default async function BodyweightPage() {
           >
             ←
           </Link>
-          <h1 className="text-xl font-semibold tracking-tight">Bodyweight</h1>
+          <h2 className="text-lg font-semibold tracking-tight">Bodyweight</h2>
         </div>
-      </header>
+      </div>
 
       <main className="mx-auto max-w-xl px-4 py-6 sm:px-6">
         <section className="mb-8">
@@ -94,6 +94,6 @@ export default async function BodyweightPage() {
           )}
         </section>
       </main>
-    </div>
+    </>
   );
 }

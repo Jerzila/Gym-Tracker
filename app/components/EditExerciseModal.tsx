@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { updateExercise } from "@/app/actions/exercises";
-import type { Exercise } from "@/lib/types";
+import type { Exercise, Category } from "@/lib/types";
 
 function formAction(_: { error?: string } | undefined, formData: FormData) {
   const id = formData.get("id") as string;
@@ -12,10 +12,12 @@ function formAction(_: { error?: string } | undefined, formData: FormData) {
 
 export function EditExerciseModal({
   exercise,
+  categories,
   onClose,
   onSuccess,
 }: {
   exercise: Exercise;
+  categories: Category[];
   onClose: () => void;
   onSuccess: () => void;
 }) {
@@ -42,6 +44,24 @@ export function EditExerciseModal({
         </h3>
         <form ref={formRef} action={action} className="mt-4 space-y-3">
           <input type="hidden" name="id" value={exercise.id} />
+          <div className="space-y-1">
+            <label htmlFor="edit-category_id" className="block text-xs text-zinc-500">
+              Category
+            </label>
+            <select
+              id="edit-category_id"
+              name="category_id"
+              required
+              defaultValue={exercise.category_id}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            >
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className="space-y-1">
             <label htmlFor="edit-name" className="block text-xs text-zinc-500">
               Name

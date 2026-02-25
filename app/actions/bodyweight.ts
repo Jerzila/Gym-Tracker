@@ -11,7 +11,7 @@ function isConnectionError(e: unknown): boolean {
 
 export async function getBodyweightLogs(): Promise<BodyweightLog[]> {
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { data, error } = await supabase
       .from("bodyweight_logs")
       .select("*")
@@ -19,6 +19,7 @@ export async function getBodyweightLogs(): Promise<BodyweightLog[]> {
     if (error) throw new Error(error.message);
     return (data ?? []).map((row) => ({
       id: row.id,
+      user_id: (row as { user_id: string }).user_id,
       weight: Number(row.weight),
       date: row.date,
       created_at: row.created_at,
@@ -93,10 +94,13 @@ export async function createBodyweightLog(formData: FormData): Promise<{ error?:
   }
 
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "You must be signed in to log bodyweight." };
+
     const { error } = await supabase
       .from("bodyweight_logs")
-      .insert({ weight, date } as Record<string, unknown>);
+      .insert({ user_id: user.id, weight, date } as Record<string, unknown>);
 
     if (error) return { error: error.message };
     revalidatePath("/");
@@ -113,7 +117,7 @@ export async function createBodyweightLog(formData: FormData): Promise<{ error?:
 export async function deleteBodyweightLog(id: string): Promise<{ error?: string }> {
   if (!id) return { error: "Missing log id" };
   try {
-    const supabase = createServerClient();
+    const supabase = await createServerClient();
     const { error } = await supabase.from("bodyweight_logs").delete().eq("id", id);
     if (error) return { error: error.message };
     revalidatePath("/");
