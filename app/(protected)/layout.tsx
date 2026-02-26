@@ -1,16 +1,19 @@
-import { ProtectedHeader } from "@/app/components/ProtectedHeader";
+import { getCategories } from "@/app/actions/categories";
+import { ProtectedShell } from "@/app/components/ProtectedShell";
 import { InstallBanner } from "@/app/components/InstallBanner";
 
-export default function ProtectedLayout({
+export default async function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const categories = await getCategories();
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <ProtectedHeader />
-      {children}
+    <>
+      <ProtectedShell categories={categories}>
+        {children}
+      </ProtectedShell>
       <InstallBanner />
-    </div>
+    </>
   );
 }

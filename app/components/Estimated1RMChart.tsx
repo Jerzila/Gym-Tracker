@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { formatWeight } from "@/lib/formatWeight";
 
 type Point = { date: string; weight: number; estimated1RM: number | null };
 
@@ -34,12 +35,12 @@ export function Estimated1RMChart({ data }: Props) {
           <YAxis
             tick={{ fill: "#71717a", fontSize: 11 }}
             domain={["auto", "auto"]}
-            tickFormatter={(v) => `${v} kg`}
+            tickFormatter={(v) => `${formatWeight(Number(v))} kg`}
           />
           <Tooltip
             contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: "8px" }}
             labelStyle={{ color: "#a1a1aa" }}
-            formatter={(value) => [value != null ? `${value} kg` : "", "Est. 1RM"]}
+            formatter={(value) => [value != null ? `${formatWeight(Number(value))} kg` : "", "Est. 1RM"]}
             labelFormatter={(label) => (label ? new Date(label).toLocaleDateString() : "")}
           />
           <Line

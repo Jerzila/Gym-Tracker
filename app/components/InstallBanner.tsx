@@ -195,9 +195,9 @@ export function InstallBanner() {
                 {installResult === "success"
                   ? "Done"
                   : device === "ios-chrome"
-                    ? "Install on iPhone (Safari Required)"
+                    ? "Install on iPhone (Chrome)"
                     : device === "ios-safari"
-                      ? "Install on iPhone"
+                      ? "Install on iPhone (Safari)"
                       : device === "android-chrome"
                         ? "Install on Android"
                         : device === "desktop-chrome"
@@ -260,43 +260,33 @@ type InstallInstructionsProps = {
 };
 
 function InstallInstructions({ device, installResult, deferredPrompt, onInstallPrompt }: InstallInstructionsProps) {
-  // Chrome on iOS: Safari required flow
+  // Chrome on iOS: install via Chrome share menu
   if (device === "ios-chrome") {
     return (
       <div className="space-y-4">
-        <InfoBox>
-          You&apos;re currently using Chrome on iPhone. To install this app, you must open it in Safari.
-        </InfoBox>
         <ol className="space-y-3">
-          <Step num={1}>Tap the three dots (⋯) in Chrome.</Step>
-          <Step num={2}>Tap &quot;Open in Safari&quot;.</Step>
-          <Step num={3}>In Safari, tap the Share icon (square with arrow pointing up) at the bottom of Safari.</Step>
-          <Step num={4}>Scroll down in the menu.</Step>
-          <Step num={5}>Tap &quot;Add to Home Screen&quot;.</Step>
-          <Step num={6}>Tap &quot;Add&quot; in the top right corner.</Step>
+          <Step num={1}>Tap the Share icon in Chrome (located in the address bar at the top right).</Step>
+          <Step num={2}>Scroll down in the share menu.</Step>
+          <Step num={3}>Tap &quot;Add to Home Screen&quot;.</Step>
+          <Step num={4}>Tap &quot;Add&quot; in the top right corner.</Step>
         </ol>
         <p className="text-xs text-zinc-500">
-          Apple only allows home screen installation from Safari.
+          If you don&apos;t see &quot;Add to Home Screen&quot;, tap &quot;More&quot; in the share sheet and enable it.
         </p>
       </div>
     );
   }
 
-  // iOS Safari: exact copy
+  // iOS Safari
   if (device === "ios-safari") {
     return (
       <div className="space-y-4">
         <ol className="space-y-3">
-          <Step num={1}>
-            Tap the Share icon (square with arrow pointing up) at the bottom of Safari.
-          </Step>
-          <Step num={2}>Scroll down in the menu.</Step>
+          <Step num={1}>Tap the Share icon (square with arrow) at the bottom of Safari.</Step>
+          <Step num={2}>Scroll down.</Step>
           <Step num={3}>Tap &quot;Add to Home Screen&quot;.</Step>
-          <Step num={4}>Tap &quot;Add&quot; in the top right corner.</Step>
+          <Step num={4}>Tap &quot;Add&quot;.</Step>
         </ol>
-        <InfoBox>
-          This only works in Safari. If you&apos;re using Chrome on iPhone, open this page in Safari first.
-        </InfoBox>
       </div>
     );
   }

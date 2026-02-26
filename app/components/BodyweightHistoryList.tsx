@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteBodyweightLog } from "@/app/actions/bodyweight";
+import { formatWeight } from "@/lib/formatWeight";
 import type { BodyweightLog } from "@/lib/types";
 
 export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
@@ -29,7 +30,7 @@ export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
             <span>
               <span className="text-zinc-500">{log.date}</span>
               <span className="mx-2">·</span>
-              <span className="font-medium">{Number(log.weight)} kg</span>
+              <span className="font-medium">{formatWeight(log.weight)} kg</span>
             </span>
             <button
               type="button"

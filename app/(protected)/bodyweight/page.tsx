@@ -3,6 +3,7 @@ import { getBodyweightLogs, getBodyweightStats } from "@/app/actions/bodyweight"
 import { BodyweightChart } from "@/app/components/BodyweightChart";
 import { BodyweightHistoryList } from "@/app/components/BodyweightHistoryList";
 import { LogBodyweightForm } from "@/app/components/LogBodyweightForm";
+import { formatWeight } from "@/lib/formatWeight";
 
 export default async function BodyweightPage() {
   let logs: Awaited<ReturnType<typeof getBodyweightLogs>> = [];
@@ -22,7 +23,7 @@ export default async function BodyweightPage() {
 
   return (
     <>
-      <div className="border-b border-zinc-800 px-4 py-3 sm:px-6">
+      <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <Link
             href="/"
@@ -35,58 +36,61 @@ export default async function BodyweightPage() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-xl px-4 py-6 sm:px-6">
-        <section className="mb-8">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-            Log bodyweight
-          </h2>
+      <main className="mx-auto max-w-xl px-4 py-8 sm:px-6">
+        <section className="pb-8">
           <LogBodyweightForm />
         </section>
 
         {(stats.avg7Days != null || stats.change30Days != null) && (
-          <section className="mb-8">
-            <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-              Summary
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              {stats.avg7Days != null && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-                  <p className="text-xs text-zinc-500">7-day average</p>
-                  <p className="text-lg font-semibold">{stats.avg7Days} kg</p>
-                </div>
-              )}
-              {stats.change30Days != null && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-                  <p className="text-xs text-zinc-500">Change (30 days)</p>
-                  <p
-                    className={`text-lg font-semibold ${
-                      stats.change30Days >= 0 ? "text-amber-400" : "text-emerald-400"
-                    }`}
-                  >
-                    {stats.change30Days >= 0 ? "+" : ""}
-                    {stats.change30Days} kg
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
+          <>
+            <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+            <section className="pb-8">
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Summary
+              </h2>
+              <div className="flex flex-wrap gap-3">
+                {stats.avg7Days != null && (
+                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+                    <p className="text-xs text-zinc-500">7-day average</p>
+                    <p className="text-lg font-semibold">{formatWeight(stats.avg7Days)} kg</p>
+                  </div>
+                )}
+                {stats.change30Days != null && (
+                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+                    <p className="text-xs text-zinc-500">Change (30 days)</p>
+                    <p
+                      className={`text-lg font-semibold ${
+                        stats.change30Days >= 0 ? "text-amber-400/90" : "text-emerald-400/90"
+                      }`}
+                    >
+                      {formatWeight(stats.change30Days, { signed: true })} kg
+                    </p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
         )}
 
         {chartData.length > 0 && (
-          <section className="mb-8">
-            <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-              Weight over time
-            </h2>
-            <BodyweightChart data={chartData} />
-          </section>
+          <>
+            <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+            <section className="pb-8">
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Weight over time
+              </h2>
+              <BodyweightChart data={chartData} />
+            </section>
+          </>
         )}
 
+        <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
         <section>
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
             History
           </h2>
           {logs.length === 0 ? (
-            <p className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-6 text-center text-zinc-500">
+            <p className="rounded-xl bg-zinc-900/40 px-4 py-8 text-center text-sm text-zinc-500">
               No entries yet. Log your weight above.
             </p>
           ) : (

@@ -40,7 +40,7 @@ export default async function ExercisePage({ params }: Props) {
 
   return (
     <>
-      <div className="border-b border-zinc-800 px-4 py-3 sm:px-6">
+      <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <Link
             href="/"
@@ -56,53 +56,57 @@ export default async function ExercisePage({ params }: Props) {
         </p>
       </div>
 
-      <main className="mx-auto max-w-xl px-4 py-6 sm:px-6">
-        <section className="mb-8">
-          <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-            Log workout
-          </h2>
+      <main className="mx-auto max-w-xl px-4 py-8 sm:px-6">
+        <section className="pb-8">
           <LogWorkoutForm exerciseId={id} repMin={exercise.rep_min} repMax={exercise.rep_max} />
         </section>
 
         {(heaviest != null || best1RM != null) && (
-          <section className="mb-8">
-            <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-              PRs
-            </h2>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-              {heaviest != null && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-                  <p className="text-xs text-zinc-500">Heaviest weight</p>
-                  <p className="text-lg font-semibold">{heaviest} kg</p>
-                </div>
-              )}
-              {maxRepsAtHeaviest != null && heaviest != null && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-                  <p className="text-xs text-zinc-500">Best at {heaviest} kg</p>
-                  <p className="text-lg font-semibold">{maxRepsAtHeaviest} reps</p>
-                </div>
-              )}
-              {best1RM != null && (
-                <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3">
-                  <p className="text-xs text-zinc-500">Est. 1RM</p>
-                  <p className="text-lg font-semibold">{best1RM} kg</p>
-                </div>
-              )}
-            </div>
-          </section>
+          <>
+            <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+            <section className="pb-8">
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                PRs
+              </h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {heaviest != null && (
+                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+                    <p className="text-xs text-zinc-500">Heaviest weight</p>
+                    <p className="text-lg font-semibold">{heaviest} kg</p>
+                  </div>
+                )}
+                {maxRepsAtHeaviest != null && heaviest != null && (
+                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+                    <p className="text-xs text-zinc-500">Best at {heaviest} kg</p>
+                    <p className="text-lg font-semibold">{maxRepsAtHeaviest} reps</p>
+                  </div>
+                )}
+                {best1RM != null && (
+                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+                    <p className="text-xs text-zinc-500">Est. 1RM</p>
+                    <p className="text-lg font-semibold">{best1RM} kg</p>
+                  </div>
+                )}
+              </div>
+            </section>
+          </>
         )}
 
         {chartData.length > 0 && (
           <>
-            <section className="mb-8">
-              <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
+            <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+            <section className="pb-8">
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
                 Weight over time
               </h2>
               <WeightChart data={chartData} />
             </section>
-            <section className="mb-8">
-              <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-                Estimated 1RM over time
+            <section className="pb-8">
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Estimated 1RM over time{" "}
+                <span className="normal-case font-normal text-zinc-600">
+                  (max weight for 1 rep)
+                </span>
               </h2>
               <Estimated1RMChart data={chartData} />
             </section>
@@ -110,12 +114,15 @@ export default async function ExercisePage({ params }: Props) {
         )}
 
         {workouts.length > 0 && (
-          <section>
-            <h2 className="mb-3 text-sm font-medium uppercase tracking-wider text-zinc-500">
-              History
-            </h2>
-            <WorkoutHistory workouts={workouts} exerciseId={id} />
-          </section>
+          <>
+            <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+            <section>
+              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                History
+              </h2>
+              <WorkoutHistory workouts={workouts} exerciseId={id} />
+            </section>
+          </>
         )}
       </main>
     </>

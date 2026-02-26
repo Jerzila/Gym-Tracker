@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { formatWeight } from "@/lib/formatWeight";
 
 type Point = { date: string; weight: number };
 
@@ -30,7 +31,7 @@ export function BodyweightChart({ data }: Props) {
           <YAxis
             tick={{ fill: "#71717a", fontSize: 11 }}
             domain={["auto", "auto"]}
-            tickFormatter={(v) => `${v} kg`}
+            tickFormatter={(v) => `${formatWeight(Number(v))} kg`}
           />
           <Tooltip
             contentStyle={{
@@ -39,7 +40,7 @@ export function BodyweightChart({ data }: Props) {
               borderRadius: "8px",
             }}
             labelStyle={{ color: "#a1a1aa" }}
-            formatter={(value) => [value != null ? `${value} kg` : "", "Weight"]}
+            formatter={(value) => [value != null ? `${formatWeight(Number(value))} kg` : "", "Weight"]}
             labelFormatter={(label) => (label ? new Date(label).toLocaleDateString() : "")}
           />
           <Line

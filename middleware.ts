@@ -4,7 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 const authPaths = ["/login", "/signup"];
 
 function isProtectedPath(pathname: string): boolean {
-  if (pathname === "/" || pathname === "/bodyweight") return true;
+  if (pathname === "/" || pathname === "/bodyweight" || pathname === "/categories") return true;
   if (pathname.startsWith("/exercise/")) return true;
   return false;
 }
