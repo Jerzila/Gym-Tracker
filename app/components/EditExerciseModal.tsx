@@ -112,13 +112,13 @@ export function EditExerciseModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+              className="rounded px-3 py-1.5 text-sm text-zinc-400 transition-[transform,filter,background-color] duration-[100ms] ease-out active:scale-[0.98] active:brightness-95 hover:bg-zinc-800 hover:text-zinc-200 cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-zinc-950 hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-900"
+              className="rounded bg-amber-600 px-3 py-1.5 text-sm font-medium text-zinc-950 transition-[transform,filter,background-color] duration-[100ms] ease-out active:scale-[0.98] active:brightness-95 hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-900 cursor-pointer"
             >
               Save
             </button>

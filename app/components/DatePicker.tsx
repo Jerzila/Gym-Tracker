@@ -107,7 +107,7 @@ export function DatePicker({
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label="Choose date"
-        className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-left text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 sm:w-40"
+        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-left text-zinc-100 transition-[transform,filter,background-color] duration-[100ms] ease-out active:scale-[0.98] active:brightness-95 hover:bg-zinc-800 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 sm:w-40"
       >
         <span>{formatDisplayDate(selected)}</span>
         <svg

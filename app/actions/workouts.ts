@@ -2,7 +2,18 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import { getProgressiveOverloadMessage } from "@/lib/progression";
+import { epley1RM } from "@/lib/progression";
 import { revalidatePath } from "next/cache";
+
+/** Workout for calendar: one row per workout with exercise name and sets */
+export type CalendarWorkout = {
+  id: string;
+  date: string;
+  weight: number;
+  exercise_id: string;
+  exercise_name: string;
+  sets: { reps: number }[];
+};
 
 type CreateResult = { message?: string; error?: string };
 
@@ -110,5 +121,137 @@ export async function deleteWorkout(
       return { error: "Can't connect to Supabase. Check your .env.local." };
     }
     return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
+/** Fetch workouts for a given month; filter by logged-in user. Efficient date range query. */
+export async function getWorkoutsByMonth(
+  year: number,
+  month: number
+): Promise<{ data: CalendarWorkout[]; error?: string }> {
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const lastDay = new Date(year, month, 0).getDate();
+  const end = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: [], error: "Not authenticated" };
+
+    const { data: workouts, error: wError } = await supabase
+      .from("workouts")
+      .select("id, date, weight, exercise_id")
+      .eq("user_id", user.id)
+      .gte("date", start)
+      .lte("date", end)
+      .order("date", { ascending: true });
+
+    if (wError) return { data: [], error: wError.message };
+    if (!workouts?.length) return { data: [] };
+
+    const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+    const { data: exercises, error: exError } = await supabase
+      .from("exercises")
+      .select("id, name")
+      .in("id", exerciseIds);
+
+    if (exError) return { data: [], error: exError.message };
+    const nameById = new Map((exercises ?? []).map((e) => [e.id, e.name]));
+
+    const workoutIds = workouts.map((w) => w.id);
+    const { data: sets, error: sError } = await supabase
+      .from("sets")
+      .select("workout_id, reps")
+      .in("workout_id", workoutIds);
+
+    if (sError) return { data: [], error: sError.message };
+    const setsByWorkout = new Map<string, { reps: number }[]>();
+    for (const s of sets ?? []) {
+      const list = setsByWorkout.get(s.workout_id) ?? [];
+      list.push({ reps: s.reps });
+      setsByWorkout.set(s.workout_id, list);
+    }
+
+    const data: CalendarWorkout[] = workouts.map((w) => ({
+      id: w.id,
+      date: w.date,
+      weight: w.weight,
+      exercise_id: w.exercise_id,
+      exercise_name: nameById.get(w.exercise_id) ?? "Unknown",
+      sets: setsByWorkout.get(w.id) ?? [],
+    }));
+
+    return { data };
+  } catch (e) {
+    if (isConnectionError(e)) {
+      return { data: [], error: "Can't connect to Supabase. Check your .env.local." };
+    }
+    return { data: [], error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
+/** Session 1RM for PR check */
+export type Session1RM = { exercise_id: string; estimated1RM: number };
+
+/** Return exercise_ids that were PRs on the given date (best 1RM before that date). */
+export async function getPRsForDate(
+  date: string,
+  sessions: Session1RM[]
+): Promise<{ prExerciseIds: string[]; error?: string }> {
+  if (!sessions.length) return { prExerciseIds: [] };
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { prExerciseIds: [], error: "Not authenticated" };
+
+    const prExerciseIds: string[] = [];
+    for (const { exercise_id, estimated1RM } of sessions) {
+      const { data: workouts, error } = await supabase
+        .from("workouts")
+        .select("id, weight")
+        .eq("user_id", user.id)
+        .eq("exercise_id", exercise_id)
+        .lt("date", date)
+        .order("date", { ascending: false });
+
+      if (error) continue;
+      if (!workouts?.length) {
+        prExerciseIds.push(exercise_id);
+        continue;
+      }
+
+      const workoutIds = workouts.map((w) => w.id);
+      const { data: sets } = await supabase
+        .from("sets")
+        .select("workout_id, reps")
+        .in("workout_id", workoutIds);
+
+      const setsByWorkout = new Map<string, number[]>();
+      for (const s of sets ?? []) {
+        const list = setsByWorkout.get(s.workout_id) ?? [];
+        list.push(s.reps);
+        setsByWorkout.set(s.workout_id, list);
+      }
+
+      let bestBefore = 0;
+      for (const w of workouts) {
+        const repsList = setsByWorkout.get(w.id) ?? [];
+        for (const reps of repsList) {
+          const rm = epley1RM(w.weight, reps);
+          if (rm > bestBefore) bestBefore = rm;
+        }
+      }
+      if (estimated1RM >= bestBefore) prExerciseIds.push(exercise_id);
+    }
+    return { prExerciseIds };
+  } catch (e) {
+    return {
+      prExerciseIds: [],
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
   }
 }

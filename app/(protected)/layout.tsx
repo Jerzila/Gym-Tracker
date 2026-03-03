@@ -1,6 +1,7 @@
 import { getCategories } from "@/app/actions/categories";
 import { ProtectedShell } from "@/app/components/ProtectedShell";
 import { InstallBanner } from "@/app/components/InstallBanner";
+import { ToastProvider } from "@/app/components/Toast";
 
 export default async function ProtectedLayout({
   children,
@@ -10,9 +11,11 @@ export default async function ProtectedLayout({
   const categories = await getCategories();
   return (
     <>
-      <ProtectedShell categories={categories}>
-        {children}
-      </ProtectedShell>
+      <ToastProvider>
+        <ProtectedShell categories={categories}>
+          {children}
+        </ProtectedShell>
+      </ToastProvider>
       <InstallBanner />
     </>
   );

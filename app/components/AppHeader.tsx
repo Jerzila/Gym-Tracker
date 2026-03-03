@@ -1,6 +1,7 @@
 "use client";
 
 import { signOut } from "@/app/actions/auth";
+import { buttonClass } from "@/app/components/Button";
 
 export function AppHeader({
   title,
@@ -15,7 +16,7 @@ export function AppHeader({
         <button
           type="button"
           onClick={onMenuClick}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950"
+          className={`${buttonClass.icon} flex h-10 w-10 shrink-0 items-center justify-center`}
           aria-label="Open menu"
         >
           <svg
@@ -40,7 +41,7 @@ export function AppHeader({
           <form action={signOut}>
             <button
               type="submit"
-              className="flex h-10 w-10 items-center justify-center rounded-lg text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950"
+              className={`${buttonClass.icon} flex h-10 w-10 items-center justify-center`}
               aria-label="Logout"
             >
               <svg

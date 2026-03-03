@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { buttonClass } from "@/app/components/Button";
 
 type AuthFormProps = {
   action: (formData: FormData) => Promise<{ error?: string } | void>;
@@ -58,7 +59,7 @@ export function AuthForm({ action, submitLabel, redirectTo }: AuthFormProps) {
       )}
       <button
         type="submit"
-        className="w-full rounded-lg bg-amber-600 px-4 py-2.5 font-medium text-zinc-950 hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-950 transition"
+        className={`${buttonClass.primary} w-full`}
       >
         {submitLabel}
       </button>

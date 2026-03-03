@@ -4,25 +4,35 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteBodyweightLog } from "@/app/actions/bodyweight";
 import { formatWeight } from "@/lib/formatWeight";
+import { buttonClass } from "@/app/components/Button";
 import type { BodyweightLog } from "@/lib/types";
 
 export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
   const router = useRouter();
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
+  const visible = logs.filter((log) => !removedIds.has(log.id));
+
   async function handleDelete(id: string) {
+    setRemovedIds((prev) => new Set(prev).add(id));
+    setConfirmId(null);
     setPendingId(id);
     const { error } = await deleteBodyweightLog(id);
     setPendingId(null);
-    setConfirmId(null);
+    if (error) setRemovedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     if (!error) router.refresh();
   }
 
   return (
     <>
       <ul className="space-y-2">
-        {logs.map((log) => (
+        {visible.map((log) => (
           <li
             key={log.id}
             className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm"
@@ -36,7 +46,7 @@ export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
               type="button"
               onClick={() => setConfirmId(log.id)}
               disabled={!!pendingId}
-              className="shrink-0 rounded px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-400 disabled:opacity-50"
+              className={`${buttonClass.ghost} shrink-0 px-2 py-1 text-xs`}
               aria-label="Delete entry"
             >
               Delete
@@ -60,7 +70,7 @@ export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
               <button
                 type="button"
                 onClick={() => setConfirmId(null)}
-                className="rounded px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                className={buttonClass.modalCancel}
               >
                 Cancel
               </button>
@@ -68,7 +78,7 @@ export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
                 type="button"
                 onClick={() => handleDelete(confirmId)}
                 disabled={!!pendingId}
-                className="rounded px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                className={buttonClass.modalConfirm}
               >
                 {pendingId === confirmId ? "Deleting…" : "Delete"}
               </button>

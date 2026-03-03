@@ -4,6 +4,7 @@ import { useActionState, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createCategory, updateCategory, deleteCategory } from "@/app/actions/categories";
 import type { Category } from "@/lib/types";
+import { buttonClass } from "@/app/components/Button";
 
 function addFormAction(_: { error?: string } | undefined, formData: FormData) {
   return createCategory(formData);
@@ -62,7 +63,7 @@ export function ManageCategoriesClient({
           />
           <button
             type="submit"
-            className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-zinc-950 hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-950"
+            className={buttonClass.primary}
           >
             Add
           </button>
@@ -101,14 +102,14 @@ export function ManageCategoriesClient({
                     />
                     <button
                       type="submit"
-                      className="rounded bg-amber-600 px-2 py-1 text-xs font-medium text-zinc-950 hover:bg-amber-500"
+                      className="rounded bg-amber-600 px-2 py-1 text-xs font-medium text-zinc-950 transition-[transform,filter] duration-[100ms] ease-out active:scale-[0.98] active:brightness-95 hover:bg-amber-500 cursor-pointer"
                     >
                       Save
                     </button>
                     <button
                       type="button"
                       onClick={() => setEditingId(null)}
-                      className="rounded px-2 py-1 text-xs text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                      className={`${buttonClass.ghost} px-2 py-1 text-xs`}
                     >
                       Cancel
                     </button>
@@ -132,7 +133,7 @@ export function ManageCategoriesClient({
                   <button
                     type="button"
                     onClick={() => setEditingId(cat.id)}
-                    className="rounded px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
+                    className={`${buttonClass.ghost} px-2 py-1 text-xs`}
                   >
                     Rename
                   </button>
@@ -145,7 +146,7 @@ export function ManageCategoriesClient({
                         ? "Delete category"
                         : "Reassign or delete exercises in this category first"
                     }
-                    className="rounded px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    className={`${buttonClass.danger} px-2 py-1 text-xs disabled:cursor-not-allowed`}
                   >
                     {deletePending === cat.id ? "Deleting…" : "Delete"}
                   </button>

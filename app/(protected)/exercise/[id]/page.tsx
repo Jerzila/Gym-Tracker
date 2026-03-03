@@ -4,6 +4,7 @@ import { getExerciseById } from "@/app/actions/exercises";
 import { getHeaviestWeight, getBestEstimated1RM, getMaxRepsAtWeight } from "@/lib/pr";
 import { epley1RM } from "@/lib/progression";
 import { LogWorkoutForm } from "@/app/components/LogWorkoutForm";
+import { ExerciseNotesSection } from "@/app/components/ExerciseNotesSection";
 import { WeightChart } from "@/app/components/WeightChart";
 import { Estimated1RMChart } from "@/app/components/Estimated1RMChart";
 import { WorkoutHistory } from "@/app/components/WorkoutHistory";
@@ -57,8 +58,16 @@ export default async function ExercisePage({ params }: Props) {
       </div>
 
       <main className="mx-auto max-w-xl px-4 py-8 sm:px-6">
+        <section className="pb-6">
+          <ExerciseNotesSection exerciseId={id} initialNotes={exercise.notes ?? null} />
+        </section>
         <section className="pb-8">
-          <LogWorkoutForm exerciseId={id} repMin={exercise.rep_min} repMax={exercise.rep_max} />
+          <LogWorkoutForm
+            exerciseId={id}
+            repMin={exercise.rep_min}
+            repMax={exercise.rep_max}
+            exerciseNotes={exercise.notes ?? undefined}
+          />
         </section>
 
         {(heaviest != null || best1RM != null) && (

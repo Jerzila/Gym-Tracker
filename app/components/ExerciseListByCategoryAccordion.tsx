@@ -5,7 +5,7 @@ import { ExerciseCard } from "@/app/components/ExerciseCard";
 import type { Category, Exercise } from "@/lib/types";
 
 const STORAGE_KEY = "gym-accordion-open";
-const TRANSITION_MS = 250;
+const TRANSITION_MS = 220;
 
 function loadStoredOpenIds(categoryOrder: string[]): Set<string> {
   if (typeof window === "undefined") return new Set();
@@ -95,7 +95,7 @@ export function ExerciseListByCategoryAccordion({
             <button
               type="button"
               onClick={() => toggle(categoryId)}
-              className="flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-800/60 bg-zinc-900/40 px-3 py-2.5 text-left transition duration-200 hover:border-zinc-700 hover:bg-zinc-800/50 focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950"
+              className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg border border-zinc-800/60 bg-zinc-900/40 px-3 py-2.5 text-left transition-[transform,filter,background-color,border-color] duration-[100ms] ease-out active:scale-[0.98] active:brightness-95 hover:border-zinc-700 hover:bg-zinc-800/50 focus:outline-none focus:ring-2 focus:ring-zinc-600 focus:ring-offset-2 focus:ring-offset-zinc-950"
               aria-expanded={isOpen}
               aria-controls={`category-content-${categoryId}`}
               id={`category-header-${categoryId}`}
@@ -116,18 +116,16 @@ export function ExerciseListByCategoryAccordion({
               id={`category-content-${categoryId}`}
               role="region"
               aria-labelledby={`category-header-${categoryId}`}
-              className="grid transition-[grid-template-rows] ease-out"
+              className="grid expand-collapse"
               style={{
                 gridTemplateRows: isOpen ? "1fr" : "0fr",
-                transitionDuration: `${TRANSITION_MS}ms`,
               }}
             >
               <div className="min-h-0 overflow-hidden">
                 <div
-                  className="transition-opacity ease-out"
+                  className="transition-opacity duration-[220ms] ease-in-out"
                   style={{
                     opacity: isOpen ? 1 : 0,
-                    transitionDuration: `${TRANSITION_MS}ms`,
                   }}
                 >
                   <ul className="space-y-2 pt-2">

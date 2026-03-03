@@ -134,6 +134,29 @@ export async function deleteExercise(id: string): Promise<{ error?: string }> {
   }
 }
 
+export async function updateExerciseNotes(
+  id: string,
+  notes: string | null
+): Promise<{ error?: string }> {
+  if (!id) return { error: "Missing exercise id" };
+  try {
+    const supabase = await createServerClient();
+    const { error } = await supabase
+      .from("exercises")
+      .update({ notes: notes?.trim() || null } as Record<string, unknown>)
+      .eq("id", id);
+    if (error) return { error: error.message };
+    revalidatePath("/");
+    revalidatePath(`/exercise/${id}`);
+    return {};
+  } catch (e) {
+    if (isConnectionError(e)) {
+      return { error: "Can't connect to Supabase. Check your .env.local." };
+    }
+    return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
 export async function getExerciseById(id: string): Promise<{
   exercise: (Exercise & { workouts: { id: string; date: string; weight: number; sets: { reps: number }[] }[] }) | null;
   error?: string;

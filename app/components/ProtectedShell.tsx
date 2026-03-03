@@ -9,6 +9,7 @@ import type { Category } from "@/lib/types";
 function getPageTitle(pathname: string): string {
   if (pathname === "/") return "Dashboard";
   if (pathname === "/bodyweight") return "Bodyweight";
+  if (pathname === "/calendar") return "Calendar";
   if (pathname === "/categories") return "Categories";
   if (pathname.startsWith("/exercise/")) return "Exercise";
   return "Gym Tracker";

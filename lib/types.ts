@@ -12,6 +12,7 @@ export type Exercise = {
   name: string;
   rep_min: number;
   rep_max: number;
+  notes: string | null;
   created_at: string;
 };
 

@@ -89,3 +89,18 @@ body {
 .animate-fade-in {
   animation: fade-in 0.2s ease-out forwards;
 }
+
+/* Button press: immediate feedback on touch (no 300ms delay) */
+@media (hover: none) {
+  .tap-feedback:active {
+    transform: scale(0.98);
+    filter: brightness(0.95);
+  }
+}
+
+/* Expand/collapse: height + opacity, 220ms ease-in-out */
+.expand-collapse {
+  transition:
+    grid-template-rows 220ms ease-in-out,
+    opacity 220ms ease-in-out;
+}

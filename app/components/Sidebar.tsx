@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "@/app/actions/auth";
+import { buttonClass } from "@/app/components/Button";
 
 export function Sidebar({
   isOpen,
@@ -37,10 +38,10 @@ export function Sidebar({
           opacity: isOpen ? 1 : 0,
         }}
       />
-      {/* Sidebar panel */}
+      {/* Sidebar panel: 250ms slide */}
       <aside
         aria-hidden={!isOpen}
-        className="fixed left-0 top-0 z-50 h-full w-72 max-w-[calc(100vw-3rem)] bg-zinc-900 shadow-xl transition-[transform] duration-200 ease-out"
+        className="fixed left-0 top-0 z-50 h-full w-72 max-w-[calc(100vw-3rem)] bg-zinc-900 shadow-xl transition-[transform] duration-[250ms] ease-out"
         style={{
           transform: isOpen ? "translateX(0)" : "translateX(-100%)",
         }}
@@ -59,11 +60,7 @@ export function Sidebar({
                 <Link
                   href="/"
                   onClick={handleLinkClick}
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isActive("/")
-                      ? "bg-zinc-700/80 text-zinc-100"
-                      : "text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-                  }`}
+                  className={buttonClass.sidebar(isActive("/"))}
                 >
                   Dashboard
                 </Link>
@@ -72,13 +69,18 @@ export function Sidebar({
                 <Link
                   href="/bodyweight"
                   onClick={handleLinkClick}
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isActive("/bodyweight")
-                      ? "bg-zinc-700/80 text-zinc-100"
-                      : "text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-                  }`}
+                  className={buttonClass.sidebar(isActive("/bodyweight"))}
                 >
                   Bodyweight
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/calendar"
+                  onClick={handleLinkClick}
+                  className={buttonClass.sidebar(isActive("/calendar"))}
+                >
+                  Calendar
                 </Link>
               </li>
             </ul>
@@ -90,11 +92,7 @@ export function Sidebar({
                 <Link
                   href="/categories"
                   onClick={handleLinkClick}
-                  className={`block rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isActive("/categories")
-                      ? "bg-zinc-700/80 text-zinc-100"
-                      : "text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-                  }`}
+                  className={buttonClass.sidebar(isActive("/categories"))}
                 >
                   Manage Categories
                 </Link>
@@ -110,7 +108,7 @@ export function Sidebar({
               <button
                 type="submit"
                 onClick={handleLinkClick}
-                className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
+                className={buttonClass.sidebar(false)}
               >
                 Logout
               </button>

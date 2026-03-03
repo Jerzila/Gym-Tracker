@@ -1,29 +1,35 @@
 "use client";
 
-import { useState } from "react";
+import { useState, memo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteExercise } from "@/app/actions/exercises";
 import type { Exercise, Category } from "@/lib/types";
 import { EditExerciseModal } from "@/app/components/EditExerciseModal";
+import { buttonClass } from "@/app/components/Button";
 
-export function ExerciseCard({ exercise, categories }: { exercise: Exercise; categories: Category[] }) {
+function ExerciseCardInner({ exercise, categories }: { exercise: Exercise; categories: Category[] }) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
+  const [optimisticallyDeleted, setOptimisticallyDeleted] = useState(false);
 
   async function handleDelete() {
+    setOptimisticallyDeleted(true);
+    setShowDeleteConfirm(false);
     setDeletePending(true);
     const { error } = await deleteExercise(exercise.id);
     setDeletePending(false);
-    setShowDeleteConfirm(false);
+    if (error) setOptimisticallyDeleted(false);
     if (!error) router.refresh();
   }
 
   function handleEditSuccess() {
     router.refresh();
   }
+
+  if (optimisticallyDeleted) return null;
 
   return (
     <>
@@ -44,7 +50,7 @@ export function ExerciseCard({ exercise, categories }: { exercise: Exercise; cat
               e.preventDefault();
               setShowEdit(true);
             }}
-            className="rounded px-2 py-1.5 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
+            className={`${buttonClass.ghost} px-2 py-1.5 text-xs`}
             aria-label="Edit exercise"
           >
             Edit
@@ -55,7 +61,7 @@ export function ExerciseCard({ exercise, categories }: { exercise: Exercise; cat
               e.preventDefault();
               setShowDeleteConfirm(true);
             }}
-            className="rounded px-2 py-1.5 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
+            className={`${buttonClass.danger} px-2 py-1.5 text-xs`}
             aria-label="Delete exercise"
           >
             Delete
@@ -87,7 +93,7 @@ export function ExerciseCard({ exercise, categories }: { exercise: Exercise; cat
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="rounded px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                className={buttonClass.modalCancel}
               >
                 Cancel
               </button>
@@ -95,7 +101,7 @@ export function ExerciseCard({ exercise, categories }: { exercise: Exercise; cat
                 type="button"
                 onClick={handleDelete}
                 disabled={deletePending}
-                className="rounded px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                className={buttonClass.modalConfirm}
               >
                 {deletePending ? "Deleting…" : "Delete"}
               </button>
@@ -106,3 +112,5 @@ export function ExerciseCard({ exercise, categories }: { exercise: Exercise; cat
     </>
   );
 }
+
+export const ExerciseCard = memo(ExerciseCardInner);

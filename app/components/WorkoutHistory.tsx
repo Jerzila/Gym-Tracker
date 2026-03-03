@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteWorkout } from "@/app/actions/workouts";
+import { buttonClass } from "@/app/components/Button";
 
 type WorkoutItem = {
   id: string;
@@ -19,24 +20,30 @@ export function WorkoutHistory({
   exerciseId: string;
 }) {
   const router = useRouter();
+  const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
+  const visible = workouts.slice(0, 10).filter((w) => !removedIds.has(w.id));
+
   async function handleDelete(workoutId: string) {
+    setRemovedIds((prev) => new Set(prev).add(workoutId));
+    setConfirmId(null);
     setPendingId(workoutId);
     const { error } = await deleteWorkout(workoutId, exerciseId);
     setPendingId(null);
-    setConfirmId(null);
-    if (error) {
-      // Could show toast; for now just refetch so UI is consistent
-    }
+    if (error) setRemovedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(workoutId);
+      return next;
+    });
     router.refresh();
   }
 
   return (
     <>
       <ul className="space-y-2">
-        {workouts.slice(0, 10).map((w) => (
+        {visible.map((w) => (
           <li
             key={w.id}
             className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm"
@@ -52,7 +59,7 @@ export function WorkoutHistory({
               type="button"
               onClick={() => setConfirmId(w.id)}
               disabled={!!pendingId}
-              className="shrink-0 rounded px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-400 disabled:opacity-50"
+              className={`${buttonClass.ghost} shrink-0 px-2 py-1 text-xs`}
               aria-label="Delete workout"
             >
               Delete
@@ -76,7 +83,7 @@ export function WorkoutHistory({
               <button
                 type="button"
                 onClick={() => setConfirmId(null)}
-                className="rounded px-3 py-1.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+                className={buttonClass.modalCancel}
               >
                 Cancel
               </button>
@@ -84,7 +91,7 @@ export function WorkoutHistory({
                 type="button"
                 onClick={() => handleDelete(confirmId)}
                 disabled={!!pendingId}
-                className="rounded px-3 py-1.5 text-sm text-zinc-300 transition hover:bg-zinc-800 disabled:opacity-50"
+                className={buttonClass.modalConfirm}
               >
                 {pendingId === confirmId ? "Deleting…" : "Delete"}
               </button>

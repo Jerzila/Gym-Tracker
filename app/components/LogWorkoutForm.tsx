@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useActionState, useEffect } from "react";
+import { useState, useActionState, useEffect, useRef } from "react";
 import { createWorkout } from "@/app/actions/workouts";
 import { DatePicker } from "@/app/components/DatePicker";
+import { buttonClass } from "@/app/components/Button";
+import { useToast } from "@/app/components/Toast";
 
 type State = { message?: string; error?: string } | undefined;
 
@@ -11,43 +13,84 @@ function formAction(_: State, formData: FormData) {
   return createWorkout(exerciseId, formData);
 }
 
-const primaryButtonClass =
-  "inline-flex items-center justify-center rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-950";
+const EXPAND_MS = 220;
+const SHOW_SPINNER_AFTER_MS = 300;
 
-type Props = { exerciseId: string; repMin: number; repMax: number };
+type Props = {
+  exerciseId: string;
+  repMin: number;
+  repMax: number;
+  exerciseNotes?: string | null;
+};
 
-export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
+export function LogWorkoutForm({ exerciseId, repMin, repMax, exerciseNotes }: Props) {
   const [state, action] = useActionState(formAction, undefined);
   const [expanded, setExpanded] = useState(false);
-  const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showSpinner, setShowSpinner] = useState(false);
+  const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toast = useToast();
+  const lastShownMessageRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (state?.message) {
       setExpanded(false);
-      setShowConfirmation(true);
-      const t = setTimeout(() => setShowConfirmation(false), 3000);
-      return () => clearTimeout(t);
+      // Only show toast once per message to avoid duplicates from effect re-runs
+      if (lastShownMessageRef.current !== state.message) {
+        lastShownMessageRef.current = state.message;
+        toast.show(state.message);
+      }
     }
-  }, [state?.message]);
+    if (state?.message || state?.error) {
+      setShowSpinner(false);
+      if (spinnerTimerRef.current) {
+        clearTimeout(spinnerTimerRef.current);
+        spinnerTimerRef.current = null;
+      }
+    }
+  }, [state?.message, state?.error, toast]);
+
+  function handleSubmit() {
+    lastShownMessageRef.current = null; // allow next result to show toast
+    setShowSpinner(false);
+    if (spinnerTimerRef.current) clearTimeout(spinnerTimerRef.current);
+    spinnerTimerRef.current = setTimeout(() => setShowSpinner(true), SHOW_SPINNER_AFTER_MS);
+  }
 
   return (
     <div className="space-y-3">
+      {exerciseNotes != null && exerciseNotes.trim() !== "" && (
+        <div
+          className="rounded-lg border border-zinc-700/50 bg-zinc-900/40 px-3 py-2.5 text-sm text-zinc-400"
+          role="note"
+          aria-label="Setup notes"
+        >
+          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-1.5">
+            Setup notes
+          </p>
+          <p className="whitespace-pre-wrap text-zinc-300">{exerciseNotes.trim()}</p>
+        </div>
+      )}
       {!expanded && (
         <button
           type="button"
           onClick={() => setExpanded(true)}
-          className={primaryButtonClass}
+          className={buttonClass.primary}
         >
           Log Workout
         </button>
       )}
 
       <div
-        className="grid transition-[grid-template-rows] duration-300 ease-out"
+        className="grid expand-collapse"
         style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
       >
-        <div className="overflow-hidden">
-          <form
+        <div className="min-h-0 overflow-hidden">
+          <div
+            className="transition-opacity duration-[220ms] ease-in-out"
+            style={{ opacity: expanded ? 1 : 0 }}
+          >
+            <form
+              onSubmit={handleSubmit}
             action={action}
             className="space-y-4 rounded-xl border border-zinc-800/80 bg-zinc-900/50 p-4 shadow-sm"
           >
@@ -108,12 +151,16 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
               <button
                 type="button"
                 onClick={() => setExpanded(false)}
-                className="text-sm text-zinc-500 transition hover:text-zinc-300"
+                className={`${buttonClass.ghost} text-sm px-0 py-0`}
               >
                 Cancel
               </button>
-              <button type="submit" className={primaryButtonClass}>
-                Save workout
+              <button
+                type="submit"
+                className={buttonClass.primary}
+                disabled={showSpinner}
+              >
+                {showSpinner ? "Saving…" : "Save workout"}
               </button>
             </div>
             {state?.error && (
@@ -122,18 +169,9 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
               </p>
             )}
           </form>
+          </div>
         </div>
       </div>
-
-      {showConfirmation && state?.message && (
-        <p
-          className="text-sm text-zinc-500"
-          role="status"
-          aria-live="polite"
-        >
-          {state.message}
-        </p>
-      )}
     </div>
   );
 }

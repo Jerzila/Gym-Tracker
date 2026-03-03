@@ -4,6 +4,8 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createExercise } from "@/app/actions/exercises";
 import type { Category } from "@/lib/types";
+import { buttonClass } from "@/app/components/Button";
+import { useToast } from "@/app/components/Toast";
 
 function formAction(_: { error?: string } | undefined, formData: FormData) {
   return createExercise(formData);
@@ -11,13 +13,12 @@ function formAction(_: { error?: string } | undefined, formData: FormData) {
 
 export function CreateExerciseForm({ categories }: { categories: Category[] }) {
   const router = useRouter();
+  const toast = useToast();
   const [state, action] = useActionState(formAction, undefined);
   const [isOpen, setIsOpen] = useState(false);
-  const [showToast, setShowToast] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-focus Name input when form expands
   useEffect(() => {
     if (isOpen) {
       const t = setTimeout(() => nameInputRef.current?.focus(), 100);
@@ -25,7 +26,6 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
     }
   }, [isOpen]);
 
-  // On success: collapse, clear form, show toast, auto-expand that category
   useEffect(() => {
     if (state && !state.error) {
       const categoryId = formRef.current?.querySelector<HTMLSelectElement>(
@@ -33,12 +33,10 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
       )?.value;
       setIsOpen(false);
       formRef.current?.reset();
-      setShowToast(true);
-      const t = setTimeout(() => setShowToast(false), 2500);
+      toast.show("Exercise added");
       if (categoryId) router.push(`/?expand=${categoryId}`);
-      return () => clearTimeout(t);
     }
-  }, [state, router]);
+  }, [state, router, toast]);
 
   function handleCancel() {
     setIsOpen(false);
@@ -50,7 +48,7 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
-        className="inline-flex items-center justify-center rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-950"
+        className={buttonClass.primary}
         aria-expanded={isOpen}
         aria-controls="add-exercise-form"
         id="add-exercise-btn"
@@ -62,12 +60,12 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
         id="add-exercise-form"
         role="region"
         aria-labelledby="add-exercise-btn"
-        className="grid transition-[grid-template-rows] duration-200 ease-out"
+        className="grid expand-collapse"
         style={{ gridTemplateRows: isOpen ? "1fr" : "0fr" }}
       >
         <div className="min-h-0 overflow-hidden">
           <div
-            className="transition-[opacity] duration-200 ease-out"
+            className="transition-opacity duration-[220ms] ease-in-out"
             style={{ opacity: isOpen ? 1 : 0 }}
           >
             <div className="rounded-xl bg-zinc-900/40 px-4 py-4 pt-3">
@@ -137,14 +135,14 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
                 <div className="flex gap-2 sm:items-end">
                   <button
                     type="submit"
-                    className="inline-flex items-center justify-center rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-medium text-zinc-950 transition hover:bg-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2 focus:ring-offset-zinc-950"
+                    className={buttonClass.primary}
                   >
                     Add
                   </button>
                   <button
                     type="button"
                     onClick={handleCancel}
-                    className="rounded-lg border border-zinc-600 bg-transparent px-3 py-2.5 text-sm text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 focus:outline-none focus:ring-2 focus:ring-zinc-500 focus:ring-offset-2 focus:ring-offset-zinc-950"
+                    className={buttonClass.secondary}
                   >
                     Cancel
                   </button>
@@ -157,15 +155,6 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
           </div>
         </div>
       </div>
-
-      {showToast && (
-        <p
-          role="status"
-          className="rounded-lg bg-emerald-950/60 px-3 py-2 text-sm text-emerald-300"
-        >
-          Exercise added
-        </p>
-      )}
     </div>
   );
 }
