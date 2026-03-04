@@ -34,6 +34,7 @@ export function AppHeader({
             />
           </svg>
         </button>
+        <span className="shrink-0 text-base font-bold tracking-tight text-zinc-100">Liftly</span>
         <h1 className="min-w-0 flex-1 truncate text-center text-lg font-semibold tracking-tight text-zinc-100">
           {title}
         </h1>

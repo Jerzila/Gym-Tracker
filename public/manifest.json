@@ -1,6 +1,6 @@
 {
-  "name": "Gym Tracker",
-  "short_name": "Gym",
+  "name": "Liftly",
+  "short_name": "Liftly",
   "description": "Personal strength tracking with progressive overload",
   "start_url": "/",
   "display": "standalone",

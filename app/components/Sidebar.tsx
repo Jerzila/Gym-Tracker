@@ -48,9 +48,12 @@ export function Sidebar({
       >
         <div className="flex h-full flex-col">
           {/* App name / logo */}
-          <div className="border-b border-zinc-800 px-5 py-4">
-            <span className="text-lg font-semibold tracking-tight text-zinc-100">
-              Gym Tracker
+          <div className="border-b border-zinc-800 px-5 py-4 flex items-center gap-2">
+            <svg className="h-5 w-5 shrink-0 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7h4v10H4V7zm12 0h4v10h-4V7zM8 11h8v2H8v-2z" />
+            </svg>
+            <span className="text-xl font-bold tracking-tight text-zinc-100">
+              Liftly
             </span>
           </div>
 
@@ -67,20 +70,29 @@ export function Sidebar({
               </li>
               <li>
                 <Link
-                  href="/bodyweight"
-                  onClick={handleLinkClick}
-                  className={buttonClass.sidebar(isActive("/bodyweight"))}
-                >
-                  Bodyweight
-                </Link>
-              </li>
-              <li>
-                <Link
                   href="/calendar"
                   onClick={handleLinkClick}
                   className={buttonClass.sidebar(isActive("/calendar"))}
                 >
                   Calendar
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/insights"
+                  onClick={handleLinkClick}
+                  className={buttonClass.sidebar(isActive("/insights"))}
+                >
+                  Insights
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/bodyweight"
+                  onClick={handleLinkClick}
+                  className={buttonClass.sidebar(isActive("/bodyweight"))}
+                >
+                  Bodyweight
                 </Link>
               </li>
             </ul>

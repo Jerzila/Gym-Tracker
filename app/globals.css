@@ -90,6 +90,21 @@ body {
   animation: fade-in 0.2s ease-out forwards;
 }
 
+@keyframes insights-calendar-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-insights-calendar-fade {
+  animation: insights-calendar-fade 0.35s ease-out backwards;
+}
+
 /* Button press: immediate feedback on touch (no 300ms delay) */
 @media (hover: none) {
   .tap-feedback:active {

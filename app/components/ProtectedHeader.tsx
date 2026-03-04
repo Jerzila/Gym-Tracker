@@ -7,9 +7,9 @@ export async function ProtectedHeader() {
   return (
     <header className="border-b border-zinc-800 px-4 py-4 sm:px-6">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold tracking-tight">
+        <h1 className="text-xl font-bold tracking-tight">
           <Link href="/" className="hover:opacity-90">
-            Gym Tracker
+            Liftly
           </Link>
         </h1>
         <div className="flex items-center gap-3">

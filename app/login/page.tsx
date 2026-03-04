@@ -11,7 +11,8 @@ export default async function LoginPage({ searchParams }: Props) {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm space-y-8">
         <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-tight">Gym Tracker</h1>
+          <p className="text-sm font-semibold tracking-wide text-amber-500/90 uppercase">Liftly</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Sign in</h1>
           <p className="mt-2 text-sm text-zinc-500">Sign in to your account</p>
         </div>
 

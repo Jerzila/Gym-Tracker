@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 
-const STORAGE_KEY = "gym-tracker-install-banner-dismissed";
+const STORAGE_KEY = "liftly-install-banner-dismissed";
 
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
@@ -153,9 +153,9 @@ export function InstallBanner() {
       >
         <div className="mx-auto max-w-lg rounded-2xl bg-zinc-900 border border-zinc-700 shadow-lg shadow-black/30 px-4 py-3.5 flex items-start gap-3">
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-semibold text-zinc-100">Install Gym Tracker</h3>
+            <h3 className="text-sm font-semibold text-zinc-100">Install Liftly</h3>
             <p className="mt-0.5 text-xs text-zinc-400">
-              Add this app to your home screen for faster access.
+              Add Liftly to your home screen for faster access.
             </p>
             <button
               type="button"
@@ -296,7 +296,7 @@ function InstallInstructions({ device, installResult, deferredPrompt, onInstallP
     if (deferredPrompt && installResult !== "dismissed") {
       return (
         <div className="space-y-4">
-          <p className="text-sm text-zinc-400">Tap below to add Gym Tracker to your home screen.</p>
+          <p className="text-sm text-zinc-400">Tap below to add Liftly to your home screen.</p>
           <button
             type="button"
             onClick={onInstallPrompt}

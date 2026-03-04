@@ -16,6 +16,6 @@ export default withPWA({
     skipWaiting: true,
     clientsClaim: true,
     // New cache namespace so updated icons/manifest are fetched after deploy
-    cacheId: "gym-tracker-v2",
+    cacheId: "liftly-v2",
   },
 })(nextConfig);

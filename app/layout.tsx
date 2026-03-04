@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gym Tracker",
+  title: "Liftly – Gym Tracker & Progressive Overload",
   description: "Personal strength tracking with progressive overload",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Gym",
+    title: "Liftly",
   },
   icons: {
     icon: "/favicon.ico",
