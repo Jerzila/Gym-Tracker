@@ -1,19 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  getWeeklyComparison,
-  getCategoryDistribution,
-  getMuscleDistribution,
+  getInsightsInitialData,
+  getInsightsRangeData,
   get1RMProgression,
-  getMonthlySummary,
   getMonthlyAnalytics,
   getMonthsWithWorkoutData,
-  getInsightsText,
-  getPlateauExercises,
-  getTrainingScore,
-  getTopStrengthImprovements,
-  getTrainingBalance,
   type WeeklyComparison,
   type PaceStatus,
   type CategoryDistribution,
@@ -99,29 +92,29 @@ export function InsightsPageContent({ exercises }: Props) {
     if (!selectedExerciseId && defaultExId) setSelectedExerciseId(defaultExId);
   }, [defaultExId, selectedExerciseId]);
 
-  const loadInitial = useCallback(async () => {
+  useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
-    try {
-      const [compRes, monthRes, plateauRes, scoreRes] = await Promise.all([
-        getWeeklyComparison(),
-        getMonthlySummary(),
-        getPlateauExercises(),
-        getTrainingScore(),
-      ]);
-      if (compRes.error) setError(compRes.error);
-      else if (compRes.data) setWeekly(compRes.data);
-      if (monthRes.data) setMonthly(monthRes.data);
-      if (plateauRes?.length) setPlateauExercises(plateauRes);
-      if (scoreRes.data) setTrainingScore(scoreRes.data);
-    } finally {
+    getInsightsInitialData().then((data) => {
+      if (cancelled) return;
+      if (data.weeklyError) setError(data.weeklyError);
+      else setWeekly(data.weekly);
+      setMonthly(data.monthly ?? null);
+      setPlateauExercises(data.plateauExercises);
+      setTrainingScore(data.trainingScore ?? null);
+      if (data.trainingScoreError && !data.trainingScore) setError((e) => e || (data.trainingScoreError ?? null));
+      setCategoryData(data.categoryDistribution ?? null);
+      setMuscleData(data.muscleDistribution ?? null);
+      setTopStrengthGains(data.topStrengthGains);
+      setTrainingBalance(data.trainingBalance ?? null);
+      setInsightItems(data.insightItems);
       setLoading(false);
-    }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
-
-  useEffect(() => {
-    loadInitial();
-  }, [loadInitial]);
 
   useEffect(() => {
     getMonthsWithWorkoutData().then((res) => {
@@ -152,24 +145,25 @@ export function InsightsPageContent({ exercises }: Props) {
   }, [selectedMonth.year, selectedMonth.month, monthlyAnalyticsCache]);
 
   useEffect(() => {
+    if (muscleRange === "this_week") return;
     let cancelled = false;
-    Promise.all([
-      getCategoryDistribution(muscleRange),
-      getMuscleDistribution(muscleRange),
-      getTopStrengthImprovements(muscleRange),
-      getTrainingBalance(muscleRange),
-    ]).then(([catRes, muscleRes, gainsRes, balanceRes]) => {
+    getInsightsRangeData(muscleRange, {
+      weekly,
+      monthly,
+      plateauExercises,
+    }).then((data) => {
       if (!cancelled) {
-        if (catRes.data) setCategoryData(catRes.data);
-        if (muscleRes.data) setMuscleData(muscleRes.data);
-        if (gainsRes.data) setTopStrengthGains(gainsRes.data);
-        if (balanceRes.data) setTrainingBalance(balanceRes.data);
+        setCategoryData(data.categoryDistribution ?? null);
+        setMuscleData(data.muscleDistribution ?? null);
+        setTopStrengthGains(data.topStrengthGains);
+        setTrainingBalance(data.trainingBalance ?? null);
+        setInsightItems(data.insightItems);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [muscleRange]);
+  }, [muscleRange, weekly, monthly, plateauExercises]);
 
   useEffect(() => {
     if (!selectedExerciseId) return;
@@ -181,19 +175,6 @@ export function InsightsPageContent({ exercises }: Props) {
       cancelled = true;
     };
   }, [selectedExerciseId, oneRMRange]);
-
-  useEffect(() => {
-    if (weekly === null && !muscleData && monthly === null) return;
-    getInsightsText(
-      weekly ?? null,
-      muscleData ?? null,
-      muscleRange,
-      monthly ?? null,
-      plateauExercises,
-      topStrengthGains,
-      trainingBalance
-    ).then((t) => setInsightItems(t.items));
-  }, [weekly, muscleData, muscleRange, monthly, plateauExercises, topStrengthGains, trainingBalance]);
 
   if (loading && !weekly) {
     return (
@@ -682,7 +663,7 @@ function StrengthProgressChart({ data }: { data: OneRMPoint[] }) {
             strokeWidth={2}
             dot={{ fill: "#f59e0b", r: 3 }}
             activeDot={{ r: 4 }}
-            animationDuration={400}
+            animationDuration={200}
           />
         </LineChart>
       </ResponsiveContainer>
@@ -766,7 +747,7 @@ function MonthlyDonutChart({
               innerRadius={80}
               outerRadius={120}
               paddingAngle={4}
-              animationDuration={400}
+              animationDuration={200}
               animationBegin={0}
             >
               {chartData.map((_, index) => (

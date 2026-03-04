@@ -83,7 +83,7 @@ export function MuscleRadarChart({ current, previous }: Props) {
             fill={LIFTLY_ORANGE}
             fillOpacity={0.25}
             strokeWidth={2.5}
-            animationDuration={600}
+            animationDuration={250}
             animationEasing="ease-out"
           />
           {previous && (
@@ -94,7 +94,7 @@ export function MuscleRadarChart({ current, previous }: Props) {
               fill={MUTED_GREY}
               fillOpacity={0.12}
               strokeWidth={1.5}
-              animationDuration={600}
+              animationDuration={250}
               animationEasing="ease-out"
             />
           )}

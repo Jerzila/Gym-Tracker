@@ -100,13 +100,15 @@ export async function getTrainingScore(): Promise<{
     let strengthScore = 0;
     let strengthTrend: "up" | "down" | "neutral" = "neutral";
     if (exerciseIdsWithWorkoutsThisWeek.length > 0) {
+      const [currBestMap, prevBestMap] = await Promise.all([
+        getBest1RMByExerciseInRange(supabase, user.id, exerciseIdsWithWorkoutsThisWeek, thisBounds.start, thisBounds.end),
+        getBest1RMByExerciseInRange(supabase, user.id, exerciseIdsWithWorkoutsThisWeek, lastBounds.start, lastBounds.end),
+      ]);
       let improvedCount = 0;
       for (const exId of exerciseIdsWithWorkoutsThisWeek) {
-        const [currRes, prevRes] = await Promise.all([
-          getBest1RMInRange(supabase, user.id, exId, thisBounds.start, thisBounds.end),
-          getBest1RMInRange(supabase, user.id, exId, lastBounds.start, lastBounds.end),
-        ]);
-        if (currRes > 0 && currRes > prevRes) improvedCount++;
+        const curr = currBestMap[exId] ?? 0;
+        const prev = prevBestMap[exId] ?? 0;
+        if (curr > 0 && curr > prev) improvedCount++;
       }
       strengthScore = Math.min(100, Math.round((improvedCount / exerciseIdsWithWorkoutsThisWeek.length) * 100));
       strengthTrend = improvedCount > 0 ? "up" : exerciseIdsWithWorkoutsThisWeek.length > 0 ? "down" : "neutral";
@@ -163,32 +165,50 @@ async function getBest1RMInRange(
   start: string,
   end: string
 ): Promise<number> {
+  const map = await getBest1RMByExerciseInRange(supabase, userId, [exerciseId], start, end);
+  return map[exerciseId] ?? 0;
+}
+
+/** Batch: best estimated 1RM per exercise in one range (one workouts + one sets query). */
+async function getBest1RMByExerciseInRange(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  exerciseIds: string[],
+  start: string,
+  end: string
+): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  for (const id of exerciseIds) result[id] = 0;
+  if (exerciseIds.length === 0) return result;
+
   const { data: workouts } = await supabase
     .from("workouts")
-    .select("id, weight")
+    .select("id, exercise_id, weight")
     .eq("user_id", userId)
-    .eq("exercise_id", exerciseId)
+    .in("exercise_id", exerciseIds)
     .gte("date", start)
     .lte("date", end);
-  if (!workouts?.length) return 0;
-  const ids = workouts.map((w) => w.id);
+  if (!workouts?.length) return result;
+
+  const workoutIds = workouts.map((w) => w.id);
   const { data: sets } = await supabase
     .from("sets")
     .select("workout_id, reps")
-    .in("workout_id", ids);
+    .in("workout_id", workoutIds);
   const setsByWorkout = new Map<string, number[]>();
   for (const s of sets ?? []) {
     const list = setsByWorkout.get(s.workout_id) ?? [];
     list.push(s.reps);
     setsByWorkout.set(s.workout_id, list);
   }
-  let best = 0;
   for (const w of workouts) {
+    let best = result[w.exercise_id] ?? 0;
     for (const r of setsByWorkout.get(w.id) ?? []) {
       best = Math.max(best, epley1RM(Number(w.weight), r));
     }
+    result[w.exercise_id] = best;
   }
-  return best;
+  return result;
 }
 
 function getUpperLowerFromCategorySets(setsPerCategory: Record<string, number>): { upperPct: number; lowerPct: number } {
@@ -233,14 +253,17 @@ export async function getTopStrengthImprovements(range: InsightsRange): Promise<
       .eq("user_id", user.id);
     if (!exercises?.length) return { data: [] };
 
+    const exIds = exercises.map((e) => e.id);
+    const [currBestMap, prevBestMap] = await Promise.all([
+      getBest1RMByExerciseInRange(supabase, user.id, exIds, current.start, current.end),
+      previous
+        ? getBest1RMByExerciseInRange(supabase, user.id, exIds, previous.start, previous.end)
+        : Promise.resolve({} as Record<string, number>),
+    ]);
     const gains: TopStrengthGain[] = [];
     for (const ex of exercises) {
-      const [currBest, prevBest] = await Promise.all([
-        getBest1RMInRange(supabase, user.id, ex.id, current.start, current.end),
-        previous
-          ? getBest1RMInRange(supabase, user.id, ex.id, previous.start, previous.end)
-          : Promise.resolve(0),
-      ]);
+      const currBest = currBestMap[ex.id] ?? 0;
+      const prevBest = previous ? (prevBestMap[ex.id] ?? 0) : 0;
       const improvement = Math.round((currBest - prevBest) * 10) / 10;
       if (improvement > 0) gains.push({ name: ex.name, improvementKg: improvement });
     }
@@ -1318,6 +1341,55 @@ export type InsightsText = {
   items: InsightItem[];
 };
 
+/** Returns 1RM progression points per exercise for the last 90 days (one workouts + sets fetch). */
+async function get1RMProgressionBulk90(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  exerciseIds: string[]
+): Promise<Record<string, OneRMPoint[]>> {
+  const result: Record<string, OneRMPoint[]> = {};
+  for (const id of exerciseIds) result[id] = [];
+  if (exerciseIds.length === 0) return result;
+
+  const start = new Date();
+  start.setUTCDate(start.getUTCDate() - 90);
+  const startStr = start.toISOString().slice(0, 10);
+
+  const { data: workouts } = await supabase
+    .from("workouts")
+    .select("id, exercise_id, date, weight")
+    .eq("user_id", userId)
+    .in("exercise_id", exerciseIds)
+    .gte("date", startStr)
+    .order("date", { ascending: true });
+  if (!workouts?.length) return result;
+
+  const workoutIds = workouts.map((w) => w.id);
+  const { data: sets } = await supabase
+    .from("sets")
+    .select("workout_id, reps")
+    .in("workout_id", workoutIds);
+  const setsByWorkout = new Map<string, number[]>();
+  for (const s of sets ?? []) {
+    const list = setsByWorkout.get(s.workout_id) ?? [];
+    list.push(s.reps);
+    setsByWorkout.set(s.workout_id, list);
+  }
+  for (const w of workouts) {
+    const repsList = setsByWorkout.get(w.id) ?? [];
+    let best = 0;
+    for (const r of repsList) {
+      best = Math.max(best, epley1RM(Number(w.weight), r));
+    }
+    if (best > 0) {
+      const points = result[w.exercise_id] ?? [];
+      points.push({ date: w.date, estimated1RM: Math.round(best * 10) / 10 });
+      result[w.exercise_id] = points;
+    }
+  }
+  return result;
+}
+
 /** Exercises with no 1RM increase in the last 3 sessions. */
 export async function getPlateauExercises(): Promise<{ name: string }[]> {
   try {
@@ -1333,9 +1405,14 @@ export async function getPlateauExercises(): Promise<{ name: string }[]> {
       .eq("user_id", user.id);
     if (!exercises?.length) return [];
 
+    const progressionByEx = await get1RMProgressionBulk90(
+      supabase,
+      user.id,
+      exercises.map((e) => e.id)
+    );
     const out: { name: string }[] = [];
     for (const ex of exercises) {
-      const { data: points } = await get1RMProgression(ex.id, "90");
+      const points = progressionByEx[ex.id] ?? [];
       if (points.length < 3) continue;
       const last3 = points.slice(-3);
       const bestInLast3 = Math.max(...last3.map((p) => p.estimated1RM));
@@ -1475,4 +1552,124 @@ export async function getInsightsText(
   }
 
   return { items };
+}
+
+// --- Combined initial load (one round-trip for insights page) ---
+
+export type InsightsInitialData = {
+  weekly: WeeklyComparison | null;
+  weeklyError?: string;
+  monthly: MonthlySummary | null;
+  plateauExercises: { name: string }[];
+  trainingScore: TrainingScoreResult | null;
+  trainingScoreError?: string;
+  categoryDistribution: CategoryDistribution | null;
+  muscleDistribution: MuscleDistribution | null;
+  topStrengthGains: TopStrengthGain[];
+  trainingBalance: TrainingBalanceResult | null;
+  insightItems: InsightItem[];
+};
+
+/** Fetches all data needed for the initial insights view in one server round-trip. */
+export async function getInsightsInitialData(): Promise<InsightsInitialData> {
+  const [
+    weeklyRes,
+    monthRes,
+    plateauRes,
+    scoreRes,
+    categoryRes,
+    muscleRes,
+    gainsRes,
+    balanceRes,
+  ] = await Promise.all([
+    getWeeklyComparison(),
+    getMonthlySummary(),
+    getPlateauExercises(),
+    getTrainingScore(),
+    getCategoryDistribution("this_week"),
+    getMuscleDistribution("this_week"),
+    getTopStrengthImprovements("this_week"),
+    getTrainingBalance("this_week"),
+  ]);
+
+  const weekly = weeklyRes.error ? null : weeklyRes.data;
+  const monthly = monthRes.data ?? null;
+  const plateauExercises = plateauRes ?? [];
+  const trainingScore = scoreRes.data ?? null;
+  const categoryDistribution = categoryRes.data ?? null;
+  const muscleDistribution = muscleRes.data ?? null;
+  const topStrengthGains = gainsRes.data ?? [];
+  const trainingBalance = balanceRes.data ?? null;
+
+  const insightResult = await getInsightsText(
+    weekly ?? null,
+    muscleDistribution ?? null,
+    "this_week",
+    monthly ?? null,
+    plateauExercises,
+    topStrengthGains,
+    trainingBalance
+  );
+
+  return {
+    weekly,
+    weeklyError: weeklyRes.error,
+    monthly,
+    plateauExercises,
+    trainingScore,
+    trainingScoreError: scoreRes.error,
+    categoryDistribution,
+    muscleDistribution,
+    topStrengthGains,
+    trainingBalance,
+    insightItems: insightResult.items,
+  };
+}
+
+export type InsightsRangeData = {
+  categoryDistribution: CategoryDistribution | null;
+  muscleDistribution: MuscleDistribution | null;
+  topStrengthGains: TopStrengthGain[];
+  trainingBalance: TrainingBalanceResult | null;
+  insightItems: InsightItem[];
+};
+
+/** Context from initial load so insight text can include weekly/monthly when range changes. */
+export type InsightsRangeContext = {
+  weekly: WeeklyComparison | null;
+  monthly: MonthlySummary | null;
+  plateauExercises: { name: string }[];
+};
+
+/** Fetches range-dependent data (balance, radar, gains, insights text) in one round-trip. */
+export async function getInsightsRangeData(
+  range: InsightsRange,
+  context?: InsightsRangeContext
+): Promise<InsightsRangeData> {
+  const [categoryRes, muscleRes, gainsRes, balanceRes] = await Promise.all([
+    getCategoryDistribution(range),
+    getMuscleDistribution(range),
+    getTopStrengthImprovements(range),
+    getTrainingBalance(range),
+  ]);
+  const categoryDistribution = categoryRes.data ?? null;
+  const muscleDistribution = muscleRes.data ?? null;
+  const topStrengthGains = gainsRes.data ?? [];
+  const trainingBalance = balanceRes.data ?? null;
+  const insightResult = await getInsightsText(
+    context?.weekly ?? null,
+    muscleDistribution ?? null,
+    range,
+    context?.monthly ?? null,
+    context?.plateauExercises ?? [],
+    topStrengthGains,
+    trainingBalance
+  );
+  return {
+    categoryDistribution,
+    muscleDistribution,
+    topStrengthGains,
+    trainingBalance,
+    insightItems: insightResult.items,
+  };
 }
