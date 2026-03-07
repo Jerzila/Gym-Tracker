@@ -28,18 +28,19 @@ export async function createWorkout(
 ): Promise<CreateResult> {
   const date = (formData.get("date") as string)?.trim() || new Date().toISOString().slice(0, 10);
   const weight = Number(formData.get("weight"));
-  const rep1 = Number(formData.get("reps_1"));
-  const rep2 = Number(formData.get("reps_2"));
-  const rep3 = Number(formData.get("reps_3"));
-  const rep4 = formData.get("reps_4") ? Number(formData.get("reps_4")) : null;
-  const rep5 = formData.get("reps_5") ? Number(formData.get("reps_5")) : null;
+  const reps: number[] = [];
+  for (let i = 1; i <= 5; i++) {
+    const raw = formData.get(`reps_${i}`);
+    if (raw === null || raw === undefined || String(raw).trim() === "") continue;
+    const r = Number(raw);
+    if (!Number.isNaN(r) && r >= 0) reps.push(r);
+  }
 
-  const reps = [rep1, rep2, rep3].filter((r) => !Number.isNaN(r) && r >= 0);
-  if (rep4 !== null && !Number.isNaN(rep4) && rep4 >= 0) reps.push(rep4);
-  if (rep5 !== null && !Number.isNaN(rep5) && rep5 >= 0) reps.push(rep5);
-
-  if (reps.length < 3 || weight <= 0) {
-    return { error: "Need at least 3 sets with valid reps and weight > 0" };
+  if (reps.length === 0) {
+    return { error: "Please log at least one set." };
+  }
+  if (weight <= 0) {
+    return { error: "Weight must be greater than 0." };
   }
 
   try {
@@ -81,6 +82,7 @@ export async function createWorkout(
   );
 
   revalidatePath("/");
+  revalidatePath("/exercises");
   revalidatePath(`/exercise/${exerciseId}`);
   return { message };
   } catch (e) {
@@ -189,6 +191,115 @@ export async function getWorkoutsByMonth(
       return { data: [], error: "Can't connect to Supabase. Check your .env.local." };
     }
     return { data: [], error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
+/** Summary of the most recent workout day for dashboard. */
+export type LastWorkoutSummary = {
+  date: string;
+  title: string;
+  exerciseCount: number;
+  prHit: boolean;
+};
+
+/** Get the most recent workout day summary (date, category title, exercise count, PR). */
+export async function getLastWorkoutSummary(): Promise<{
+  data: LastWorkoutSummary | null;
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: null, error: "Not authenticated" };
+
+    const { data: latestRow, error: dateError } = await supabase
+      .from("workouts")
+      .select("date")
+      .eq("user_id", user.id)
+      .order("date", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (dateError || !latestRow?.date) return { data: null };
+
+    const date = latestRow.date as string;
+
+    const { data: dayWorkouts, error: wError } = await supabase
+      .from("workouts")
+      .select("id, exercise_id, weight")
+      .eq("user_id", user.id)
+      .eq("date", date)
+      .order("exercise_id");
+
+    if (wError || !dayWorkouts?.length)
+      return { data: { date, title: "Workout", exerciseCount: 0, prHit: false } };
+
+    const exerciseIds = [...new Set(dayWorkouts.map((w) => w.exercise_id))];
+    const { data: exercises, error: exError } = await supabase
+      .from("exercises")
+      .select("id, category_id")
+      .in("id", exerciseIds);
+
+    if (exError || !exercises?.length) {
+      return {
+        data: {
+          date,
+          title: "Workout",
+          exerciseCount: dayWorkouts.length,
+          prHit: false,
+        },
+      };
+    }
+
+    const categoryIds = [...new Set(exercises.map((e) => e.category_id))];
+    const { data: categories, error: catError } = await supabase
+      .from("categories")
+      .select("id, name")
+      .in("id", categoryIds);
+
+    const catNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+    const categoryNames = [...new Set(exercises.map((e) => catNameById.get(e.category_id) ?? "Other"))].filter(Boolean);
+    const title = categoryNames.length > 0 ? categoryNames.join(" + ") : "Workout";
+
+    const workoutIds = dayWorkouts.map((w) => w.id);
+    const { data: sets } = await supabase
+      .from("sets")
+      .select("workout_id, reps")
+      .in("workout_id", workoutIds);
+
+    const setsByW = new Map<string, number[]>();
+    for (const s of sets ?? []) {
+      const list = setsByW.get(s.workout_id) ?? [];
+      list.push(s.reps);
+      setsByW.set(s.workout_id, list);
+    }
+
+    const sessions: Session1RM[] = dayWorkouts.map((w) => {
+      const repsList = setsByW.get(w.id) ?? [];
+      const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
+      return {
+        exercise_id: w.exercise_id,
+        estimated1RM: epley1RM(w.weight, bestReps),
+      };
+    });
+
+    const { prExerciseIds } = await getPRsForDate(date, sessions);
+
+    return {
+      data: {
+        date,
+        title,
+        exerciseCount: dayWorkouts.length,
+        prHit: prExerciseIds.length > 0,
+      },
+    };
+  } catch (e) {
+    return {
+      data: null,
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
   }
 }
 

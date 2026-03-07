@@ -1,4 +1,5 @@
 import { getExercises } from "@/app/actions/exercises";
+import { getProfile } from "@/app/actions/profile";
 import { InsightsPageContent } from "@/app/components/InsightsPageContent";
 
 export default async function InsightsPage() {
@@ -8,6 +9,8 @@ export default async function InsightsPage() {
   } catch {
     // leave empty
   }
+  const profile = await getProfile();
+  const gender = profile?.gender === "female" ? "female" : "male";
 
   return (
     <>
@@ -19,7 +22,7 @@ export default async function InsightsPage() {
       </div>
 
       <main className="mx-auto max-w-xl px-4 py-8 sm:px-6">
-        <InsightsPageContent exercises={exercises} />
+        <InsightsPageContent exercises={exercises} gender={gender} />
       </main>
     </>
   );

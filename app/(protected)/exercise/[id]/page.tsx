@@ -44,9 +44,11 @@ export default async function ExercisePage({ params }: Props) {
       <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <Link
-            href="/"
+            href="/exercises"
+            prefetch={true}
+            scroll={false}
             className="text-zinc-500 transition hover:text-zinc-300"
-            aria-label="Back to dashboard"
+            aria-label="Back to exercises"
           >
             ←
           </Link>
@@ -62,11 +64,13 @@ export default async function ExercisePage({ params }: Props) {
           <ExerciseNotesSection exerciseId={id} initialNotes={exercise.notes ?? null} />
         </section>
         <section className="pb-8">
+          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Log set
+          </h2>
           <LogWorkoutForm
             exerciseId={id}
             repMin={exercise.rep_min}
             repMax={exercise.rep_max}
-            exerciseNotes={exercise.notes ?? undefined}
           />
         </section>
 

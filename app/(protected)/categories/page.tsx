@@ -24,6 +24,7 @@ export default async function ManageCategoriesPage() {
       <div className="mb-6 flex items-center gap-3">
         <Link
           href="/"
+          prefetch={true}
           className="text-zinc-500 transition hover:text-zinc-300"
           aria-label="Back to dashboard"
         >

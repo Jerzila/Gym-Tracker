@@ -8,6 +8,8 @@ import type { Exercise, Category } from "@/lib/types";
 import { EditExerciseModal } from "@/app/components/EditExerciseModal";
 import { buttonClass } from "@/app/components/Button";
 
+const EXERCISES_SCROLL_KEY = "gym-exercises-scroll";
+
 function ExerciseCardInner({ exercise, categories }: { exercise: Exercise; categories: Category[] }) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
@@ -29,25 +31,43 @@ function ExerciseCardInner({ exercise, categories }: { exercise: Exercise; categ
     router.refresh();
   }
 
+  function saveScrollAndNavigate() {
+    try {
+      sessionStorage.setItem(EXERCISES_SCROLL_KEY, String(window.scrollY));
+    } catch {
+      // ignore
+    }
+  }
+
   if (optimisticallyDeleted) return null;
 
   return (
     <>
-      <li className="group flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 transition hover:border-zinc-700 hover:bg-zinc-800/50">
+      <li
+        className="group flex min-h-[52px] flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 transition-[transform,background-color,border-color] duration-100 ease-out hover:border-zinc-700 hover:bg-zinc-800/50 active:scale-[0.98] active:brightness-95 sm:flex-nowrap tap-feedback"
+      >
         <Link
           href={`/exercise/${exercise.id}`}
-          className="min-w-0 flex-1 px-4 py-3"
+          prefetch={true}
+          onClick={saveScrollAndNavigate}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-3 sm:flex-none"
+          aria-label={`View ${exercise.name} details and log sets`}
         >
-          <span className="font-medium">{exercise.name}</span>
+          <span className="font-medium text-zinc-100">{exercise.name}</span>
           <span className="ml-2 text-zinc-500">
             {exercise.rep_min}–{exercise.rep_max} reps
           </span>
         </Link>
-        <div className="flex shrink-0 items-center gap-1 pr-2">
+        <div
+          className="flex shrink-0 items-center gap-1.5 px-2 pb-2 sm:pb-0 sm:pl-0 sm:pr-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             onClick={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               setShowEdit(true);
             }}
             className={`${buttonClass.ghost} px-2 py-1.5 text-xs`}
@@ -59,6 +79,7 @@ function ExerciseCardInner({ exercise, categories }: { exercise: Exercise; categ
             type="button"
             onClick={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               setShowDeleteConfirm(true);
             }}
             className={`${buttonClass.danger} px-2 py-1.5 text-xs`}

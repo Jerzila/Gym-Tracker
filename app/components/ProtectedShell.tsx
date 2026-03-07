@@ -1,56 +1,32 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
 import { usePathname } from "next/navigation";
 import { AppHeader } from "@/app/components/AppHeader";
-import { Sidebar } from "@/app/components/Sidebar";
-import type { Category } from "@/lib/types";
+import { BottomNav } from "@/app/components/BottomNav";
 
 function getPageTitle(pathname: string): string {
+  if (pathname === "/profile-setup") return "Complete Your Profile";
   if (pathname === "/") return "Dashboard";
+  if (pathname === "/exercises") return "Exercises";
   if (pathname === "/calendar") return "Calendar";
   if (pathname === "/insights") return "Insights";
   if (pathname === "/bodyweight") return "Bodyweight";
+  if (pathname === "/account") return "Account";
   if (pathname === "/categories") return "Categories";
   if (pathname.startsWith("/exercise/")) return "Exercise";
   return "Liftly";
 }
 
-export function ProtectedShell({
-  categories,
-  children,
-}: {
-  categories: Category[];
-  children: React.ReactNode;
-}) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
-
-  useEffect(() => {
-    setSidebarOpen(false);
-  }, [pathname]);
-
-  useEffect(() => {
-    if (sidebarOpen) {
-      const prev = document.body.style.overflow;
-      document.body.style.overflow = "hidden";
-      return () => {
-        document.body.style.overflow = prev;
-      };
-    }
-  }, [sidebarOpen]);
+  const isProfileSetup = pathname === "/profile-setup";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader title={title} onMenuClick={() => setSidebarOpen(true)} />
-      <Suspense fallback={null}>
-        <Sidebar
-          isOpen={sidebarOpen}
-          onClose={() => setSidebarOpen(false)}
-        />
-      </Suspense>
-      <main>{children}</main>
+      <AppHeader title={title} />
+      <main className={isProfileSetup ? "pb-8 md:pb-8" : "pb-20 md:pb-20"}>{children}</main>
+      {!isProfileSetup && <BottomNav />}
     </div>
   );
 }

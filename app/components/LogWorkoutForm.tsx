@@ -5,6 +5,7 @@ import { createWorkout } from "@/app/actions/workouts";
 import { DatePicker } from "@/app/components/DatePicker";
 import { buttonClass } from "@/app/components/Button";
 import { useToast } from "@/app/components/Toast";
+import { useWorkoutDataCache } from "@/app/components/WorkoutDataCacheContext";
 
 type State = { message?: string; error?: string } | undefined;
 
@@ -20,20 +21,25 @@ type Props = {
   exerciseId: string;
   repMin: number;
   repMax: number;
-  exerciseNotes?: string | null;
 };
 
-export function LogWorkoutForm({ exerciseId, repMin, repMax, exerciseNotes }: Props) {
+const initialSetValues = { weight: "", reps: ["", "", "", "", ""] as string[] };
+
+export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
   const [state, action] = useActionState(formAction, undefined);
   const [expanded, setExpanded] = useState(false);
+  const [setValues, setSetValues] = useState(initialSetValues);
   const [showSpinner, setShowSpinner] = useState(false);
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toast = useToast();
+  const cache = useWorkoutDataCache();
   const lastShownMessageRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (state?.message) {
       setExpanded(false);
+      setSetValues(initialSetValues);
+      cache?.invalidate?.();
       // Only show toast once per message to avoid duplicates from effect re-runs
       if (lastShownMessageRef.current !== state.message) {
         lastShownMessageRef.current = state.message;
@@ -58,18 +64,6 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, exerciseNotes }: Pr
 
   return (
     <div className="space-y-3">
-      {exerciseNotes != null && exerciseNotes.trim() !== "" && (
-        <div
-          className="rounded-lg border border-zinc-700/50 bg-zinc-900/40 px-3 py-2.5 text-sm text-zinc-400"
-          role="note"
-          aria-label="Setup notes"
-        >
-          <p className="text-xs font-medium uppercase tracking-wider text-zinc-500 mb-1.5">
-            Setup notes
-          </p>
-          <p className="whitespace-pre-wrap text-zinc-300">{exerciseNotes.trim()}</p>
-        </div>
-      )}
       {!expanded && (
         <button
           type="button"
@@ -108,27 +102,28 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, exerciseNotes }: Pr
                   className="mt-1 w-full"
                 />
               </div>
-              <div>
-                <label htmlFor="weight" className="block text-xs text-zinc-500">
-                  Weight (kg)
-                </label>
-                <input
-                  id="weight"
-                  name="weight"
-                  type="number"
-                  min="0"
-                  step="0.5"
-                  required
-                  placeholder="0"
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                />
-              </div>
             </div>
             <div>
               <p className="mb-2 text-xs text-zinc-500">
-                Reps per set ({repMin}–{repMax} target)
+                Sets ({repMin}–{repMax} reps target). Log 1–5 sets; only fill the sets you did.
               </p>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap items-end gap-4">
+                <div>
+                  <label htmlFor="weight" className="block text-xs text-zinc-600">
+                    Weight (kg)
+                  </label>
+                  <input
+                    id="weight"
+                    name="weight"
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    placeholder="0"
+                    value={setValues.weight}
+                    onChange={(e) => setSetValues((prev) => ({ ...prev, weight: e.target.value }))}
+                    className="mt-1 w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                </div>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <div key={i} className="w-14">
                     <label htmlFor={`reps_${i}`} className="block text-xs text-zinc-600">
@@ -139,8 +134,14 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, exerciseNotes }: Pr
                       name={`reps_${i}`}
                       type="number"
                       min="0"
-                      required={i <= 3}
-                      placeholder="0"
+                      placeholder="—"
+                      value={setValues.reps[i - 1]}
+                      onChange={(e) =>
+                        setSetValues((prev) => ({
+                          ...prev,
+                          reps: prev.reps.map((r, j) => (j === i - 1 ? e.target.value : r)),
+                        }))
+                      }
                       className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     />
                   </div>

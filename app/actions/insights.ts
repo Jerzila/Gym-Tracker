@@ -3,7 +3,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { epley1RM } from "@/lib/progression";
 import { getWeekBounds, getMonthBounds, getMonthBoundsFor, getWeekProgress } from "@/lib/insightsDates";
-import { MUSCLE_GROUPS, categoryToMuscle, type MuscleGroup } from "@/lib/muscleMapping";
+import { MUSCLE_GROUPS, categoryToMuscle, categoryToMuscleGroups, type MuscleGroup } from "@/lib/muscleMapping";
 
 export type WeekStats = {
   volume: number;
@@ -575,7 +575,15 @@ export type CategoryDistribution = {
   previous: CategoryDistributionPoint[] | null;
 };
 
-export type InsightsRange = "this_week" | "last_week" | "this_month" | "last_month";
+export type InsightsRange = "this_week" | "last_week" | "this_month" | "last_month" | "lifetime";
+
+/** Heatmap: sets-based stimulus per muscle, with percentage and exercise names. */
+export type MuscleHeatmapPoint = {
+  muscle: MuscleGroup;
+  sets: number;
+  percentage: number;
+  exercises: string[];
+};
 
 // --- Category → body region (Training Balance) ---
 // Keyword-based so user categories like "Legs" are classified. Extensible for Core, Forearms, Full Body later.
@@ -651,6 +659,14 @@ function rangeToBounds(
       const c = getMonthBounds(-1);
       const p = getMonthBounds(-2);
       return { current: c, previous: p };
+    }
+    case "lifetime": {
+      const end = new Date();
+      end.setUTCHours(23, 59, 59, 999);
+      return {
+        current: { start: "2000-01-01", end: end.toISOString().slice(0, 10) },
+        previous: null,
+      };
     }
   }
 }
@@ -900,6 +916,128 @@ function toPercentages(vol: Record<MuscleGroup, number>): Record<MuscleGroup, nu
     out[m] = Math.round((vol[m] / total) * 100);
   }
   return out;
+}
+
+// --- Muscle heatmap (sets-based, all 10 muscle groups) ---
+
+/** Sets per muscle and unique exercise names per muscle for a date range. */
+async function getMuscleSetsAndExercisesInRange(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  start: string,
+  end: string
+): Promise<{ setsPerMuscle: Record<MuscleGroup, number>; exercisesPerMuscle: Record<MuscleGroup, string[]> }> {
+  const setsPerMuscle: Record<MuscleGroup, number> = {} as Record<MuscleGroup, number>;
+  const exercisesPerMuscle: Record<MuscleGroup, Set<string>> = {} as Record<MuscleGroup, Set<string>>;
+  for (const m of MUSCLE_GROUPS) {
+    setsPerMuscle[m] = 0;
+    exercisesPerMuscle[m] = new Set();
+  }
+
+  const { data: workouts, error: wError } = await supabase
+    .from("workouts")
+    .select("id, exercise_id")
+    .eq("user_id", userId)
+    .gte("date", start)
+    .lte("date", end);
+
+  if (wError || !workouts?.length) {
+    const emptyExercises: Record<MuscleGroup, string[]> = {} as Record<MuscleGroup, string[]>;
+    for (const m of MUSCLE_GROUPS) emptyExercises[m] = [];
+    return { setsPerMuscle, exercisesPerMuscle: emptyExercises };
+  }
+
+  const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+  const { data: exercises } = await supabase
+    .from("exercises")
+    .select("id, name, category_id")
+    .in("id", exerciseIds);
+
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("id, name")
+    .eq("user_id", userId);
+
+  const catNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const exerciseToCategoryName = new Map<string, string>();
+  const exerciseNameById = new Map<string, string>();
+  for (const e of exercises ?? []) {
+    const name = catNameById.get(e.category_id);
+    if (name != null) exerciseToCategoryName.set(e.id, name);
+    exerciseNameById.set(e.id, e.name);
+  }
+
+  const workoutIds = workouts.map((w) => w.id);
+  const { data: sets } = await supabase
+    .from("sets")
+    .select("workout_id")
+    .in("workout_id", workoutIds);
+
+  const setCountByWorkout = new Map<string, number>();
+  for (const s of sets ?? []) {
+    setCountByWorkout.set(s.workout_id, (setCountByWorkout.get(s.workout_id) ?? 0) + 1);
+  }
+
+  for (const w of workouts) {
+    const categoryName = exerciseToCategoryName.get(w.exercise_id);
+    if (categoryName == null) continue;
+    const count = setCountByWorkout.get(w.id) ?? 0;
+    if (count === 0) continue;
+    const muscles = categoryToMuscleGroups(categoryName);
+    if (muscles.length === 0) continue;
+    const share = count / muscles.length;
+    const exerciseName = exerciseNameById.get(w.exercise_id) ?? "Unknown";
+    for (const m of muscles) {
+      setsPerMuscle[m] = (setsPerMuscle[m] ?? 0) + share;
+      exercisesPerMuscle[m].add(exerciseName);
+    }
+  }
+
+  const exercisesPerMuscleArr: Record<MuscleGroup, string[]> = {} as Record<MuscleGroup, string[]>;
+  for (const m of MUSCLE_GROUPS) {
+    exercisesPerMuscleArr[m] = [...exercisesPerMuscle[m]].sort();
+  }
+  return { setsPerMuscle, exercisesPerMuscle: exercisesPerMuscleArr };
+}
+
+export async function getMuscleHeatmapData(range: InsightsRange): Promise<{
+  data: MuscleHeatmapPoint[];
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: [], error: "Not authenticated" };
+
+    const { current } = rangeToBounds(range);
+    const { setsPerMuscle, exercisesPerMuscle } = await getMuscleSetsAndExercisesInRange(
+      supabase,
+      user.id,
+      current.start,
+      current.end
+    );
+
+    const totalSets = Object.values(setsPerMuscle).reduce((a, b) => a + b, 0);
+    const points: MuscleHeatmapPoint[] = MUSCLE_GROUPS.map((muscle) => {
+      const sets = Math.round(setsPerMuscle[muscle] * 10) / 10;
+      const percentage = totalSets > 0 ? Math.round((setsPerMuscle[muscle] / totalSets) * 100) : 0;
+      return {
+        muscle,
+        sets,
+        percentage,
+        exercises: exercisesPerMuscle[muscle] ?? [],
+      };
+    });
+
+    return { data: points };
+  } catch (e) {
+    return {
+      data: [],
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
 }
 
 // --- 1RM progression ---

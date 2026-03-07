@@ -11,7 +11,13 @@ function formAction(_: { error?: string } | undefined, formData: FormData) {
   return createExercise(formData);
 }
 
-export function CreateExerciseForm({ categories }: { categories: Category[] }) {
+export function CreateExerciseForm({
+  categories,
+  buttonLabel = "Add Exercise",
+}: {
+  categories: Category[];
+  buttonLabel?: string;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [state, action] = useActionState(formAction, undefined);
@@ -34,7 +40,7 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
       setIsOpen(false);
       formRef.current?.reset();
       toast.show("Exercise added");
-      if (categoryId) router.push(`/?expand=${categoryId}`);
+      if (categoryId) router.push(`/exercises?expand=${categoryId}`);
     }
   }, [state, router, toast]);
 
@@ -53,7 +59,7 @@ export function CreateExerciseForm({ categories }: { categories: Category[] }) {
         aria-controls="add-exercise-form"
         id="add-exercise-btn"
       >
-        Add Exercise
+        {buttonLabel}
       </button>
 
       <div

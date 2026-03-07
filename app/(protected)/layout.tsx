@@ -1,20 +1,24 @@
-import { getCategories } from "@/app/actions/categories";
 import { ProtectedShell } from "@/app/components/ProtectedShell";
 import { InstallBanner } from "@/app/components/InstallBanner";
 import { ToastProvider } from "@/app/components/Toast";
+import { ProfileGuard } from "@/app/components/ProfileGuard";
+import { WorkoutDataCacheProvider } from "@/app/components/WorkoutDataCacheContext";
+import { getProfile } from "@/app/actions/profile";
 
 export default async function ProtectedLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const categories = await getCategories();
+  const profile = await getProfile();
   return (
     <>
       <ToastProvider>
-        <ProtectedShell categories={categories}>
-          {children}
-        </ProtectedShell>
+        <ProfileGuard profile={profile}>
+          <WorkoutDataCacheProvider>
+            <ProtectedShell>{children}</ProtectedShell>
+          </WorkoutDataCacheProvider>
+        </ProfileGuard>
       </ToastProvider>
       <InstallBanner />
     </>

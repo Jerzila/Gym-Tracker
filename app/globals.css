@@ -90,6 +90,19 @@ body {
   animation: fade-in 0.2s ease-out forwards;
 }
 
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.animate-skeleton-pulse {
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
 @keyframes insights-calendar-fade {
   from {
     opacity: 0;
@@ -105,12 +118,10 @@ body {
   animation: insights-calendar-fade 0.35s ease-out backwards;
 }
 
-/* Button press: immediate feedback on touch (no 300ms delay) */
-@media (hover: none) {
-  .tap-feedback:active {
-    transform: scale(0.98);
-    filter: brightness(0.95);
-  }
+/* Button press: immediate feedback (scale + brightness) for all devices */
+.tap-feedback:active {
+  transform: scale(0.98);
+  filter: brightness(0.95);
 }
 
 /* Expand/collapse: height + opacity, 220ms ease-in-out */
@@ -119,3 +130,9 @@ body {
     grid-template-rows 220ms ease-in-out,
     opacity 220ms ease-in-out;
 }
+
+/* Bottom nav safe area for notched devices */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+

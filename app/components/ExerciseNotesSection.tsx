@@ -11,31 +11,36 @@ type Props = {
 };
 
 export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
-  const [notes, setNotes] = useState(initialNotes ?? "");
-  const [displayNotes, setDisplayNotes] = useState(initialNotes ?? "");
+  const [savedNote, setSavedNote] = useState(initialNotes ?? "");
+  const [editBuffer, setEditBuffer] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const toast = useToast();
 
   async function handleSave() {
     setSaving(true);
-    const { error } = await updateExerciseNotes(exerciseId, notes.trim() || null);
+    const { error } = await updateExerciseNotes(exerciseId, editBuffer.trim() || null);
     setSaving(false);
     if (error) {
       toast.show(error);
       return;
     }
-    setDisplayNotes(notes.trim() || "");
+    setSavedNote(editBuffer.trim() || "");
     setEditing(false);
     toast.show("Notes saved.");
   }
 
   function handleCancel() {
-    setNotes(displayNotes || "");
+    setEditBuffer(savedNote || "");
     setEditing(false);
   }
 
-  const hasNotes = displayNotes.length > 0;
+  function startEditing() {
+    setEditBuffer(savedNote || "");
+    setEditing(true);
+  }
+
+  const hasNotes = savedNote.length > 0;
 
   return (
     <section className="rounded-xl border border-zinc-700/60 bg-zinc-900/30 px-4 py-3">
@@ -46,7 +51,7 @@ export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
         {!editing && (
           <button
             type="button"
-            onClick={() => setEditing(true)}
+            onClick={startEditing}
             className={`text-xs ${buttonClass.ghost} py-1 px-2 text-zinc-500 hover:text-zinc-300`}
           >
             Edit Notes
@@ -57,8 +62,8 @@ export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
       {editing ? (
         <div className="mt-3 space-y-3">
           <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
+            value={editBuffer}
+            onChange={(e) => setEditBuffer(e.target.value)}
             placeholder="e.g. Seat height 4th tier, Bench at 45°, Wide grip"
             rows={4}
             className="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
@@ -84,7 +89,7 @@ export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
         </div>
       ) : (
         <p className="mt-2 text-sm text-zinc-300 whitespace-pre-wrap">
-          {hasNotes ? displayNotes : "No notes added."}
+          {hasNotes ? savedNote : "No notes added."}
         </p>
       )}
     </section>

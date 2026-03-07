@@ -1,3 +1,16 @@
+export type Profile = {
+  id: string;
+  name: string | null;
+  birthday: string | null;
+  gender: "male" | "female" | "other" | "prefer_not_to_say" | null;
+  country: string | null;
+  body_weight: number | null;
+  height: number | null;
+  profile_completed: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Category = {
   id: string;
   user_id: string;

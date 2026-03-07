@@ -3,38 +3,11 @@
 import { signOut } from "@/app/actions/auth";
 import { buttonClass } from "@/app/components/Button";
 
-export function AppHeader({
-  title,
-  onMenuClick,
-}: {
-  title: string;
-  onMenuClick: () => void;
-}) {
+export function AppHeader({ title }: { title: string }) {
   return (
     <header className="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/95 backdrop-blur supports-[backdrop-filter]:bg-zinc-950/80">
       <div className="flex h-14 items-center justify-between gap-3 px-4 sm:px-6">
-        <button
-          type="button"
-          onClick={onMenuClick}
-          className={`${buttonClass.icon} flex h-10 w-10 shrink-0 items-center justify-center`}
-          aria-label="Open menu"
-        >
-          <svg
-            className="h-6 w-6"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M4 6h16M4 12h16M4 18h16"
-            />
-          </svg>
-        </button>
-        <span className="shrink-0 text-base font-bold tracking-tight text-zinc-100">Liftly</span>
+        <div className="w-10 shrink-0" aria-hidden />
         <h1 className="min-w-0 flex-1 truncate text-center text-lg font-semibold tracking-tight text-zinc-100">
           {title}
         </h1>

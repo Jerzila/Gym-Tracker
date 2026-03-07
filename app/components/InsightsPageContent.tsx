@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef, memo } from "react";
+import dynamic from "next/dynamic";
 import {
   getInsightsInitialData,
   getInsightsRangeData,
   get1RMProgression,
   getMonthlyAnalytics,
   getMonthsWithWorkoutData,
+  getMuscleHeatmapData,
   type WeeklyComparison,
   type PaceStatus,
   type CategoryDistribution,
   type MuscleDistribution,
+  type MuscleHeatmapPoint,
   type MonthlySummary,
   type MonthlyAnalytics,
   type MonthOption,
@@ -23,7 +26,8 @@ import {
 } from "@/app/actions/insights";
 import { getCurrentYearMonth } from "@/lib/insightsDates";
 import type { Exercise } from "@/lib/types";
-import { MuscleRadarChart } from "@/app/components/MuscleRadarChart";
+import { SkeletonInsightsPage, SkeletonPanel } from "@/app/components/Skeleton";
+import { useWorkoutDataCache } from "@/app/components/WorkoutDataCacheContext";
 import {
   LineChart,
   Line,
@@ -38,11 +42,23 @@ import {
 } from "recharts";
 import { formatWeight } from "@/lib/formatWeight";
 
+const MuscleRadarChart = dynamic(
+  () => import("@/app/components/MuscleRadarChart").then((m) => ({ default: m.MuscleRadarChart })),
+  { ssr: false, loading: () => <SkeletonPanel height="h-72" /> }
+);
+
+const MuscleHeatmap = dynamic(
+  () => import("@/app/components/MuscleHeatmap").then((m) => ({ default: m.MuscleHeatmap })),
+  { ssr: false, loading: () => <SkeletonPanel height="h-72" /> }
+);
+
+const MUSCLE_HEATMAP_COMING_SOON = true;
+
 function formatVolume(n: number): string {
   return Math.round(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-type Props = { exercises: Exercise[] };
+type Props = { exercises: Exercise[]; gender?: "male" | "female" };
 
 const RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
   { value: "this_week", label: "This Week" },
@@ -51,13 +67,18 @@ const RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
   { value: "last_month", label: "Last Month" },
 ];
 
+const HEATMAP_RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
+  ...RANGE_OPTIONS,
+  { value: "lifetime", label: "Lifetime" },
+];
+
 const ONE_RM_RANGES: { value: "30" | "90" | "all"; label: string }[] = [
   { value: "30", label: "Last 30 days" },
   { value: "90", label: "Last 90 days" },
   { value: "all", label: "All time" },
 ];
 
-export function InsightsPageContent({ exercises }: Props) {
+export function InsightsPageContent({ exercises, gender = "male" }: Props) {
   const [weekly, setWeekly] = useState<WeeklyComparison | null>(null);
   const [muscleRange, setMuscleRange] = useState<InsightsRange>("this_week");
   const [categoryData, setCategoryData] = useState<CategoryDistribution | null>(null);
@@ -74,6 +95,10 @@ export function InsightsPageContent({ exercises }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [heatmapRange, setHeatmapRange] = useState<InsightsRange>("this_week");
+  const [heatmapData, setHeatmapData] = useState<MuscleHeatmapPoint[]>([]);
+  const [heatmapLoading, setHeatmapLoading] = useState(true);
+
   const [monthOptions, setMonthOptions] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<MonthOption>(() => {
     const { year, month } = getCurrentYearMonth();
@@ -84,6 +109,14 @@ export function InsightsPageContent({ exercises }: Props) {
     Record<string, MonthlyAnalytics>
   >({});
   const [loadingMonthly, setLoadingMonthly] = useState(false);
+  const monthlyCacheRef = useRef<Record<string, MonthlyAnalytics>>({});
+  monthlyCacheRef.current = monthlyAnalyticsCache;
+  const [showDeferred, setShowDeferred] = useState(false);
+  const cache = useWorkoutDataCache();
+  useEffect(() => {
+    const t = setTimeout(() => setShowDeferred(true), 0);
+    return () => clearTimeout(t);
+  }, []);
 
   const exerciseList = useMemo(() => exercises.filter((e) => e.id), [exercises]);
   const defaultExId = exerciseList[0]?.id ?? "";
@@ -93,9 +126,25 @@ export function InsightsPageContent({ exercises }: Props) {
   }, [defaultExId, selectedExerciseId]);
 
   useEffect(() => {
+    const cached = cache?.getCachedInsights?.() ?? null;
+    if (cached) {
+      if (cached.weeklyError) setError(cached.weeklyError);
+      else setWeekly(cached.weekly);
+      setMonthly(cached.monthly ?? null);
+      setPlateauExercises(cached.plateauExercises);
+      setTrainingScore(cached.trainingScore ?? null);
+      if (cached.trainingScoreError && !cached.trainingScore) setError((e) => e || (cached.trainingScoreError ?? null));
+      setCategoryData(cached.categoryDistribution ?? null);
+      setMuscleData(cached.muscleDistribution ?? null);
+      setTopStrengthGains(cached.topStrengthGains);
+      setTrainingBalance(cached.trainingBalance ?? null);
+      setInsightItems(cached.insightItems);
+      setLoading(false);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     getInsightsInitialData().then((data) => {
       if (cancelled) return;
       if (data.weeklyError) setError(data.weeklyError);
@@ -110,10 +159,12 @@ export function InsightsPageContent({ exercises }: Props) {
       setTrainingBalance(data.trainingBalance ?? null);
       setInsightItems(data.insightItems);
       setLoading(false);
+      cache?.setCachedInsights?.(data);
     });
     return () => {
       cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount; cache is stable
   }, []);
 
   useEffect(() => {
@@ -128,21 +179,24 @@ export function InsightsPageContent({ exercises }: Props) {
 
   useEffect(() => {
     const key = `${selectedMonth.year}-${selectedMonth.month}`;
-    if (monthlyAnalyticsCache[key]) {
-      setMonthlyAnalytics(monthlyAnalyticsCache[key]);
+    const cached = monthlyCacheRef.current[key];
+    if (cached) {
+      setMonthlyAnalytics(cached);
       return;
     }
     setLoadingMonthly(true);
     getMonthlyAnalytics(selectedMonth.year, selectedMonth.month).then((res) => {
       setLoadingMonthly(false);
       if (res.data) {
-        setMonthlyAnalyticsCache((prev) => ({ ...prev, [key]: res.data! }));
+        const next = { ...monthlyCacheRef.current, [key]: res.data };
+        monthlyCacheRef.current = next;
+        setMonthlyAnalyticsCache(next);
         setMonthlyAnalytics(res.data);
       } else {
         setMonthlyAnalytics(null);
       }
     });
-  }, [selectedMonth.year, selectedMonth.month, monthlyAnalyticsCache]);
+  }, [selectedMonth.year, selectedMonth.month]);
 
   useEffect(() => {
     if (muscleRange === "this_week") return;
@@ -176,10 +230,34 @@ export function InsightsPageContent({ exercises }: Props) {
     };
   }, [selectedExerciseId, oneRMRange]);
 
+  useEffect(() => {
+    let cancelled = false;
+    setHeatmapLoading(true);
+    getMuscleHeatmapData(heatmapRange).then((res) => {
+      if (!cancelled) {
+        setHeatmapData(res.data ?? []);
+        setHeatmapLoading(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [heatmapRange]);
+
+  // When navigating from Dashboard with #muscle-distribution, scroll to the section
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#muscle-distribution") return;
+    const el = document.getElementById("muscle-distribution");
+    if (!el) return;
+    const timeout = setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+    return () => clearTimeout(timeout);
+  }, []);
+
   if (loading && !weekly) {
-    return (
-      <p className="py-8 text-center text-sm text-zinc-500">Loading insights…</p>
-    );
+    return <SkeletonInsightsPage />;
   }
 
   if (error) {
@@ -261,7 +339,47 @@ export function InsightsPageContent({ exercises }: Props) {
 
       <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
 
-      {/* 2) Muscle Distribution Radar */}
+      {/* Muscle Distribution — directly below Weekly Progress */}
+      <section id="muscle-distribution">
+        <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
+          Muscle Distribution
+        </h3>
+        <p className="mb-3 text-xs text-zinc-500">
+          Training stimulus per muscle group (total sets). Color intensity is relative to your most trained muscle.
+        </p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          {HEATMAP_RANGE_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              disabled={MUSCLE_HEATMAP_COMING_SOON}
+              onClick={() => setHeatmapRange(opt.value)}
+              className={`tap-feedback rounded-lg border px-3 py-1.5 text-sm transition active:scale-[0.98] ${
+                MUSCLE_HEATMAP_COMING_SOON
+                  ? "cursor-not-allowed opacity-50 border-zinc-700 bg-zinc-800/50 text-zinc-500"
+                  : heatmapRange === opt.value
+                    ? "border-amber-500/60 bg-amber-500/10 text-amber-400"
+                    : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {heatmapLoading && !MUSCLE_HEATMAP_COMING_SOON ? (
+          <SkeletonPanel height="h-72" />
+        ) : (
+          <MuscleHeatmap
+            data={heatmapData}
+            gender={gender}
+            emptyMessage="No training data for this period."
+          />
+        )}
+      </section>
+
+      <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+
+      {/* Training balance */}
       <section>
         <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Training balance
@@ -275,7 +393,7 @@ export function InsightsPageContent({ exercises }: Props) {
               key={opt.value}
               type="button"
               onClick={() => setMuscleRange(opt.value)}
-              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+              className={`tap-feedback rounded-lg border px-3 py-1.5 text-sm transition active:scale-[0.98] ${
                 muscleRange === opt.value
                   ? "border-amber-500/60 bg-amber-500/10 text-amber-400"
                   : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
@@ -291,9 +409,7 @@ export function InsightsPageContent({ exercises }: Props) {
             previous={categoryData.previous}
           />
         ) : (
-          <div className="flex h-72 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/50 text-sm text-zinc-500">
-            Loading…
-          </div>
+          <SkeletonPanel height="h-72" />
         )}
         {trainingBalance && (
           <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
@@ -338,7 +454,7 @@ export function InsightsPageContent({ exercises }: Props) {
               key={opt.value}
               type="button"
               onClick={() => setOneRMRange(opt.value)}
-              className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+              className={`tap-feedback rounded-lg border px-3 py-1.5 text-sm transition active:scale-[0.98] ${
                 oneRMRange === opt.value
                   ? "border-amber-500/60 bg-amber-500/10 text-amber-400"
                   : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
@@ -373,7 +489,8 @@ export function InsightsPageContent({ exercises }: Props) {
 
       <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
 
-      {/* Training Insights — single analysis panel (max 4 items) */}
+      {/* Training Insights — deferred (secondary content) */}
+      {showDeferred && (
       <section>
         <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Training Insights
@@ -395,10 +512,12 @@ export function InsightsPageContent({ exercises }: Props) {
           </ul>
         )}
       </section>
+      )}
 
       <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
 
-      {/* Monthly Analytics Dashboard */}
+      {/* Monthly Analytics Dashboard — deferred (secondary content) */}
+      {showDeferred && (
       <section className="transition-opacity duration-200">
         <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Monthly analytics
@@ -431,9 +550,17 @@ export function InsightsPageContent({ exercises }: Props) {
         </div>
 
         {loadingMonthly && !monthlyAnalytics ? (
-          <p className="py-8 text-center text-sm text-zinc-500">
-            Loading monthly data…
-          </p>
+          <div className="space-y-6">
+            <SkeletonPanel height="h-80" />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+                  <div className="animate-skeleton-pulse h-3 w-16 rounded bg-zinc-700/60" />
+                  <div className="animate-skeleton-pulse mt-1 h-6 w-10 rounded bg-zinc-700/60" />
+                </div>
+              ))}
+            </div>
+          </div>
         ) : !monthlyAnalytics || (monthlyAnalytics.totalSets === 0 && monthlyAnalytics.workoutsCompleted === 0) ? (
           <p className="rounded-xl bg-zinc-900/40 px-4 py-6 text-center text-sm text-zinc-500">
             No data for this month yet.
@@ -533,11 +660,12 @@ export function InsightsPageContent({ exercises }: Props) {
           </div>
         )}
       </section>
+      )}
     </div>
   );
 }
 
-function MetricCard({
+const MetricCard = memo(function MetricCard({
   label,
   value,
   sub,
@@ -555,7 +683,7 @@ function MetricCard({
       )}
     </div>
   );
-}
+});
 
 const PACE_TOOLTIP =
   "Based on your progress at this point in the week compared to the same time last week.";
@@ -574,7 +702,7 @@ function paceStatusClass(pace: PaceStatus | null): string {
   return "text-red-400/90";
 }
 
-function WeeklyPaceCard({
+const WeeklyPaceCard = memo(function WeeklyPaceCard({
   label,
   value,
   pace,
@@ -597,7 +725,7 @@ function WeeklyPaceCard({
       )}
     </div>
   );
-}
+});
 
 function diffClass(diff: number): string {
   if (diff > 0) return "text-emerald-400";
@@ -617,7 +745,7 @@ function trendClass(trend: "up" | "down" | "neutral"): string {
   return "text-zinc-500";
 }
 
-function StrengthProgressChart({ data }: { data: OneRMPoint[] }) {
+const StrengthProgressChart = memo(function StrengthProgressChart({ data }: { data: OneRMPoint[] }) {
   if (data.length === 0) {
     return (
       <div className="flex h-56 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/50 text-sm text-zinc-500">
@@ -663,13 +791,14 @@ function StrengthProgressChart({ data }: { data: OneRMPoint[] }) {
             strokeWidth={2}
             dot={{ fill: "#f59e0b", r: 3 }}
             activeDot={{ r: 4 }}
-            animationDuration={200}
+            animationDuration={0}
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>
     </div>
   );
-}
+});
 
 /** Liftly donut palette: primary orange → lighter → golden → soft → dark amber. */
 const DONUT_COLORS = [
@@ -685,7 +814,7 @@ const DONUT_COLORS = [
 
 type MonthlyDonutSlice = { category: string; sets: number; percentage: number };
 
-function DonutTooltipContent({
+const DonutTooltipContent = memo(function DonutTooltipContent({
   active,
   payload,
 }: {
@@ -706,9 +835,9 @@ function DonutTooltipContent({
       <p className="text-amber-400">{pct}% of training</p>
     </div>
   );
-}
+});
 
-function MonthlyDonutChart({
+const MonthlyDonutChart = memo(function MonthlyDonutChart({
   data,
   totalSets,
 }: {
@@ -747,8 +876,8 @@ function MonthlyDonutChart({
               innerRadius={80}
               outerRadius={120}
               paddingAngle={4}
-              animationDuration={200}
-              animationBegin={0}
+              animationDuration={0}
+              isAnimationActive={false}
             >
               {chartData.map((_, index) => (
                 <Cell
@@ -796,5 +925,5 @@ function MonthlyDonutChart({
       </div>
     </div>
   );
-}
+});
 

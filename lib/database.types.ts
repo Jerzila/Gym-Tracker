@@ -3,6 +3,44 @@ export type Json = string | number | boolean | null | { [key: string]: Json | un
 export type Database = {
   public: {
     Tables: {
+      profiles: {
+        Row: {
+          id: string;
+          name: string | null;
+          birthday: string | null;
+          gender: "male" | "female" | "other" | "prefer_not_to_say" | null;
+          country: string | null;
+          body_weight: number | null;
+          height: number | null;
+          profile_completed: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          name?: string | null;
+          birthday?: string | null;
+          gender?: "male" | "female" | "other" | "prefer_not_to_say" | null;
+          country?: string | null;
+          body_weight?: number | null;
+          height?: number | null;
+          profile_completed?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string | null;
+          birthday?: string | null;
+          gender?: "male" | "female" | "other" | "prefer_not_to_say" | null;
+          country?: string | null;
+          body_weight?: number | null;
+          height?: number | null;
+          profile_completed?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       categories: {
         Row: { id: string; user_id: string; name: string; created_at: string };
         Insert: { id?: string; user_id: string; name: string; created_at?: string };

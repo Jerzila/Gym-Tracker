@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/workouts";
 import { epley1RM } from "@/lib/progression";
 import { formatWeight } from "@/lib/formatWeight";
+import { SkeletonCalendarGrid } from "@/app/components/Skeleton";
 
 /** Week starts on Monday (index 0 = Monday) */
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -146,6 +147,7 @@ export function CalendarView() {
         <div className="flex items-center gap-3">
           <Link
             href="/"
+            prefetch={true}
             className="text-zinc-500 transition hover:text-zinc-300"
             aria-label="Back to dashboard"
           >
@@ -162,7 +164,7 @@ export function CalendarView() {
               type="button"
               onClick={prevMonth}
               aria-label="Previous month"
-              className="rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+              className="tap-feedback rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
             >
               ←
             </button>
@@ -173,7 +175,7 @@ export function CalendarView() {
               type="button"
               onClick={nextMonth}
               aria-label="Next month"
-              className="rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+              className="tap-feedback rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
             >
               →
             </button>
@@ -183,10 +185,13 @@ export function CalendarView() {
             <p className="px-4 py-3 text-sm text-red-400/90">{error}</p>
           )}
 
+          {loading ? (
+            <SkeletonCalendarGrid />
+          ) : (
           <div
             className="grid grid-cols-7 gap-px border-t border-zinc-800/60 bg-zinc-800/40 p-2 transition-opacity duration-200 ease-out"
             style={{
-              opacity: loading ? 0.7 : monthTransitioning ? 0.6 : 1,
+              opacity: monthTransitioning ? 0.6 : 1,
             }}
           >
             {WEEKDAYS.map((day) => (
@@ -233,6 +238,7 @@ export function CalendarView() {
               );
             })}
           </div>
+          )}
         </section>
       </main>
 

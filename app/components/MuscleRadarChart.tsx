@@ -1,5 +1,6 @@
 "use client";
 
+import { memo, useMemo } from "react";
 import {
   RadarChart,
   Radar,
@@ -39,14 +40,18 @@ function getDomainMax(current: { value: number }[], previous: { value: number }[
   return Math.min(100, padded);
 }
 
-export function MuscleRadarChart({ current, previous }: Props) {
-  const data = current.map((c) => ({
-    category: c.category,
-    "This period": c.value,
-    ...(previous
-      ? { "Previous period": previous.find((p) => p.category === c.category)?.value ?? 0 }
-      : {}),
-  }));
+function MuscleRadarChartInner({ current, previous }: Props) {
+  const data = useMemo(
+    () =>
+      current.map((c) => ({
+        category: c.category,
+        "This period": c.value,
+        ...(previous
+          ? { "Previous period": previous.find((p) => p.category === c.category)?.value ?? 0 }
+          : {}),
+      })),
+    [current, previous]
+  );
 
   if (current.length === 0 || data.every((d) => d["This period"] === 0 && (d["Previous period"] ?? 0) === 0)) {
     return (
@@ -83,8 +88,7 @@ export function MuscleRadarChart({ current, previous }: Props) {
             fill={LIFTLY_ORANGE}
             fillOpacity={0.25}
             strokeWidth={2.5}
-            animationDuration={250}
-            animationEasing="ease-out"
+            isAnimationActive={false}
           />
           {previous && (
             <Radar
@@ -94,8 +98,7 @@ export function MuscleRadarChart({ current, previous }: Props) {
               fill={MUTED_GREY}
               fillOpacity={0.12}
               strokeWidth={1.5}
-              animationDuration={250}
-              animationEasing="ease-out"
+              isAnimationActive={false}
             />
           )}
           <Tooltip
@@ -117,3 +120,5 @@ export function MuscleRadarChart({ current, previous }: Props) {
     </div>
   );
 }
+
+export const MuscleRadarChart = memo(MuscleRadarChartInner);

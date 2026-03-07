@@ -5,6 +5,7 @@ const authPaths = ["/login", "/signup"];
 
 function isProtectedPath(pathname: string): boolean {
   if (pathname === "/" || pathname === "/bodyweight" || pathname === "/categories") return true;
+  if (pathname === "/profile-setup" || pathname === "/account" || pathname === "/exercises" || pathname === "/calendar" || pathname === "/insights") return true;
   if (pathname.startsWith("/exercise/")) return true;
   return false;
 }
