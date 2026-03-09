@@ -1,18 +1,34 @@
 "use client";
 
 import Link from "next/link";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  ResponsiveContainer,
-  Tooltip,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { formatWeight } from "@/lib/formatWeight";
-import { MuscleRadarChart } from "@/app/components/MuscleRadarChart";
-import { MuscleHeatmap } from "@/app/components/MuscleHeatmap";
+import { SkeletonPanel } from "@/app/components/Skeleton";
 import type { WeeklyComparison } from "@/app/actions/insights";
+
+const MuscleRadarChart = dynamic(
+  () =>
+    import("@/app/components/MuscleRadarChart").then((m) => ({
+      default: m.MuscleRadarChart,
+    })),
+  { ssr: false, loading: () => <SkeletonPanel height="h-[220px]" /> }
+);
+
+const MuscleHeatmap = dynamic(
+  () =>
+    import("@/app/components/MuscleHeatmap").then((m) => ({
+      default: m.MuscleHeatmap,
+    })),
+  { ssr: false, loading: () => <SkeletonPanel height="h-32" /> }
+);
+
+const BodyweightSparkline = dynamic(
+  () =>
+    import("@/app/components/BodyweightSparkline").then((m) => ({
+      default: m.BodyweightSparkline,
+    })),
+  { ssr: false, loading: () => <div className="mt-3 h-14 w-full rounded-lg bg-zinc-800/50 animate-skeleton-pulse" /> }
+);
 import type { CategoryDistribution, MuscleDistributionPoint, MuscleHeatmapPoint } from "@/app/actions/insights";
 import type { LastWorkoutSummary } from "@/app/actions/workouts";
 
@@ -125,35 +141,7 @@ export function DashboardPageContent({
                 </p>
               )}
               {bodyweightSparkline.length > 0 && (
-                <div className="mt-3 h-14 w-full">
-                  <ResponsiveContainer width="100%" height={56}>
-                    <LineChart
-                      data={[...bodyweightSparkline].reverse()}
-                      margin={{ top: 2, right: 2, left: -20, bottom: 0 }}
-                    >
-                      <XAxis dataKey="date" hide />
-                      <YAxis domain={["auto", "auto"]} hide width={0} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: "#18181b",
-                          border: "1px solid #3f3f46",
-                          borderRadius: "8px",
-                          fontSize: "12px",
-                        }}
-                        formatter={(value: number | undefined) => [value != null ? `${formatWeight(value)} kg` : "", "Weight"]}
-                        labelFormatter={(label) => (label ? new Date(label).toLocaleDateString() : "")}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="weight"
-                        stroke="#f59e0b"
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 4, fill: "#f59e0b" }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <BodyweightSparkline data={bodyweightSparkline} />
               )}
               <Link
                 href="/bodyweight"
@@ -233,6 +221,7 @@ export function DashboardPageContent({
             {categoryDistribution?.current?.length ? (
               <div className="min-h-[220px] w-full overflow-hidden rounded-lg">
                 <MuscleRadarChart
+                  range="this_week"
                   current={categoryDistribution.current}
                   previous={categoryDistribution.previous}
                 />

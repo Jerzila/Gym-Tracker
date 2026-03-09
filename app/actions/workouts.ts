@@ -126,6 +126,70 @@ export async function deleteWorkout(
   }
 }
 
+/** Workout counts for calendar stats: distinct workout days in each period. */
+export type WorkoutCountsByPeriod = {
+  thisWeek: number;
+  thisMonth: number;
+  thisYear: number;
+};
+
+/** Get count of distinct workout days for this week, this month, and this year. */
+export async function getWorkoutCountsByPeriod(): Promise<{
+  data: WorkoutCountsByPeriod | null;
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: null, error: "Not authenticated" };
+
+    const now = new Date();
+    const yearStart = `${now.getFullYear()}-01-01`;
+    const today = now.toISOString().slice(0, 10);
+
+    const { data: workouts, error } = await supabase
+      .from("workouts")
+      .select("date")
+      .eq("user_id", user.id)
+      .gte("date", yearStart)
+      .lte("date", today);
+
+    if (error) return { data: null, error: error.message };
+
+    const dates = [...new Set((workouts ?? []).map((w) => w.date as string))];
+
+    const getMonday = (d: Date) => {
+      const copy = new Date(d);
+      const day = copy.getDay();
+      const diff = copy.getDate() - day + (day === 0 ? -6 : 1);
+      copy.setDate(diff);
+      return copy;
+    };
+    const monday = getMonday(now);
+    const weekStart = monday.toISOString().slice(0, 10);
+
+    const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const thisWeek = dates.filter((d) => d >= weekStart && d <= today).length;
+    const thisMonth = dates.filter((d) => d >= monthStart && d <= today).length;
+    const thisYear = dates.length;
+
+    return {
+      data: { thisWeek, thisMonth, thisYear },
+    };
+  } catch (e) {
+    if (isConnectionError(e)) {
+      return { data: null, error: "Can't connect to Supabase. Check your .env.local." };
+    }
+    return {
+      data: null,
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
+}
+
 /** Fetch workouts for a given month; filter by logged-in user. Efficient date range query. */
 export async function getWorkoutsByMonth(
   year: number,

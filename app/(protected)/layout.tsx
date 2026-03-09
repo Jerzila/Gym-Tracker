@@ -1,5 +1,4 @@
 import { ProtectedShell } from "@/app/components/ProtectedShell";
-import { InstallBanner } from "@/app/components/InstallBanner";
 import { ToastProvider } from "@/app/components/Toast";
 import { ProfileGuard } from "@/app/components/ProfileGuard";
 import { WorkoutDataCacheProvider } from "@/app/components/WorkoutDataCacheContext";
@@ -20,7 +19,6 @@ export default async function ProtectedLayout({
           </WorkoutDataCacheProvider>
         </ProfileGuard>
       </ToastProvider>
-      <InstallBanner />
     </>
   );
 }

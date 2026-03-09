@@ -82,6 +82,28 @@ export function SkeletonList({ lines = 5 }: { lines?: number }) {
   );
 }
 
+/** Exercises page: header + button row + list. */
+export function SkeletonExercisesPage() {
+  return (
+    <div className="mx-auto max-w-xl px-4 pb-24 pt-6 sm:px-6">
+      <div className={`${skeletonBase} mb-3 h-3 w-24`} />
+      <div className="mb-6 flex gap-3">
+        <div className={`${skeletonBase} h-10 w-32 rounded-lg`} />
+        <div className={`${skeletonBase} h-10 w-36 rounded-lg`} />
+      </div>
+      <div className="border-t border-zinc-800/60 pt-6" aria-hidden />
+      <ul className="mt-6 space-y-2">
+        {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+          <li key={i} className="flex h-14 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4">
+            <div className={`${skeletonBase} h-4 flex-1`} style={{ maxWidth: `${70 - i * 3}%` }} />
+            <div className={`${skeletonBase} h-3 w-12`} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Insights page: full-page skeleton (training score + weekly + heatmap + radar placeholders). */
 export function SkeletonInsightsPage() {
   return (
@@ -129,6 +151,38 @@ export function SkeletonInsightsPage() {
         </div>
         <SkeletonPanel height="h-72" />
       </section>
+    </div>
+  );
+}
+
+/** Dashboard-style skeleton: CTA + cards + chart placeholders. */
+export function SkeletonDashboard() {
+  return (
+    <div className="mx-auto max-w-xl space-y-6 px-4 pb-24 pt-6 sm:px-6">
+      <div className={`${skeletonBase} h-14 w-full rounded-xl`} />
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className={`${skeletonBase} mb-1 h-3 w-28`} />
+        <div className={`${skeletonBase} mt-1 h-8 w-24`} />
+        <div className={`${skeletonBase} mt-2 h-4 w-36`} />
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className={`${skeletonBase} mb-2 h-3 w-20`} />
+        <div className={`${skeletonBase} h-8 w-20`} />
+        <div className={`${skeletonBase} mt-3 h-14 w-full rounded-lg`} />
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className={`${skeletonBase} mb-1 h-3 w-24`} />
+        <div className={`${skeletonBase} mt-1 h-6 w-40`} />
+        <div className={`${skeletonBase} mt-1 h-3 w-24`} />
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className={`${skeletonBase} mb-3 h-3 w-28`} />
+        <div className={`${skeletonBase} h-32 w-full rounded-lg`} />
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className={`${skeletonBase} mb-3 h-3 w-32`} />
+        <div className={`${skeletonBase} h-40 w-full rounded-lg`} />
+      </div>
     </div>
   );
 }

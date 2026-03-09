@@ -34,114 +34,6 @@ export type WeeklyComparison = {
   pacePrs: PaceStatus | null;
 };
 
-// --- Training Score ---
-
-export type TrainingScoreResult = {
-  score: number;
-  consistencyScore: number;
-  strengthScore: number;
-  balanceScore: number;
-  consistencyTrend: "up" | "down" | "neutral";
-  strengthTrend: "up" | "down" | "neutral";
-  balanceTrend: "up" | "down" | "neutral";
-};
-
-export async function getTrainingScore(): Promise<{
-  data: TrainingScoreResult | null;
-  error?: string;
-}> {
-  try {
-    const supabase = await createServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { data: null, error: "Not authenticated" };
-
-    const thisBounds = getWeekBounds(0);
-    const lastBounds = getWeekBounds(-1);
-    const weekProgress = getWeekProgress();
-
-    const [
-      thisWeekWorkoutDays,
-      lastWeekWorkoutDays,
-      thisWeekSetsByCategory,
-      lastWeekSetsByCategory,
-      exerciseIdsWithWorkoutsThisWeek,
-    ] = await Promise.all([
-      getWorkoutDaysInRange(supabase, user.id, thisBounds.start, thisBounds.end),
-      getWorkoutDaysInRange(supabase, user.id, lastBounds.start, lastBounds.end),
-      getCategorySetsInRange(supabase, user.id, thisBounds.start, thisBounds.end),
-      getCategorySetsInRange(supabase, user.id, lastBounds.start, lastBounds.end),
-      getExerciseIdsInRange(supabase, user.id, thisBounds.start, thisBounds.end),
-    ]);
-
-    const currentWorkouts = thisWeekWorkoutDays;
-    const expectedWorkouts = lastWeekWorkoutDays * weekProgress;
-
-    let consistencyScore: number;
-    let consistencyTrend: "up" | "down" | "neutral";
-    if (lastWeekWorkoutDays === 0) {
-      consistencyScore = currentWorkouts >= 2 ? 100 : Math.min(100, currentWorkouts * 50);
-      consistencyTrend = currentWorkouts >= 2 ? "up" : "neutral";
-    } else {
-      if (expectedWorkouts <= 0) {
-        consistencyScore = currentWorkouts > 0 ? 100 : 0;
-        consistencyTrend = currentWorkouts > 0 ? "up" : "neutral";
-      } else {
-        const ratio = currentWorkouts / expectedWorkouts;
-        consistencyScore = Math.min(100, Math.round(ratio * 100));
-        if (currentWorkouts > expectedWorkouts * 1.1) consistencyTrend = "up";
-        else if (currentWorkouts >= expectedWorkouts * 0.9 && currentWorkouts <= expectedWorkouts * 1.1)
-          consistencyTrend = "neutral";
-        else consistencyTrend = "down";
-      }
-    }
-
-    let strengthScore = 0;
-    let strengthTrend: "up" | "down" | "neutral" = "neutral";
-    if (exerciseIdsWithWorkoutsThisWeek.length > 0) {
-      const [currBestMap, prevBestMap] = await Promise.all([
-        getBest1RMByExerciseInRange(supabase, user.id, exerciseIdsWithWorkoutsThisWeek, thisBounds.start, thisBounds.end),
-        getBest1RMByExerciseInRange(supabase, user.id, exerciseIdsWithWorkoutsThisWeek, lastBounds.start, lastBounds.end),
-      ]);
-      let improvedCount = 0;
-      for (const exId of exerciseIdsWithWorkoutsThisWeek) {
-        const curr = currBestMap[exId] ?? 0;
-        const prev = prevBestMap[exId] ?? 0;
-        if (curr > 0 && curr > prev) improvedCount++;
-      }
-      strengthScore = Math.min(100, Math.round((improvedCount / exerciseIdsWithWorkoutsThisWeek.length) * 100));
-      strengthTrend = improvedCount > 0 ? "up" : exerciseIdsWithWorkoutsThisWeek.length > 0 ? "down" : "neutral";
-    }
-
-    const { upperPct, lowerPct } = getUpperLowerFromCategorySets(thisWeekSetsByCategory);
-    const balanceDiff = Math.abs(upperPct - lowerPct);
-    const balanceScore = Math.max(0, Math.min(100, Math.round(100 - balanceDiff)));
-    const balanceTrend: "up" | "down" | "neutral" = balanceDiff <= 30 ? "up" : "down";
-
-    const score = Math.round(
-      Math.min(100, Math.max(0, consistencyScore * 0.4 + strengthScore * 0.4 + balanceScore * 0.2))
-    );
-
-    return {
-      data: {
-        score,
-        consistencyScore,
-        strengthScore,
-        balanceScore,
-        consistencyTrend,
-        strengthTrend,
-        balanceTrend,
-      },
-    };
-  } catch (e) {
-    return {
-      data: null,
-      error: e instanceof Error ? e.message : "Something went wrong.",
-    };
-  }
-}
-
 async function getWorkoutDaysInRange(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   userId: string,
@@ -229,7 +121,60 @@ function getUpperLowerFromCategorySets(setsPerCategory: Record<string, number>):
 
 // --- Top Strength Improvements ---
 
-export type TopStrengthGain = { name: string; improvementKg: number };
+export type TopStrengthGain = {
+  name: string;
+  improvementKg: number;
+  fromKg?: number;
+  toKg?: number;
+};
+
+/** All-time biggest strength gains: earliest vs latest estimated 1RM per exercise. Computed once on load.
+ * Pass precomputed 1RM data to avoid duplicate fetch when loading with getInsightsInitialData. */
+export async function getTopStrengthGainsAllTime(
+  precomputed1RM?: Estimated1RMByExercise
+): Promise<{
+  data: TopStrengthGain[];
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: [], error: "Not authenticated" };
+
+    const byExercise =
+      precomputed1RM ?? (await getAll1RMProgression()).data ?? {};
+    const exerciseIds = Object.keys(byExercise).filter(
+      (id) => (byExercise[id]?.length ?? 0) >= 2
+    );
+    if (exerciseIds.length === 0) return { data: [] };
+
+    const { data: exercises } = await supabase
+      .from("exercises")
+      .select("id, name")
+      .in("id", exerciseIds)
+      .eq("user_id", user.id);
+    if (!exercises?.length) return { data: [] };
+
+    const nameById = new Map(exercises.map((e) => [e.id, e.name]));
+    const gains: TopStrengthGain[] = [];
+    for (const exId of exerciseIds) {
+      const points = byExercise[exId] ?? [];
+      if (points.length < 2) continue;
+      const fromKg = points[0].estimated1RM;
+      const toKg = points[points.length - 1].estimated1RM;
+      const improvementKg = Math.round((toKg - fromKg) * 10) / 10;
+      if (improvementKg <= 0) continue;
+      const name = nameById.get(exId) ?? "Unknown";
+      gains.push({ name, improvementKg, fromKg, toKg });
+    }
+    gains.sort((a, b) => b.improvementKg - a.improvementKg);
+    return { data: gains.slice(0, 3) };
+  } catch (e) {
+    return { data: [], error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
 
 export async function getTopStrengthImprovements(range: InsightsRange): Promise<{
   data: TopStrengthGain[];
@@ -1044,6 +989,69 @@ export async function getMuscleHeatmapData(range: InsightsRange): Promise<{
 
 export type OneRMPoint = { date: string; estimated1RM: number };
 
+/**
+ * Precomputed 1RM progression for all exercises (full history).
+ * Client filters by range (30/90/all) for display.
+ */
+export type Estimated1RMByExercise = Record<string, OneRMPoint[]>;
+
+/** Fetches workouts + sets once and builds 1RM progression per exercise. Single pass. */
+export async function getAll1RMProgression(): Promise<{
+  data: Estimated1RMByExercise;
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: {}, error: "Not authenticated" };
+
+    const { data: workouts, error: wError } = await supabase
+      .from("workouts")
+      .select("id, exercise_id, date, weight")
+      .eq("user_id", user.id)
+      .order("date", { ascending: true });
+
+    if (wError) return { data: {}, error: wError.message };
+    if (!workouts?.length) return { data: {} };
+
+    const workoutIds = workouts.map((w) => w.id);
+    const { data: sets, error: sError } = await supabase
+      .from("sets")
+      .select("workout_id, reps")
+      .in("workout_id", workoutIds);
+
+    if (sError) return { data: {}, error: sError.message };
+    const setsByWorkout = new Map<string, number[]>();
+    for (const s of sets ?? []) {
+      const list = setsByWorkout.get(s.workout_id) ?? [];
+      list.push(s.reps);
+      setsByWorkout.set(s.workout_id, list);
+    }
+
+    const byExercise: Estimated1RMByExercise = {};
+    for (const w of workouts) {
+      const repsList = setsByWorkout.get(w.id) ?? [];
+      let best = 0;
+      for (const r of repsList) {
+        best = Math.max(best, epley1RM(Number(w.weight), r));
+      }
+      if (best > 0) {
+        const points = byExercise[w.exercise_id] ?? [];
+        points.push({ date: w.date, estimated1RM: Math.round(best * 10) / 10 });
+        byExercise[w.exercise_id] = points;
+      }
+    }
+    return { data: byExercise };
+  } catch (e) {
+    return {
+      data: {},
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
+}
+
 export async function get1RMProgression(
   exerciseId: string,
   range: "30" | "90" | "all"
@@ -1699,44 +1707,49 @@ export type InsightsInitialData = {
   weeklyError?: string;
   monthly: MonthlySummary | null;
   plateauExercises: { name: string }[];
-  trainingScore: TrainingScoreResult | null;
-  trainingScoreError?: string;
   categoryDistribution: CategoryDistribution | null;
   muscleDistribution: MuscleDistribution | null;
   topStrengthGains: TopStrengthGain[];
+  /** All-time largest 1RM improvements (earliest vs latest per exercise). Precomputed on load. */
+  topStrengthGainsAllTime: TopStrengthGain[];
   trainingBalance: TrainingBalanceResult | null;
   insightItems: InsightItem[];
+  /** Precomputed 1RM progression per exercise (full history). Client filters by 30/90/all. */
+  estimated1RMByExercise: Estimated1RMByExercise;
 };
 
-/** Fetches all data needed for the initial insights view in one server round-trip. */
+/** Fetches all data needed for the initial insights view in one server round-trip. Includes precomputed 1RM for all exercises. */
 export async function getInsightsInitialData(): Promise<InsightsInitialData> {
   const [
     weeklyRes,
     monthRes,
     plateauRes,
-    scoreRes,
     categoryRes,
     muscleRes,
     gainsRes,
     balanceRes,
+    oneRMRes,
   ] = await Promise.all([
     getWeeklyComparison(),
     getMonthlySummary(),
     getPlateauExercises(),
-    getTrainingScore(),
     getCategoryDistribution("this_week"),
     getMuscleDistribution("this_week"),
     getTopStrengthImprovements("this_week"),
     getTrainingBalance("this_week"),
+    getAll1RMProgression(),
   ]);
+
+  const estimated1RMByExercise = oneRMRes.data ?? {};
+  const gainsAllTimeRes = await getTopStrengthGainsAllTime(estimated1RMByExercise);
 
   const weekly = weeklyRes.error ? null : weeklyRes.data;
   const monthly = monthRes.data ?? null;
   const plateauExercises = plateauRes ?? [];
-  const trainingScore = scoreRes.data ?? null;
   const categoryDistribution = categoryRes.data ?? null;
   const muscleDistribution = muscleRes.data ?? null;
   const topStrengthGains = gainsRes.data ?? [];
+  const topStrengthGainsAllTime = gainsAllTimeRes.data ?? [];
   const trainingBalance = balanceRes.data ?? null;
 
   const insightResult = await getInsightsText(
@@ -1754,13 +1767,13 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
     weeklyError: weeklyRes.error,
     monthly,
     plateauExercises,
-    trainingScore,
-    trainingScoreError: scoreRes.error,
     categoryDistribution,
     muscleDistribution,
     topStrengthGains,
+    topStrengthGainsAllTime,
     trainingBalance,
     insightItems: insightResult.items,
+    estimated1RMByExercise,
   };
 }
 

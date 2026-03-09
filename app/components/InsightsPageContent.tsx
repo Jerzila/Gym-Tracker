@@ -5,7 +5,6 @@ import dynamic from "next/dynamic";
 import {
   getInsightsInitialData,
   getInsightsRangeData,
-  get1RMProgression,
   getMonthlyAnalytics,
   getMonthsWithWorkoutData,
   getMuscleHeatmapData,
@@ -18,11 +17,13 @@ import {
   type MonthlyAnalytics,
   type MonthOption,
   type InsightsRange,
+  type InsightsRangeData,
+  type InsightsRangeContext,
   type OneRMPoint,
-  type TrainingScoreResult,
   type TopStrengthGain,
   type TrainingBalanceResult,
   type InsightItem,
+  type Estimated1RMByExercise,
 } from "@/app/actions/insights";
 import { getCurrentYearMonth } from "@/lib/insightsDates";
 import type { Exercise } from "@/lib/types";
@@ -67,6 +68,9 @@ const RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
   { value: "last_month", label: "Last Month" },
 ];
 
+/** Training Balance uses only these 4 ranges; we precompute all on load. */
+type BalanceRange = "this_week" | "last_week" | "this_month" | "last_month";
+
 const HEATMAP_RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
   ...RANGE_OPTIONS,
   { value: "lifetime", label: "Lifetime" },
@@ -85,13 +89,16 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
   const [muscleData, setMuscleData] = useState<MuscleDistribution | null>(null);
   const [selectedExerciseId, setSelectedExerciseId] = useState<string>("");
   const [oneRMRange, setOneRMRange] = useState<"30" | "90" | "all">("90");
-  const [oneRMData, setOneRMData] = useState<OneRMPoint[]>([]);
+  /** Precomputed on initial load; charts read from this (no fetch on exercise/range change). */
+  const [estimated1RMByExercise, setEstimated1RMByExercise] = useState<Estimated1RMByExercise>({});
   const [monthly, setMonthly] = useState<MonthlySummary | null>(null);
-  const [trainingScore, setTrainingScore] = useState<TrainingScoreResult | null>(null);
   const [topStrengthGains, setTopStrengthGains] = useState<TopStrengthGain[]>([]);
+  const [topStrengthGainsAllTime, setTopStrengthGainsAllTime] = useState<TopStrengthGain[]>([]);
   const [trainingBalance, setTrainingBalance] = useState<TrainingBalanceResult | null>(null);
   const [insightItems, setInsightItems] = useState<InsightItem[]>([]);
   const [plateauExercises, setPlateauExercises] = useState<{ name: string }[]>([]);
+  /** Precomputed per-period data for Training Balance; switching periods is instant. */
+  const [balanceDatasets, setBalanceDatasets] = useState<Partial<Record<BalanceRange, InsightsRangeData>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -125,6 +132,18 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
     if (!selectedExerciseId && defaultExId) setSelectedExerciseId(defaultExId);
   }, [defaultExId, selectedExerciseId]);
 
+  /** Build InsightsRangeData for this_week from initial payload (so we can store in balanceDatasets). */
+  const buildRangeDataFromInitial = useMemo(
+    () => (data: Awaited<ReturnType<typeof getInsightsInitialData>>): InsightsRangeData => ({
+      categoryDistribution: data.categoryDistribution ?? null,
+      muscleDistribution: data.muscleDistribution ?? null,
+      topStrengthGains: data.topStrengthGains ?? [],
+      trainingBalance: data.trainingBalance ?? null,
+      insightItems: data.insightItems ?? [],
+    }),
+    []
+  );
+
   useEffect(() => {
     const cached = cache?.getCachedInsights?.() ?? null;
     if (cached) {
@@ -132,14 +151,31 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
       else setWeekly(cached.weekly);
       setMonthly(cached.monthly ?? null);
       setPlateauExercises(cached.plateauExercises);
-      setTrainingScore(cached.trainingScore ?? null);
-      if (cached.trainingScoreError && !cached.trainingScore) setError((e) => e || (cached.trainingScoreError ?? null));
       setCategoryData(cached.categoryDistribution ?? null);
       setMuscleData(cached.muscleDistribution ?? null);
       setTopStrengthGains(cached.topStrengthGains);
+      setTopStrengthGainsAllTime(cached.topStrengthGainsAllTime ?? []);
       setTrainingBalance(cached.trainingBalance ?? null);
       setInsightItems(cached.insightItems);
+      setEstimated1RMByExercise(cached.estimated1RMByExercise ?? {});
+      setBalanceDatasets((prev) => ({ ...prev, this_week: buildRangeDataFromInitial(cached) }));
       setLoading(false);
+      const context: InsightsRangeContext = {
+        weekly: cached.weekly ?? null,
+        monthly: cached.monthly ?? null,
+        plateauExercises: cached.plateauExercises,
+      };
+      Promise.all(
+        (["last_week", "this_month", "last_month"] as const).map((range) =>
+          getInsightsRangeData(range, context).then((res) => ({ range, res }))
+        )
+      ).then((results) => {
+        setBalanceDatasets((prev) => {
+          const next = { ...prev };
+          for (const { range, res } of results) next[range] = res;
+          return next;
+        });
+      });
     } else {
       setLoading(true);
       setError(null);
@@ -151,15 +187,33 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
       else setWeekly(data.weekly);
       setMonthly(data.monthly ?? null);
       setPlateauExercises(data.plateauExercises);
-      setTrainingScore(data.trainingScore ?? null);
-      if (data.trainingScoreError && !data.trainingScore) setError((e) => e || (data.trainingScoreError ?? null));
       setCategoryData(data.categoryDistribution ?? null);
       setMuscleData(data.muscleDistribution ?? null);
       setTopStrengthGains(data.topStrengthGains);
+      setTopStrengthGainsAllTime(data.topStrengthGainsAllTime ?? []);
       setTrainingBalance(data.trainingBalance ?? null);
       setInsightItems(data.insightItems);
+      setEstimated1RMByExercise(data.estimated1RMByExercise ?? {});
+      setBalanceDatasets((prev) => ({ ...prev, this_week: buildRangeDataFromInitial(data) }));
       setLoading(false);
       cache?.setCachedInsights?.(data);
+      const context: InsightsRangeContext = {
+        weekly: data.weekly ?? null,
+        monthly: data.monthly ?? null,
+        plateauExercises: data.plateauExercises,
+      };
+      Promise.all(
+        (["last_week", "this_month", "last_month"] as const).map((range) =>
+          getInsightsRangeData(range, context).then((res) => ({ range, res }))
+        )
+      ).then((results) => {
+        if (cancelled) return;
+        setBalanceDatasets((prev) => {
+          const next = { ...prev };
+          for (const { range, res } of results) next[range] = res;
+          return next;
+        });
+      });
     });
     return () => {
       cancelled = true;
@@ -198,37 +252,19 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
     });
   }, [selectedMonth.year, selectedMonth.month]);
 
-  useEffect(() => {
-    if (muscleRange === "this_week") return;
-    let cancelled = false;
-    getInsightsRangeData(muscleRange, {
-      weekly,
-      monthly,
-      plateauExercises,
-    }).then((data) => {
-      if (!cancelled) {
-        setCategoryData(data.categoryDistribution ?? null);
-        setMuscleData(data.muscleDistribution ?? null);
-        setTopStrengthGains(data.topStrengthGains);
-        setTrainingBalance(data.trainingBalance ?? null);
-        setInsightItems(data.insightItems);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [muscleRange, weekly, monthly, plateauExercises]);
+  /** Training Balance uses precomputed balanceDatasets; no fetch on muscleRange change. */
+  const currentRangeData = balanceDatasets[muscleRange as BalanceRange] ?? null;
 
-  useEffect(() => {
-    if (!selectedExerciseId) return;
-    let cancelled = false;
-    get1RMProgression(selectedExerciseId, oneRMRange).then((res) => {
-      if (!cancelled) setOneRMData(res.data ?? []);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedExerciseId, oneRMRange]);
+  /** Filter precomputed 1RM by selected range; no fetch, instant when changing exercise or range. */
+  const oneRMData = useMemo(() => {
+    const points = estimated1RMByExercise[selectedExerciseId] ?? [];
+    if (oneRMRange === "all") return points;
+    const cutoff = new Date();
+    if (oneRMRange === "30") cutoff.setUTCDate(cutoff.getUTCDate() - 30);
+    else cutoff.setUTCDate(cutoff.getUTCDate() - 90);
+    const start = cutoff.toISOString().slice(0, 10);
+    return points.filter((p) => p.date >= start);
+  }, [estimated1RMByExercise, selectedExerciseId, oneRMRange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -270,31 +306,6 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
 
   return (
     <div className="space-y-10">
-      {/* Training Score */}
-      {trainingScore && (
-        <section>
-          <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Training Score
-          </h3>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-5 py-4 transition hover:border-zinc-700">
-            <p className="text-3xl font-semibold tabular-nums text-zinc-100">
-              {trainingScore.score} <span className="text-lg font-normal text-zinc-500">/ 100</span>
-            </p>
-            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              <span className={trendClass(trainingScore.strengthTrend)}>
-                Strength {trendArrow(trainingScore.strengthTrend)}
-              </span>
-              <span className={trendClass(trainingScore.consistencyTrend)}>
-                Consistency {trendArrow(trainingScore.consistencyTrend)}
-              </span>
-              <span className={trendClass(trainingScore.balanceTrend)}>
-                Balance {trendArrow(trainingScore.balanceTrend)}
-              </span>
-            </div>
-          </div>
-        </section>
-      )}
-
       {/* Weekly Progress — pace vs same point last week */}
       <section>
         <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -403,25 +414,26 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
             </button>
           ))}
         </div>
-        {categoryData ? (
-          <MuscleRadarChart
-            current={categoryData.current}
-            previous={categoryData.previous}
-          />
-        ) : (
+        {currentRangeData === undefined ? (
           <SkeletonPanel height="h-72" />
+        ) : (
+          <MuscleRadarChart
+            range={muscleRange as BalanceRange}
+            current={currentRangeData?.categoryDistribution?.current ?? []}
+            previous={currentRangeData?.categoryDistribution?.previous ?? null}
+          />
         )}
-        {trainingBalance && (
+        {currentRangeData?.trainingBalance && (
           <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
             <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
               Training Balance
             </h4>
             <p className="text-sm text-zinc-300">
-              Upper Body: {trainingBalance.upperPct}% · Lower Body: {trainingBalance.lowerPct}%
+              Upper Body: {currentRangeData.trainingBalance.upperPct}% · Lower Body: {currentRangeData.trainingBalance.lowerPct}%
             </p>
-            <p className={`mt-1 text-sm ${trainingBalance.isBalanced ? "text-emerald-400" : "text-amber-400"}`}>
-              {trainingBalance.isBalanced ? "✔ " : "⚠ "}
-              {trainingBalance.message}
+            <p className={`mt-1 text-sm ${currentRangeData.trainingBalance.isBalanced ? "text-emerald-400" : "text-amber-400"}`}>
+              {currentRangeData.trainingBalance.isBalanced ? "✔ " : "⚠ "}
+              {currentRangeData.trainingBalance.message}
             </p>
           </div>
         )}
@@ -470,19 +482,32 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
           <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
             Biggest Strength Gains
           </h4>
-          {topStrengthGains.length > 0 ? (
-            <ul className="space-y-1.5 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-              {topStrengthGains.map((g, i) => (
-                <li key={i} className="flex justify-between text-sm text-zinc-300">
-                  <span>{g.name}</span>
-                  <span className="font-medium text-emerald-400">+{g.improvementKg} kg</span>
+          {topStrengthGainsAllTime.length > 0 ? (
+            <ul className="space-y-2">
+              {topStrengthGainsAllTime.map((g, i) => (
+                <li
+                  key={i}
+                  className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 transition hover:border-zinc-700"
+                >
+                  <p className="font-medium text-zinc-100">{g.name}</p>
+                  <p className="mt-0.5 font-medium text-emerald-400">
+                    +{g.improvementKg} kg estimated 1RM
+                  </p>
+                  {g.fromKg != null && g.toKg != null && (
+                    <p className="mt-1 text-xs text-zinc-500">
+                      From {formatWeight(g.fromKg)} kg → {formatWeight(g.toKg)} kg
+                    </p>
+                  )}
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3 text-sm text-zinc-500">
-              No strength improvements recorded yet.
-            </p>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center">
+              <p className="text-sm text-zinc-500">No strength improvements recorded yet.</p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Start logging workouts to track your strength gains.
+              </p>
+            </div>
           )}
         </div>
       </section>
@@ -495,13 +520,13 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
         <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Training Insights
         </h3>
-        {insightItems.length === 0 ? (
+        {(currentRangeData?.insightItems ?? []).length === 0 ? (
           <p className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-6 text-center text-sm text-zinc-500">
             Log more workouts to see insights.
           </p>
         ) : (
           <ul className="space-y-2.5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4">
-            {insightItems.map((item, i) => (
+            {(currentRangeData?.insightItems ?? []).map((item, i) => (
               <li key={i} className="flex items-start gap-2.5 text-sm text-zinc-300">
                 <span className="mt-0.5 shrink-0 text-base" aria-hidden>
                   {item.icon}
@@ -730,18 +755,6 @@ const WeeklyPaceCard = memo(function WeeklyPaceCard({
 function diffClass(diff: number): string {
   if (diff > 0) return "text-emerald-400";
   if (diff < 0) return "text-red-400";
-  return "text-zinc-500";
-}
-
-function trendArrow(trend: "up" | "down" | "neutral"): string {
-  if (trend === "up") return "↑";
-  if (trend === "down") return "↓";
-  return "→";
-}
-
-function trendClass(trend: "up" | "down" | "neutral"): string {
-  if (trend === "up") return "text-emerald-400";
-  if (trend === "down") return "text-red-400";
   return "text-zinc-500";
 }
 

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import {
   getWorkoutsByMonth,
+  getWorkoutCountsByPeriod,
   getPRsForDate,
   type CalendarWorkout,
 } from "@/app/actions/workouts";
@@ -51,6 +52,21 @@ export function CalendarView() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [prIds, setPrIds] = useState<Set<string>>(new Set());
   const [monthTransitioning, setMonthTransitioning] = useState(false);
+  const [counts, setCounts] = useState<{
+    thisWeek: number;
+    thisMonth: number;
+    thisYear: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getWorkoutCountsByPeriod().then(({ data, error: err }) => {
+      if (!cancelled && data) setCounts(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -158,6 +174,33 @@ export function CalendarView() {
       </div>
 
       <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
+        <div className="mb-4 flex gap-3 justify-between">
+          <div className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center">
+            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+              This Week
+            </p>
+            <p className="mt-1 text-lg font-semibold text-zinc-200">
+              {counts !== null ? counts.thisWeek : "—"} workouts
+            </p>
+          </div>
+          <div className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center">
+            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+              This Month
+            </p>
+            <p className="mt-1 text-lg font-semibold text-zinc-200">
+              {counts !== null ? counts.thisMonth : "—"} workouts
+            </p>
+          </div>
+          <div className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center">
+            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+              This Year
+            </p>
+            <p className="mt-1 text-lg font-semibold text-zinc-200">
+              {counts !== null ? counts.thisYear : "—"} workouts
+            </p>
+          </div>
+        </div>
+
         <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/40">
           <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
             <button
@@ -211,27 +254,31 @@ export function CalendarView() {
               const hasWorkout = dayWorkouts.length > 0;
               const future = isFuture(d);
               const isToday = dateKey === toDateKey(new Date());
+              const isSelected = selectedDate === dateKey;
+              const showDot = !future;
+              const dotColor = hasWorkout ? "bg-green-500" : "bg-zinc-500";
 
               return (
                 <button
                   key={dateKey}
                   type="button"
                   onClick={() => handleDayClick(dateKey)}
-                  className={`relative min-h-[4rem] rounded-lg border border-transparent px-1 py-2 text-left transition duration-150 hover:border-zinc-600 hover:bg-zinc-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 ${
-                    isToday ? "ring-1 ring-amber-500/50 bg-amber-500/5" : ""
+                  className={`relative flex min-h-[4rem] flex-col justify-between items-start rounded-lg border px-2 py-2 text-left transition duration-150 hover:border-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 bg-zinc-900 border-zinc-800 ${
+                    isSelected ? "border-amber-400" : ""
+                  } ${
+                    isToday && !isSelected
+                      ? "ring-1 ring-amber-500/50 ring-offset-1 ring-offset-zinc-900"
+                      : ""
                   }`}
                 >
-                  <span className="text-sm text-zinc-300">{d.getDate()}</span>
-                  {!future && (
-                    <span
-                      className={`absolute right-1 top-1 text-[10px] leading-none ${
-                        hasWorkout
-                          ? "opacity-80"
-                          : "opacity-40"
-                      }`}
-                      aria-hidden
-                    >
-                      {hasWorkout ? "💪" : "😴"}
+                  <span className="text-sm font-medium text-zinc-300">
+                    {d.getDate()}
+                  </span>
+                  {showDot && (
+                    <span className="flex w-full justify-center" aria-hidden>
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`}
+                      />
                     </span>
                   )}
                 </button>
@@ -239,6 +286,17 @@ export function CalendarView() {
             })}
           </div>
           )}
+
+          <div className="flex flex-wrap gap-6 px-4 pb-4 pt-3 text-sm text-zinc-400 border-t border-zinc-800/60 mt-2">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" aria-hidden />
+              Workout completed
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-zinc-500 shrink-0" aria-hidden />
+              No workout logged
+            </span>
+          </div>
         </section>
       </main>
 
