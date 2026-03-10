@@ -762,6 +762,9 @@ function diffClass(diff: number): string {
 }
 
 const StrengthProgressChart = memo(function StrengthProgressChart({ data }: { data: OneRMPoint[] }) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
+
   if (data.length === 0) {
     return (
       <div className="flex h-56 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/50 text-sm text-zinc-500">
