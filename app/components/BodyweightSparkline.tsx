@@ -8,11 +8,14 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 
 type SparklinePoint = { date: string; weight: number };
 
 export function BodyweightSparkline({ data }: { data: SparklinePoint[] }) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   if (data.length === 0) return null;
   return (
     <div className="mt-3 h-14 w-full">
@@ -31,7 +34,7 @@ export function BodyweightSparkline({ data }: { data: SparklinePoint[] }) {
               fontSize: "12px",
             }}
             formatter={(value: number | undefined) =>
-              [value != null ? `${formatWeight(value)} kg` : "", "Weight"]
+              [value != null ? `${formatWeight(value, { units })} ${weightLabel}` : "", "Weight"]
             }
             labelFormatter={(label) =>
               label ? new Date(label).toLocaleDateString() : ""

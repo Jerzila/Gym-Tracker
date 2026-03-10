@@ -9,7 +9,8 @@ import {
   type CalendarWorkout,
 } from "@/app/actions/workouts";
 import { epley1RM } from "@/lib/progression";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 import { SkeletonCalendarGrid } from "@/app/components/Skeleton";
 
 /** Week starts on Monday (index 0 = Monday) */
@@ -42,6 +43,8 @@ function isFuture(d: Date): boolean {
 }
 
 export function CalendarView() {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -405,7 +408,7 @@ function CalendarDayPanel({
               <div className="rounded-lg bg-zinc-800/60 px-3 py-2">
                 <p className="text-xs text-zinc-500">Volume</p>
                 <p className="text-sm font-semibold text-zinc-200">
-                  {formatWeight(totalVolume)} kg
+                  {formatWeight(totalVolume, { units })} {weightLabel}
                 </p>
               </div>
             </div>
@@ -449,10 +452,10 @@ function CalendarDayPanel({
                         )}
                       </div>
                       <p className="mt-1 text-sm text-zinc-400">
-                        {formatWeight(w.weight)} kg × {repStr}
+                        {formatWeight(w.weight, { units })} {weightLabel} × {repStr}
                       </p>
                       <p className="mt-0.5 text-xs text-zinc-500">
-                        Est. 1RM: {formatWeight(est1RM)} kg
+                        Est. 1RM: {formatWeight(est1RM, { units })} {weightLabel}
                       </p>
                     </li>
                   );

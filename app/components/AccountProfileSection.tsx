@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect } from "react";
 import { updateProfileField } from "@/app/actions/profile";
 import { COUNTRIES, getFlagEmoji } from "@/lib/countries";
 import { getAgeFromBirthday } from "@/lib/age";
+import { kgToLb, lbToKg, cmToFeetInches, feetInchesToCm } from "@/lib/units";
 import type { Profile } from "@/lib/types";
 
 const GENDER_OPTIONS = [
@@ -54,6 +55,11 @@ export function AccountProfileSection({ profile }: { profile: Profile | null }) 
       </section>
     );
   }
+
+  const units = profile.units ?? "metric";
+  const weightKg = profile.body_weight ?? 0;
+  const heightCm = profile.height ?? 0;
+  const { feet: heightFt, inches: heightIn } = cmToFeetInches(heightCm);
 
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
@@ -153,22 +159,27 @@ export function AccountProfileSection({ profile }: { profile: Profile | null }) 
           </select>
         </div>
 
-        <div>
+        <div key={`weight-${units}`}>
           <label htmlFor="account-body-weight" className={labelClass}>
-            Body Weight (kg)
+            Body Weight ({units === "metric" ? "kg" : "lb"})
           </label>
           <input
             id="account-body-weight"
             type="number"
-            min={30}
-            max={250}
-            step={0.1}
+            min={units === "metric" ? 30 : 70}
+            max={units === "metric" ? 250 : 550}
+            step={units === "metric" ? 0.1 : 1}
             className={inputClass}
-            placeholder="e.g. 75"
-            defaultValue={profile.body_weight ?? ""}
+            placeholder={units === "metric" ? "e.g. 75" : "e.g. 165"}
+            defaultValue={units === "metric" ? (weightKg || "") : (weightKg ? kgToLb(weightKg) : "")}
             onBlur={(e) => {
               const v = e.target.value;
-              handleSave("body_weight", v === "" ? null : Number(v));
+              if (v === "") {
+                handleSave("body_weight", null);
+                return;
+              }
+              const n = Number(v);
+              handleSave("body_weight", units === "metric" ? n : lbToKg(n));
             }}
           />
           {saving === "body_weight" && (
@@ -176,23 +187,58 @@ export function AccountProfileSection({ profile }: { profile: Profile | null }) 
           )}
         </div>
 
-        <div>
+        <div key={`height-${units}`}>
           <label htmlFor="account-height" className={labelClass}>
-            Height (cm)
+            Height ({units === "metric" ? "cm" : "ft"})
           </label>
-          <input
-            id="account-height"
-            type="number"
-            min={120}
-            max={230}
-            className={inputClass}
-            placeholder="e.g. 175"
-            defaultValue={profile.height ?? ""}
-            onBlur={(e) => {
-              const v = e.target.value;
-              handleSave("height", v === "" ? null : Number(v));
-            }}
-          />
+          {units === "metric" ? (
+            <input
+              id="account-height"
+              type="number"
+              min={120}
+              max={230}
+              className={inputClass}
+              placeholder="e.g. 175"
+              defaultValue={heightCm || ""}
+              onBlur={(e) => {
+                const v = e.target.value;
+                handleSave("height", v === "" ? null : Number(v));
+              }}
+            />
+          ) : (
+            <div className="flex gap-2">
+              <input
+                id="account-height-ft"
+                type="number"
+                min={4}
+                max={7}
+                className={inputClass}
+                placeholder="ft"
+                defaultValue={heightFt || ""}
+                onBlur={(e) => {
+                  const ft = Number(e.target.value) || 0;
+                  const inVal = Number((document.getElementById("account-height-in") as HTMLInputElement)?.value) || 0;
+                  const cm = feetInchesToCm(ft, inVal);
+                  if (cm >= 120 && cm <= 230) handleSave("height", cm);
+                }}
+              />
+              <input
+                id="account-height-in"
+                type="number"
+                min={0}
+                max={11}
+                className={inputClass}
+                placeholder="in"
+                defaultValue={heightIn || ""}
+                onBlur={(e) => {
+                  const inVal = Number(e.target.value) || 0;
+                  const ft = Number((document.getElementById("account-height-ft") as HTMLInputElement)?.value) || 0;
+                  const cm = feetInchesToCm(ft, inVal);
+                  if (cm >= 120 && cm <= 230) handleSave("height", cm);
+                }}
+              />
+            </div>
+          )}
           {saving === "height" && (
             <p className="mt-1 text-xs text-zinc-500">Saving…</p>
           )}

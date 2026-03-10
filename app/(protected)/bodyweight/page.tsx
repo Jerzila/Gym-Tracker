@@ -2,8 +2,8 @@ import Link from "next/link";
 import { getBodyweightLogs, getBodyweightStats } from "@/app/actions/bodyweight";
 import { BodyweightChart } from "@/app/components/BodyweightChart";
 import { BodyweightHistoryList } from "@/app/components/BodyweightHistoryList";
+import { BodyweightSummary } from "@/app/components/BodyweightSummary";
 import { LogBodyweightForm } from "@/app/components/LogBodyweightForm";
-import { formatWeight } from "@/lib/formatWeight";
 
 export default async function BodyweightPage() {
   let logs: Awaited<ReturnType<typeof getBodyweightLogs>> = [];
@@ -45,31 +45,7 @@ export default async function BodyweightPage() {
         {(stats.avg7Days != null || stats.change30Days != null) && (
           <>
             <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
-            <section className="pb-8">
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-                Summary
-              </h2>
-              <div className="flex flex-wrap gap-3">
-                {stats.avg7Days != null && (
-                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
-                    <p className="text-xs text-zinc-500">7-day average</p>
-                    <p className="text-lg font-semibold">{formatWeight(stats.avg7Days)} kg</p>
-                  </div>
-                )}
-                {stats.change30Days != null && (
-                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
-                    <p className="text-xs text-zinc-500">Change (30 days)</p>
-                    <p
-                      className={`text-lg font-semibold ${
-                        stats.change30Days >= 0 ? "text-amber-400/90" : "text-emerald-400/90"
-                      }`}
-                    >
-                      {formatWeight(stats.change30Days, { signed: true })} kg
-                    </p>
-                  </div>
-                )}
-              </div>
-            </section>
+            <BodyweightSummary stats={stats} />
           </>
         )}
 

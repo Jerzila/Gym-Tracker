@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 import { SkeletonPanel } from "@/app/components/Skeleton";
 import type { WeeklyComparison } from "@/app/actions/insights";
 
@@ -70,6 +71,8 @@ export function DashboardPageContent({
   muscleHeatmapData,
   gender = "male",
 }: Props) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const workoutsThisWeek = weekly?.thisWeek.workouts ?? 0;
   const workoutsLastWeek = weekly?.lastWeek.workouts ?? 0;
   const ahead = weekly && !weekly.noLastWeekData ? weekly.workoutsDiff > 0 : false;
@@ -127,7 +130,7 @@ export function DashboardPageContent({
           {bodyweightStats.latest ? (
             <>
               <p className="text-2xl font-bold text-zinc-100">
-                {formatWeight(bodyweightStats.latest.weight)} kg
+                {formatWeight(bodyweightStats.latest.weight, { units })} {weightLabel}
               </p>
               {bodyweightStats.diffFromPrevious != null && (
                 <p
@@ -136,7 +139,7 @@ export function DashboardPageContent({
                   }`}
                 >
                   {bodyweightStats.diffFromPrevious <= 0 ? "↓" : "↑"}{" "}
-                  {formatWeight(Math.abs(bodyweightStats.diffFromPrevious), { signed: true })} kg vs
+                  {formatWeight(Math.abs(bodyweightStats.diffFromPrevious), { units, signed: true })} {weightLabel} vs
                   previous
                 </p>
               )}

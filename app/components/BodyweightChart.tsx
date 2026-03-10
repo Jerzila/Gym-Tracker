@@ -9,13 +9,16 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 
 type Point = { date: string; weight: number };
 
 type Props = { data: Point[] };
 
 export function BodyweightChart({ data }: Props) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   return (
     <div className="h-56 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3" style={{ minHeight: 224 }}>
       <ResponsiveContainer width="100%" height={224}>
@@ -31,7 +34,7 @@ export function BodyweightChart({ data }: Props) {
           <YAxis
             tick={{ fill: "#71717a", fontSize: 11 }}
             domain={["auto", "auto"]}
-            tickFormatter={(v) => `${formatWeight(Number(v))} kg`}
+            tickFormatter={(v) => `${formatWeight(Number(v), { units })} ${weightLabel}`}
           />
           <Tooltip
             contentStyle={{
@@ -40,7 +43,7 @@ export function BodyweightChart({ data }: Props) {
               borderRadius: "8px",
             }}
             labelStyle={{ color: "#a1a1aa" }}
-            formatter={(value) => [value != null ? `${formatWeight(Number(value))} kg` : "", "Weight"]}
+            formatter={(value) => [value != null ? `${formatWeight(Number(value), { units })} ${weightLabel}` : "", "Weight"]}
             labelFormatter={(label) => (label ? new Date(label).toLocaleDateString() : "")}
           />
           <Line

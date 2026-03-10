@@ -9,7 +9,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 
 type Point = { date: string; weight: number; estimated1RM: number | null };
 
@@ -19,6 +20,8 @@ const chartData = (data: Point[]) =>
   data.filter((d) => d.estimated1RM != null) as (Point & { estimated1RM: number })[];
 
 export function Estimated1RMChart({ data }: Props) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const series = chartData(data);
   if (series.length === 0) return null;
 
@@ -35,12 +38,12 @@ export function Estimated1RMChart({ data }: Props) {
           <YAxis
             tick={{ fill: "#71717a", fontSize: 11 }}
             domain={["auto", "auto"]}
-            tickFormatter={(v) => `${formatWeight(Number(v))} kg`}
+            tickFormatter={(v) => `${formatWeight(Number(v), { units })} ${weightLabel}`}
           />
           <Tooltip
             contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: "8px" }}
             labelStyle={{ color: "#a1a1aa" }}
-            formatter={(value) => [value != null ? `${formatWeight(Number(value))} kg` : "", "Est. 1RM"]}
+            formatter={(value) => [value != null ? `${formatWeight(Number(value), { units })} ${weightLabel}` : "", "Est. 1RM"]}
             labelFormatter={(label) => (label ? new Date(label).toLocaleDateString() : "")}
           />
           <Line

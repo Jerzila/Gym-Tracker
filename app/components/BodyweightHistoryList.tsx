@@ -3,12 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteBodyweightLog } from "@/app/actions/bodyweight";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 import { buttonClass } from "@/app/components/Button";
 import type { BodyweightLog } from "@/lib/types";
 
 export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
   const router = useRouter();
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -40,7 +43,7 @@ export function BodyweightHistoryList({ logs }: { logs: BodyweightLog[] }) {
             <span>
               <span className="text-zinc-500">{log.date}</span>
               <span className="mx-2">·</span>
-              <span className="font-medium">{formatWeight(log.weight)} kg</span>
+              <span className="font-medium">{formatWeight(log.weight, { units })} {weightLabel}</span>
             </span>
             <button
               type="button"

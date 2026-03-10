@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { deleteWorkout } from "@/app/actions/workouts";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 import { buttonClass } from "@/app/components/Button";
 
 type WorkoutItem = {
@@ -20,6 +22,8 @@ export function WorkoutHistory({
   exerciseId: string;
 }) {
   const router = useRouter();
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -51,7 +55,7 @@ export function WorkoutHistory({
             <span>
               <span className="text-zinc-500">{w.date}</span>
               <span className="mx-2">·</span>
-              <span className="font-medium">{Number(w.weight)} kg</span>
+              <span className="font-medium">{formatWeight(Number(w.weight), { units })} {weightLabel}</span>
               <span className="mx-2">×</span>
               <span>{w.sets.map((s) => s.reps).join(", ")}</span>
             </span>

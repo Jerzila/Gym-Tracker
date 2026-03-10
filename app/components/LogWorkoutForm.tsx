@@ -6,6 +6,9 @@ import { DatePicker } from "@/app/components/DatePicker";
 import { buttonClass } from "@/app/components/Button";
 import { useToast } from "@/app/components/Toast";
 import { useWorkoutDataCache } from "@/app/components/WorkoutDataCacheContext";
+import { useUnits } from "@/app/components/UnitsContext";
+import { lbToKg } from "@/lib/units";
+import { weightUnitLabel } from "@/lib/formatWeight";
 
 type State = { message?: string; error?: string } | undefined;
 
@@ -26,6 +29,8 @@ type Props = {
 const initialSetValues = { weight: "", reps: ["", "", "", "", ""] as string[] };
 
 export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const [state, action] = useActionState(formAction, undefined);
   const [expanded, setExpanded] = useState(false);
   const [setValues, setSetValues] = useState(initialSetValues);
@@ -110,17 +115,28 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
               <div className="flex flex-wrap items-end gap-4">
                 <div>
                   <label htmlFor="weight" className="block text-xs text-zinc-600">
-                    Weight (kg)
+                    Weight ({weightLabel})
                   </label>
+                {units === "imperial" && (
                   <input
-                    id="weight"
+                    type="hidden"
                     name="weight"
-                    type="number"
-                    min="0"
-                    step="0.5"
-                    placeholder="0"
-                    value={setValues.weight}
-                    onChange={(e) => setSetValues((prev) => ({ ...prev, weight: e.target.value }))}
+                    value={
+                      setValues.weight !== "" && Number.isFinite(Number(setValues.weight))
+                        ? String(lbToKg(Number(setValues.weight)))
+                        : ""
+                    }
+                  />
+                )}
+                <input
+                  id="weight"
+                  name={units === "metric" ? "weight" : undefined}
+                  type="number"
+                  min="0"
+                  step={units === "metric" ? "0.5" : "1"}
+                  placeholder="0"
+                  value={setValues.weight}
+                  onChange={(e) => setSetValues((prev) => ({ ...prev, weight: e.target.value }))}
                     className="mt-1 w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>

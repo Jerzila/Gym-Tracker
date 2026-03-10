@@ -7,7 +7,7 @@ import { getAgeFromBirthday } from "@/lib/age";
 import type { Profile } from "@/lib/types";
 
 const AGE_MIN = 13;
-const AGE_MAX = 100;
+const AGE_MAX = 90;
 const BODY_WEIGHT_MIN = 30;
 const BODY_WEIGHT_MAX = 250;
 const HEIGHT_MIN = 120;
@@ -59,7 +59,7 @@ export async function getProfile(): Promise<Profile | null> {
 }
 
 export async function updateProfileField(
-  field: keyof Pick<Profile, "name" | "birthday" | "gender" | "country" | "body_weight" | "height">,
+  field: keyof Pick<Profile, "name" | "birthday" | "gender" | "country" | "body_weight" | "height" | "units">,
   value: string | number | null
 ): Promise<{ error?: string }> {
   const supabase = await createServerClient();
@@ -92,6 +92,11 @@ export async function updateProfileField(
   if (field === "gender" && value !== null && value !== "") {
     const allowed = ["male", "female", "other", "prefer_not_to_say"];
     if (!allowed.includes(String(value))) return { error: "Invalid gender" };
+  }
+  if (field === "units") {
+    if (value !== "metric" && value !== "imperial")
+      return { error: "Invalid units. Choose metric or imperial." };
+    sanitized = value;
   }
 
   const payload: Record<string, unknown> = {
@@ -163,4 +168,56 @@ export async function completeProfileSetup(formData: FormData): Promise<ProfileF
   if (error) return { error: error.message };
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+export type CompleteOnboardingInput = {
+  name: string | null;
+  birthday: string;
+  height: number;
+  weight: number;
+  units: "metric" | "imperial";
+  gender: "male" | "female" | "prefer_not_to_say" | null;
+  country: string | null;
+};
+
+export async function completeOnboarding(
+  input: CompleteOnboardingInput
+): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const birthdayErr = validateBirthdayAge(input.birthday);
+  if (birthdayErr) return { error: birthdayErr };
+  if (
+    input.height < HEIGHT_MIN ||
+    input.height > HEIGHT_MAX ||
+    input.weight < BODY_WEIGHT_MIN ||
+    input.weight > BODY_WEIGHT_MAX
+  ) {
+    return { error: "Invalid height or weight." };
+  }
+  if (input.units !== "metric" && input.units !== "imperial") {
+    return { error: "Invalid units." };
+  }
+
+  const payload = {
+    id: user.id,
+    name: input.name || null,
+    birthday: input.birthday,
+    height: input.height,
+    body_weight: input.weight,
+    units: input.units,
+    gender: input.gender || null,
+    country: input.country || null,
+    profile_completed: true,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
+  if (error) return { error: error.message };
+  revalidatePath("/", "layout");
+  return {};
 }

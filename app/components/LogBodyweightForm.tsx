@@ -6,11 +6,16 @@ import { createBodyweightLog } from "@/app/actions/bodyweight";
 import { DatePicker } from "@/app/components/DatePicker";
 import { buttonClass } from "@/app/components/Button";
 import { useToast } from "@/app/components/Toast";
+import { useUnits } from "@/app/components/UnitsContext";
+import { lbToKg } from "@/lib/units";
+import { weightUnitLabel } from "@/lib/formatWeight";
 
 const SHOW_SPINNER_AFTER_MS = 300;
 
 export function LogBodyweightForm() {
   const router = useRouter();
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const [isPending, setIsPending] = useState(false);
   const [showSpinner, setShowSpinner] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -36,7 +41,21 @@ export function LogBodyweightForm() {
   const handleSubmit = async (fd: FormData) => {
     setError(null);
     setIsPending(true);
-    const result = await createBodyweightLog(fd);
+    let body: FormData = fd;
+    if (units === "imperial") {
+      const weightRaw = fd.get("weight");
+      const newFd = new FormData();
+      for (const [k, v] of fd.entries()) {
+        if (k === "weight" && weightRaw != null) {
+          const lb = Number(weightRaw);
+          newFd.set(k, Number.isFinite(lb) ? String(lbToKg(lb)) : String(v));
+        } else {
+          newFd.set(k, v as string | Blob);
+        }
+      }
+      body = newFd;
+    }
+    const result = await createBodyweightLog(body);
     setIsPending(false);
     if (result?.error) {
       setError(result.error);
@@ -75,16 +94,16 @@ export function LogBodyweightForm() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="flex-1 space-y-1">
                   <label htmlFor="bodyweight-kg" className="block text-xs text-zinc-500">
-                    Weight (kg)
+                    Bodyweight ({weightLabel})
                   </label>
                   <input
                     id="bodyweight-kg"
                     name="weight"
                     type="number"
-                    step="0.1"
-                    min="1"
+                    step={units === "metric" ? "0.1" : "0.5"}
+                    min={units === "metric" ? "1" : "20"}
                     required
-                    placeholder="e.g. 75.5"
+                    placeholder={units === "metric" ? "e.g. 75.5" : "e.g. 165"}
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>

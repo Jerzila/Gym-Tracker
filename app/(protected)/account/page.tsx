@@ -2,6 +2,7 @@ import { signOut } from "@/app/actions/auth";
 import { getProfile } from "@/app/actions/profile";
 import { AccountProfileSection } from "@/app/components/AccountProfileSection";
 import { InstallAppButton } from "@/app/components/InstallAppButton";
+import { UnitsSetting } from "@/app/components/UnitsSetting";
 
 export default async function AccountPage() {
   const profile = await getProfile();
@@ -27,9 +28,10 @@ export default async function AccountPage() {
           <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
             Preferences
           </h2>
-          <p className="text-sm text-zinc-400">
+          <p className="mb-4 text-sm text-zinc-400">
             Customize your experience.
           </p>
+          <UnitsSetting profile={profile} />
         </section>
 
         <div className="pt-4">

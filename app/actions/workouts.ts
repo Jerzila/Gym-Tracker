@@ -39,7 +39,7 @@ export async function createWorkout(
   if (reps.length === 0) {
     return { error: "Please log at least one set." };
   }
-  if (weight <= 0) {
+  if (!Number.isFinite(weight) || weight <= 0) {
     return { error: "Weight must be greater than 0." };
   }
 

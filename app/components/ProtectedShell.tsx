@@ -24,8 +24,8 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <AppHeader title={title} />
-      <main className={isProfileSetup ? "pb-8 md:pb-8" : "pb-20 md:pb-20"}>{children}</main>
+      {!isProfileSetup && <AppHeader title={title} />}
+      <main className={isProfileSetup ? "" : "pb-20 md:pb-20"}>{children}</main>
       {!isProfileSetup && <BottomNav />}
     </div>
   );

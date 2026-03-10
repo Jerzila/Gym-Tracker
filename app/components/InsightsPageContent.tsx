@@ -41,7 +41,8 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { useUnits } from "@/app/components/UnitsContext";
 
 const MuscleRadarChart = dynamic(
   () => import("@/app/components/MuscleRadarChart").then((m) => ({ default: m.MuscleRadarChart })),
@@ -83,6 +84,8 @@ const ONE_RM_RANGES: { value: "30" | "90" | "all"; label: string }[] = [
 ];
 
 export function InsightsPageContent({ exercises, gender = "male" }: Props) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const [weekly, setWeekly] = useState<WeeklyComparison | null>(null);
   const [muscleRange, setMuscleRange] = useState<InsightsRange>("this_week");
   const [categoryData, setCategoryData] = useState<CategoryDistribution | null>(null);
@@ -331,7 +334,7 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
             />
             <WeeklyPaceCard
               label="Volume"
-              value={`${formatVolume(weekly.thisWeek.volume)} kg`}
+              value={`${formatWeight(weekly.thisWeek.volume, { units })} ${weightLabel}`}
               pace={weekly.paceVolume}
             />
             <WeeklyPaceCard
@@ -491,11 +494,11 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
                 >
                   <p className="font-medium text-zinc-100">{g.name}</p>
                   <p className="mt-0.5 font-medium text-emerald-400">
-                    +{g.improvementKg} kg estimated 1RM
+                    +{formatWeight(g.improvementKg, { units })} {weightLabel} estimated 1RM
                   </p>
                   {g.fromKg != null && g.toKg != null && (
                     <p className="mt-1 text-xs text-zinc-500">
-                      From {formatWeight(g.fromKg)} kg → {formatWeight(g.toKg)} kg
+                      From {formatWeight(g.fromKg, { units })} {weightLabel} → {formatWeight(g.toKg, { units })} {weightLabel}
                     </p>
                   )}
                 </li>
@@ -674,7 +677,7 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
                   {monthlyAnalytics.topExercise.name}
                 </p>
                 <p className="mt-1 text-sm text-emerald-400">
-                  Strength Gain: +{monthlyAnalytics.topExercise.strengthGainKg} kg
+                  Strength Gain: +{formatWeight(monthlyAnalytics.topExercise.strengthGainKg, { units })} {weightLabel}
                   estimated 1RM
                 </p>
                 <p className="text-sm text-zinc-500">
@@ -785,7 +788,7 @@ const StrengthProgressChart = memo(function StrengthProgressChart({ data }: { da
           <YAxis
             tick={{ fill: "#71717a", fontSize: 11 }}
             domain={["auto", "auto"]}
-            tickFormatter={(v) => `${formatWeight(Number(v))} kg`}
+            tickFormatter={(v) => `${formatWeight(Number(v), { units })} ${weightLabel}`}
           />
           <Tooltip
             contentStyle={{
@@ -794,7 +797,7 @@ const StrengthProgressChart = memo(function StrengthProgressChart({ data }: { da
               borderRadius: "8px",
             }}
             labelStyle={{ color: "#a1a1aa" }}
-            formatter={(value) => [value != null ? `${formatWeight(Number(value))} kg` : "", "Est. 1RM"]}
+            formatter={(value) => [value != null ? `${formatWeight(Number(value), { units })} ${weightLabel}` : "", "Est. 1RM"]}
             labelFormatter={(label) => (label ? new Date(label).toLocaleDateString() : "")}
           />
           <Line

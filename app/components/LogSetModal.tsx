@@ -6,6 +6,9 @@ import { DatePicker } from "@/app/components/DatePicker";
 import { buttonClass } from "@/app/components/Button";
 import { useToast } from "@/app/components/Toast";
 import { useWorkoutDataCache } from "@/app/components/WorkoutDataCacheContext";
+import { useUnits } from "@/app/components/UnitsContext";
+import { lbToKg } from "@/lib/units";
+import { weightUnitLabel } from "@/lib/formatWeight";
 import type { Exercise } from "@/lib/types";
 
 type State = { message?: string; error?: string } | undefined;
@@ -24,6 +27,8 @@ const SHOW_SPINNER_AFTER_MS = 300;
 const initialSetValues = { weight: "", reps: ["", "", "", "", ""] as string[] };
 
 export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const [state, action] = useActionState(formAction(exercise.id), undefined);
   const [setValues, setSetValues] = useState(initialSetValues);
   const [showSpinner, setShowSpinner] = useState(false);
@@ -108,14 +113,25 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
             <div className="flex flex-wrap items-end gap-3">
               <div>
                 <label htmlFor="log-modal-weight" className="block text-xs text-zinc-600">
-                  Weight (kg)
+                  Weight ({weightLabel})
                 </label>
+                {units === "imperial" && (
+                  <input
+                    type="hidden"
+                    name="weight"
+                    value={
+                      setValues.weight !== "" && Number.isFinite(Number(setValues.weight))
+                        ? String(lbToKg(Number(setValues.weight)))
+                        : ""
+                    }
+                  />
+                )}
                 <input
                   id="log-modal-weight"
-                  name="weight"
+                  name={units === "metric" ? "weight" : undefined}
                   type="number"
                   min="0"
-                  step="0.5"
+                  step={units === "metric" ? "0.5" : "1"}
                   placeholder="0"
                   value={setValues.weight}
                   onChange={(e) => setSetValues((prev) => ({ ...prev, weight: e.target.value }))}

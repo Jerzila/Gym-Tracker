@@ -5,6 +5,7 @@ import { getHeaviestWeight, getBestEstimated1RM, getMaxRepsAtWeight } from "@/li
 import { epley1RM } from "@/lib/progression";
 import { LogWorkoutForm } from "@/app/components/LogWorkoutForm";
 import { ExerciseNotesSection } from "@/app/components/ExerciseNotesSection";
+import { ExercisePRs } from "@/app/components/ExercisePRs";
 import { WeightChart } from "@/app/components/WeightChart";
 import { Estimated1RMChart } from "@/app/components/Estimated1RMChart";
 import { WorkoutHistory } from "@/app/components/WorkoutHistory";
@@ -77,31 +78,11 @@ export default async function ExercisePage({ params }: Props) {
         {(heaviest != null || best1RM != null) && (
           <>
             <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
-            <section className="pb-8">
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-                PRs
-              </h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {heaviest != null && (
-                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
-                    <p className="text-xs text-zinc-500">Heaviest weight</p>
-                    <p className="text-lg font-semibold">{heaviest} kg</p>
-                  </div>
-                )}
-                {maxRepsAtHeaviest != null && heaviest != null && (
-                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
-                    <p className="text-xs text-zinc-500">Best at {heaviest} kg</p>
-                    <p className="text-lg font-semibold">{maxRepsAtHeaviest} reps</p>
-                  </div>
-                )}
-                {best1RM != null && (
-                  <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
-                    <p className="text-xs text-zinc-500">Est. 1RM</p>
-                    <p className="text-lg font-semibold">{best1RM} kg</p>
-                  </div>
-                )}
-              </div>
-            </section>
+            <ExercisePRs
+              heaviest={heaviest}
+              best1RM={best1RM}
+              maxRepsAtHeaviest={maxRepsAtHeaviest}
+            />
           </>
         )}
 
