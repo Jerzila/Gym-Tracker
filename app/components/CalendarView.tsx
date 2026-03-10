@@ -352,6 +352,8 @@ function CalendarDayPanel({
   prExerciseIds: Set<string>;
   onClose: () => void;
 }) {
+  const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const [y, m, day] = dateKey.split("-").map(Number);
   const d = new Date(y, m - 1, day);
   const dateHeader = d.toLocaleDateString("default", {
