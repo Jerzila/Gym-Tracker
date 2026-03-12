@@ -216,8 +216,9 @@ export function MuscleHeatmap({ data, compact = false, emptyMessage }: Props) {
     for (const id of MUSCLE_GROUP_IDS) {
       const el = containerRef.current.querySelector(`[id="${id}"]`) as SVGGraphicsElement | null;
       if (el) {
-        if (id === hoveredId) (el as HTMLElement).style.filter = "brightness(1.2)";
-        else (el as HTMLElement).style.filter = "none";
+        const styleEl = el as unknown as { style: { filter: string } };
+        if (id === hoveredId) styleEl.style.filter = "brightness(1.2)";
+        else styleEl.style.filter = "none";
       }
     }
   }, [hoveredId]);
