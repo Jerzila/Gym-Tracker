@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { useFormStatus } from "react-dom";
 import { buttonClass } from "@/app/components/Button";
 
 type AuthFormProps = {
@@ -8,6 +9,21 @@ type AuthFormProps = {
   submitLabel: string;
   redirectTo?: string;
 };
+
+function SubmitButton({ submitLabel }: { submitLabel: string }) {
+  const { pending } = useFormStatus();
+  const loadingLabel = submitLabel === "Sign up" ? "Creating account…" : "Signing in…";
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-busy={pending}
+      className={`${buttonClass.primary} w-full disabled:opacity-70 disabled:pointer-events-none`}
+    >
+      {pending ? loadingLabel : submitLabel}
+    </button>
+  );
+}
 
 export function AuthForm({ action, submitLabel, redirectTo }: AuthFormProps) {
   const [state, formAction] = useActionState(
@@ -57,12 +73,7 @@ export function AuthForm({ action, submitLabel, redirectTo }: AuthFormProps) {
           {state.error}
         </p>
       )}
-      <button
-        type="submit"
-        className={`${buttonClass.primary} w-full`}
-      >
-        {submitLabel}
-      </button>
+      <SubmitButton submitLabel={submitLabel} />
     </form>
   );
 }

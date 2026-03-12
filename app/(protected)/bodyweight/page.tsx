@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { getBodyweightLogs, getBodyweightStats } from "@/app/actions/bodyweight";
+import { getProfile } from "@/app/actions/profile";
 import { BodyweightChart } from "@/app/components/BodyweightChart";
 import { BodyweightHistoryList } from "@/app/components/BodyweightHistoryList";
 import { BodyweightSummary } from "@/app/components/BodyweightSummary";
+import { BMICard } from "@/app/components/BMICard";
 import { LogBodyweightForm } from "@/app/components/LogBodyweightForm";
 
 export default async function BodyweightPage() {
@@ -13,8 +15,13 @@ export default async function BodyweightPage() {
     avg7Days: null,
     change30Days: null,
   };
+  let profile: Awaited<ReturnType<typeof getProfile>> = null;
   try {
-    [logs, stats] = await Promise.all([getBodyweightLogs(), getBodyweightStats()]);
+    [logs, stats, profile] = await Promise.all([
+      getBodyweightLogs(),
+      getBodyweightStats(),
+      getProfile(),
+    ]);
   } catch {
     // Leave empty
   }
@@ -48,6 +55,12 @@ export default async function BodyweightPage() {
             <BodyweightSummary stats={stats} />
           </>
         )}
+
+        <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+        <BMICard
+          weightKg={stats.latest?.weight ?? null}
+          heightCm={profile?.height ?? null}
+        />
 
         {chartData.length > 0 && (
           <>

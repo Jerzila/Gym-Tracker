@@ -1,8 +1,8 @@
 const PREVIEWS = [
-  { src: "/dashboard-preview.PNG", alt: "Liftly dashboard" },
+  { src: "/dashboard.png", alt: "Liftly dashboard" },
   { src: "/exercises-preview.PNG", alt: "Liftly exercises" },
   { src: "/insights-preview.PNG", alt: "Liftly insights" },
-  { src: "/insights2-preview.PNG", alt: "Liftly insights" },
+  { src: "/insights.png", alt: "Liftly insights" },
 ] as const;
 
 export function AppPreview() {

@@ -3,16 +3,18 @@
 import { useEffect, useMemo, useState, useRef, memo } from "react";
 import dynamic from "next/dynamic";
 import {
+  getInsightsCriticalData,
+  getInsightsDeferredData,
   getInsightsInitialData,
   getInsightsRangeData,
   getMonthlyAnalytics,
   getMonthsWithWorkoutData,
   getMuscleHeatmapData,
   type WeeklyComparison,
+  type MuscleHeatmapPoint,
   type PaceStatus,
   type CategoryDistribution,
   type MuscleDistribution,
-  type MuscleHeatmapPoint,
   type MonthlySummary,
   type MonthlyAnalytics,
   type MonthOption,
@@ -27,6 +29,7 @@ import {
 } from "@/app/actions/insights";
 import { getCurrentYearMonth } from "@/lib/insightsDates";
 import type { Exercise } from "@/lib/types";
+import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
 import { SkeletonInsightsPage, SkeletonPanel } from "@/app/components/Skeleton";
 import { useWorkoutDataCache } from "@/app/components/WorkoutDataCacheContext";
 import {
@@ -49,18 +52,55 @@ const MuscleRadarChart = dynamic(
   { ssr: false, loading: () => <SkeletonPanel height="h-72" /> }
 );
 
-const MuscleHeatmap = dynamic(
-  () => import("@/app/components/MuscleHeatmap").then((m) => ({ default: m.MuscleHeatmap })),
-  { ssr: false, loading: () => <SkeletonPanel height="h-72" /> }
+const DashboardStrengthDiagram = dynamic(
+  () =>
+    import("@/app/components/DashboardStrengthDiagram").then((m) => ({
+      default: m.DashboardStrengthDiagram,
+    })),
+  { ssr: false, loading: () => <SkeletonPanel height="h-64" /> }
 );
 
-const MUSCLE_HEATMAP_COMING_SOON = true;
+const MuscleRankList = dynamic(
+  () =>
+    import("@/app/components/MuscleRankList").then((m) => ({
+      default: m.MuscleRankList,
+    })),
+  { ssr: false }
+);
+
+const WeakestMuscleCard = dynamic(
+  () =>
+    import("@/app/components/WeakestMuscleCard").then((m) => ({
+      default: m.WeakestMuscleCard,
+    })),
+  { ssr: false }
+);
+
+const InsightsRankCard = dynamic(
+  () =>
+    import("@/app/components/InsightsRankCard").then((m) => ({
+      default: m.InsightsRankCard,
+    })),
+  { ssr: false }
+);
+
+const RankImprovementCard = dynamic(
+  () =>
+    import("@/app/components/RankImprovementCard").then((m) => ({
+      default: m.RankImprovementCard,
+    })),
+  { ssr: false }
+);
 
 function formatVolume(n: number): string {
   return Math.round(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
-type Props = { exercises: Exercise[]; gender?: "male" | "female" };
+type Props = {
+  exercises: Exercise[];
+  gender?: "male" | "female";
+  strengthRanking: StrengthRankingWithExercises | null;
+};
 
 const RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
   { value: "this_week", label: "This Week" },
@@ -72,10 +112,6 @@ const RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
 /** Training Balance uses only these 4 ranges; we precompute all on load. */
 type BalanceRange = "this_week" | "last_week" | "this_month" | "last_month";
 
-const HEATMAP_RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
-  ...RANGE_OPTIONS,
-  { value: "lifetime", label: "Lifetime" },
-];
 
 const ONE_RM_RANGES: { value: "30" | "90" | "all"; label: string }[] = [
   { value: "30", label: "Last 30 days" },
@@ -83,7 +119,7 @@ const ONE_RM_RANGES: { value: "30" | "90" | "all"; label: string }[] = [
   { value: "all", label: "All time" },
 ];
 
-export function InsightsPageContent({ exercises, gender = "male" }: Props) {
+export function InsightsPageContent({ exercises, gender = "male", strengthRanking }: Props) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const [weekly, setWeekly] = useState<WeeklyComparison | null>(null);
@@ -105,9 +141,9 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [heatmapRange, setHeatmapRange] = useState<InsightsRange>("this_week");
-  const [heatmapData, setHeatmapData] = useState<MuscleHeatmapPoint[]>([]);
-  const [heatmapLoading, setHeatmapLoading] = useState(true);
+  /** Heatmap data for current balance range — used for Muscle Balance chart tooltip (sets + exercises). */
+  const [balanceHeatmapData, setBalanceHeatmapData] = useState<MuscleHeatmapPoint[]>([]);
+  const [balanceHeatmapLoading, setBalanceHeatmapLoading] = useState(false);
 
   const [monthOptions, setMonthOptions] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<MonthOption>(() => {
@@ -184,7 +220,8 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
       setError(null);
     }
     let cancelled = false;
-    getInsightsInitialData().then((data) => {
+    // Load critical data first so the page can paint quickly; then load deferred (monthly, plateau, all-time gains).
+    getInsightsCriticalData().then((data) => {
       if (cancelled) return;
       if (data.weeklyError) setError(data.weeklyError);
       else setWeekly(data.weekly);
@@ -199,12 +236,12 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
       setEstimated1RMByExercise(data.estimated1RMByExercise ?? {});
       setBalanceDatasets((prev) => ({ ...prev, this_week: buildRangeDataFromInitial(data) }));
       setLoading(false);
-      cache?.setCachedInsights?.(data);
       const context: InsightsRangeContext = {
         weekly: data.weekly ?? null,
         monthly: data.monthly ?? null,
         plateauExercises: data.plateauExercises,
       };
+      // Preload other balance ranges in the background.
       Promise.all(
         (["last_week", "this_month", "last_month"] as const).map((range) =>
           getInsightsRangeData(range, context).then((res) => ({ range, res }))
@@ -216,6 +253,20 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
           for (const { range, res } of results) next[range] = res;
           return next;
         });
+      });
+      // Deferred: monthly summary, plateau exercises, all-time strength gains. Then cache full data.
+      getInsightsDeferredData(data.estimated1RMByExercise ?? {}).then((deferred) => {
+        if (cancelled) return;
+        setMonthly(deferred.monthly ?? null);
+        setPlateauExercises(deferred.plateauExercises);
+        setTopStrengthGainsAllTime(deferred.topStrengthGainsAllTime ?? []);
+        const fullData: Awaited<ReturnType<typeof getInsightsInitialData>> = {
+          ...data,
+          monthly: deferred.monthly ?? null,
+          plateauExercises: deferred.plateauExercises,
+          topStrengthGainsAllTime: deferred.topStrengthGainsAllTime ?? [],
+        };
+        cache?.setCachedInsights?.(fullData);
       });
     });
     return () => {
@@ -255,8 +306,49 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
     });
   }, [selectedMonth.year, selectedMonth.month]);
 
-  /** Training Balance uses precomputed balanceDatasets; no fetch on muscleRange change. */
-  const currentRangeData = balanceDatasets[muscleRange as BalanceRange] ?? null;
+  /** Training Balance: use only precomputed data for selected range; show skeleton until that range is loaded. */
+  const currentRangeData = balanceDatasets[muscleRange as BalanceRange];
+  const balanceRangeReady = currentRangeData !== undefined;
+
+  /** Aggregate heatmap to 6 radar categories for Muscle Balance tooltip: sets + top 3 exercises. */
+  const muscleBalanceTooltipData = useMemo(() => {
+    const LEGS_GROUPS = ["Quads", "Hamstrings", "Glutes", "Calves"] as const;
+    const RADAR_CATEGORIES = ["Back", "Biceps", "Chest", "Legs", "Shoulders", "Triceps"] as const;
+    const byCategory: Record<string, { sets: number; exercises: string[] }> = {};
+    for (const cat of RADAR_CATEGORIES) {
+      byCategory[cat] = { sets: 0, exercises: [] };
+    }
+    for (const p of balanceHeatmapData) {
+      if (p.muscle === "Chest") {
+        byCategory["Chest"].sets += p.sets;
+        byCategory["Chest"].exercises.push(...(p.exercises ?? []));
+      } else if (p.muscle === "Back") {
+        byCategory["Back"].sets += p.sets;
+        byCategory["Back"].exercises.push(...(p.exercises ?? []));
+      } else if (p.muscle === "Shoulders") {
+        byCategory["Shoulders"].sets += p.sets;
+        byCategory["Shoulders"].exercises.push(...(p.exercises ?? []));
+      } else if (p.muscle === "Biceps") {
+        byCategory["Biceps"].sets += p.sets;
+        byCategory["Biceps"].exercises.push(...(p.exercises ?? []));
+      } else if (p.muscle === "Triceps") {
+        byCategory["Triceps"].sets += p.sets;
+        byCategory["Triceps"].exercises.push(...(p.exercises ?? []));
+      } else if (LEGS_GROUPS.includes(p.muscle as (typeof LEGS_GROUPS)[number])) {
+        byCategory["Legs"].sets += p.sets;
+        byCategory["Legs"].exercises.push(...(p.exercises ?? []));
+      }
+    }
+    return RADAR_CATEGORIES.map((category) => {
+      const { sets, exercises } = byCategory[category];
+      const unique = [...new Set(exercises)];
+      return {
+        category,
+        sets: Math.round(sets * 10) / 10,
+        exercises: unique.slice(0, 3),
+      };
+    });
+  }, [balanceHeatmapData]);
 
   /** Filter precomputed 1RM by selected range; no fetch, instant when changing exercise or range. */
   const oneRMData = useMemo(() => {
@@ -269,31 +361,20 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
     return points.filter((p) => p.date >= start);
   }, [estimated1RMByExercise, selectedExerciseId, oneRMRange]);
 
+  /** Fetch heatmap data for the selected balance range (for chart tooltip: sets + exercises). */
   useEffect(() => {
     let cancelled = false;
-    setHeatmapLoading(true);
-    getMuscleHeatmapData(heatmapRange).then((res) => {
+    setBalanceHeatmapLoading(true);
+    getMuscleHeatmapData(muscleRange).then((res) => {
       if (!cancelled) {
-        setHeatmapData(res.data ?? []);
-        setHeatmapLoading(false);
+        setBalanceHeatmapData(res.data ?? []);
+        setBalanceHeatmapLoading(false);
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [heatmapRange]);
-
-  // When navigating from Dashboard with #muscle-distribution, scroll to the section
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.location.hash !== "#muscle-distribution") return;
-    const el = document.getElementById("muscle-distribution");
-    if (!el) return;
-    const timeout = setTimeout(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
-    return () => clearTimeout(timeout);
-  }, []);
+  }, [muscleRange]);
 
   if (loading && !weekly) {
     return <SkeletonInsightsPage />;
@@ -308,98 +389,100 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
   }
 
   return (
-    <div className="space-y-10">
-      {/* Weekly Progress — pace vs same point last week */}
-      <section>
-        <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
-          Weekly Progress
-        </h3>
-        <p className="mb-3 text-xs text-zinc-500">
-          Compared to the same point last week
-        </p>
-        {!weekly ? null : weekly.noLastWeekData ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
-            No comparison data from last week.
-          </div>
-        ) : weekly.weekJustStarted ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
-            Week just started — tracking progress.
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <WeeklyPaceCard
-              label="Workouts"
-              value={String(weekly.thisWeek.workouts)}
-              pace={weekly.paceWorkouts}
-            />
-            <WeeklyPaceCard
-              label="Volume"
-              value={`${formatWeight(weekly.thisWeek.volume, { units })} ${weightLabel}`}
-              pace={weekly.paceVolume}
-            />
-            <WeeklyPaceCard
-              label="Sets"
-              value={String(weekly.thisWeek.sets)}
-              pace={weekly.paceSets}
-            />
-            <WeeklyPaceCard
-              label="PRs"
-              value={String(weekly.thisWeek.prs)}
-              pace={weekly.pacePrs}
-            />
-          </div>
-        )}
-      </section>
+    <div className="space-y-6">
+      {/* Section 1: Top Rank Card */}
+      {strengthRanking && (
+        <section>
+          <InsightsRankCard overallPercentile={strengthRanking.overallPercentile} />
+        </section>
+      )}
 
-      <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
-
-      {/* Muscle Distribution — directly below Weekly Progress */}
-      <section id="muscle-distribution">
-        <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
-          Muscle Distribution
-        </h3>
-        <p className="mb-3 text-xs text-zinc-500">
-          Training stimulus per muscle group (total sets). Color intensity is relative to your most trained muscle.
-        </p>
-        <div className="mb-3 flex flex-wrap gap-2">
-          {HEATMAP_RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              disabled={MUSCLE_HEATMAP_COMING_SOON}
-              onClick={() => setHeatmapRange(opt.value)}
-              className={`tap-feedback rounded-lg border px-3 py-1.5 text-sm transition active:scale-[0.98] ${
-                MUSCLE_HEATMAP_COMING_SOON
-                  ? "cursor-not-allowed opacity-50 border-zinc-700 bg-zinc-800/50 text-zinc-500"
-                  : heatmapRange === opt.value
-                    ? "border-amber-500/60 bg-amber-500/10 text-amber-400"
-                    : "border-zinc-700 bg-zinc-800/50 text-zinc-400 hover:border-zinc-600 hover:text-zinc-300"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+      {/* Section 2 & 3: Weekly Activity + Improve Your Rank — equal-height widget grid */}
+      <section className="grid grid-cols-2 gap-6">
+        {/* Left: Weekly Activity */}
+        <div className="flex min-h-0 flex-col">
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Weekly Activity
+          </h3>
+          <div className="min-h-0 flex-1">
+            {!weekly ? (
+              <div className="h-full rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
+                No data yet.
+              </div>
+            ) : weekly.noLastWeekData ? (
+              <div className="h-full rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
+                No comparison data from last week.
+              </div>
+            ) : weekly.weekJustStarted ? (
+              <div className="h-full rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
+                Week just started — tracking progress.
+              </div>
+            ) : (
+              <div className="grid h-full grid-cols-2 gap-3">
+                <WeeklyPaceCard
+                  label="Workouts"
+                  value={String(weekly.thisWeek.workouts)}
+                  pace={weekly.paceWorkouts}
+                />
+                <WeeklyPaceCard
+                  label="Exercises"
+                  value={String(weekly.thisWeek.exercises)}
+                  pace={weekly.paceExercises}
+                />
+                <WeeklyPaceCard
+                  label="Sets"
+                  value={String(weekly.thisWeek.sets)}
+                  pace={weekly.paceSets}
+                />
+                <WeeklyPaceCard
+                  label="PRs"
+                  value={String(weekly.thisWeek.prs)}
+                  pace={weekly.pacePrs}
+                />
+              </div>
+            )}
+          </div>
         </div>
-        {heatmapLoading && !MUSCLE_HEATMAP_COMING_SOON ? (
-          <SkeletonPanel height="h-72" />
-        ) : (
-          <MuscleHeatmap
-            data={heatmapData}
-            gender={gender}
-            emptyMessage="No training data for this period."
-          />
+        {/* Right: Improve Your Rank */}
+        {strengthRanking && (
+          <div className="flex min-h-0 min-w-0 flex-col">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Improve Your Rank
+            </h3>
+            <div className="min-h-0 flex-1">
+              <RankImprovementCard data={strengthRanking} />
+            </div>
+          </div>
         )}
       </section>
 
-      <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+      <div className="border-t border-zinc-800/60 pt-4" aria-hidden />
 
-      {/* Training balance */}
-      <section>
+      {/* Muscle Strength — diagram, list, weakest */}
+      {strengthRanking && (
+        <>
+          <section id="muscle-strength">
+            <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Muscle Strength
+            </h3>
+            <DashboardStrengthDiagram data={strengthRanking} gender={gender} />
+          </section>
+          <section className="mt-6">
+            <MuscleRankList data={strengthRanking} />
+          </section>
+          <section className="mt-6">
+            <WeakestMuscleCard data={strengthRanking} />
+          </section>
+        </>
+      )}
+
+      {/* Muscle Balance — total sets per muscle group; hover for sets + exercises */}
+      <section id="muscle-balance" className="mt-10">
         <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
-          Training balance
+          Muscle Balance
         </h3>
         <p className="mb-3 text-xs text-zinc-500">
-          Share of total sets per category (stimulus)
+          Total sets per muscle group for the selected period. Hover over a point for sets and top exercises.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
           {RANGE_OPTIONS.map((opt) => (
@@ -417,16 +500,18 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
             </button>
           ))}
         </div>
-        {currentRangeData === undefined ? (
+        {!balanceRangeReady ? (
           <SkeletonPanel height="h-72" />
         ) : (
           <MuscleRadarChart
+            key={muscleRange}
             range={muscleRange as BalanceRange}
             current={currentRangeData?.categoryDistribution?.current ?? []}
             previous={currentRangeData?.categoryDistribution?.previous ?? null}
+            tooltipData={muscleBalanceTooltipData}
           />
         )}
-        {currentRangeData?.trainingBalance && (
+        {balanceRangeReady && currentRangeData?.trainingBalance && (
           <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
             <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
               Training Balance
@@ -523,9 +608,9 @@ export function InsightsPageContent({ exercises, gender = "male" }: Props) {
         <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Training Insights
         </h3>
-        {(currentRangeData?.insightItems ?? []).length === 0 ? (
+        {(!balanceRangeReady || (currentRangeData?.insightItems ?? []).length === 0) ? (
           <p className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-6 text-center text-sm text-zinc-500">
-            Log more workouts to see insights.
+            {!balanceRangeReady ? "Loading…" : "Log more workouts to see insights."}
           </p>
         ) : (
           <ul className="space-y-2.5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4">

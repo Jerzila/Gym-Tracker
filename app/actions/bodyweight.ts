@@ -78,6 +78,49 @@ export async function getBodyweightStats(): Promise<BodyweightStats> {
   }
 }
 
+/**
+ * Creates the first bodyweight log for the current user if they have none.
+ * Used when saving onboarding/setup weight so dashboard, BMI, and charts work.
+ * No-op if the user already has at least one bodyweight log.
+ */
+export async function ensureFirstBodyweightLog(weightKg: number): Promise<{ error?: string }> {
+  if (!Number.isFinite(weightKg) || weightKg <= 0) {
+    return { error: "Invalid weight for first bodyweight log." };
+  }
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated." };
+
+    const { data: existing } = await supabase
+      .from("bodyweight_logs")
+      .select("id")
+      .eq("user_id", user.id)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      return {};
+    }
+
+    const date = new Date().toISOString().slice(0, 10);
+    const { error } = await supabase
+      .from("bodyweight_logs")
+      .insert({ user_id: user.id, weight: weightKg, date } as Record<string, unknown>);
+
+    if (error) return { error: error.message };
+    revalidatePath("/");
+    revalidatePath("/bodyweight");
+    return {};
+  } catch (e) {
+    if (isConnectionError(e)) {
+      return { error: "Can't connect to Supabase. Check .env.local." };
+    }
+    return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
 export async function createBodyweightLog(formData: FormData): Promise<{ error?: string }> {
   const weight = Number(formData.get("weight"));
   const dateRaw = formData.get("date") as string;

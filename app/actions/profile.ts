@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getAgeFromBirthday } from "@/lib/age";
 import type { Profile } from "@/lib/types";
+import { ensureFirstBodyweightLog } from "@/app/actions/bodyweight";
 
 const AGE_MIN = 13;
 const AGE_MAX = 90;
@@ -218,6 +219,10 @@ export async function completeOnboarding(
 
   const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
   if (error) return { error: error.message };
+
+  const logResult = await ensureFirstBodyweightLog(input.weight);
+  if (logResult.error) return { error: logResult.error };
+
   revalidatePath("/", "layout");
   return {};
 }

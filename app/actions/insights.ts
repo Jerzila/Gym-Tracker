@@ -7,7 +7,10 @@ import { MUSCLE_GROUPS, categoryToMuscle, categoryToMuscleGroups, type MuscleGro
 
 export type WeekStats = {
   volume: number;
+  /** Number of gym sessions (unique days). */
   workouts: number;
+  /** Total exercise entries across those sessions. */
+  exercises: number;
   sets: number;
   prs: number;
 };
@@ -19,6 +22,7 @@ export type WeeklyComparison = {
   lastWeek: WeekStats;
   volumePct: number | null;
   workoutsDiff: number;
+  exercisesDiff: number;
   setsPct: number | null;
   prsDiff: number;
   /** Progress through current week (0–1). Monday 00:00 = 0. */
@@ -30,6 +34,7 @@ export type WeeklyComparison = {
   /** Pace vs expected-by-now from last week. null when no comparison. */
   paceVolume: PaceStatus | null;
   paceWorkouts: PaceStatus | null;
+  paceExercises: PaceStatus | null;
   paceSets: PaceStatus | null;
   pacePrs: PaceStatus | null;
 };
@@ -362,6 +367,7 @@ export async function getWeeklyComparison(): Promise<{
 
     const expectedVolume = lastStats.volume * weekProgress;
     const expectedWorkouts = lastStats.workouts * weekProgress;
+    const expectedExercises = lastStats.exercises * weekProgress;
     const expectedSets = lastStats.sets * weekProgress;
     const expectedPrs = lastStats.prs * weekProgress;
 
@@ -369,6 +375,8 @@ export async function getWeeklyComparison(): Promise<{
       noLastWeekData || weekJustStarted ? null : paceStatus(thisStats.volume, expectedVolume);
     const paceWorkouts =
       noLastWeekData || weekJustStarted ? null : paceStatus(thisStats.workouts, expectedWorkouts);
+    const paceExercises =
+      noLastWeekData || weekJustStarted ? null : paceStatus(thisStats.exercises, expectedExercises);
     const paceSets =
       noLastWeekData || weekJustStarted ? null : paceStatus(thisStats.sets, expectedSets);
     const pacePrs =
@@ -380,6 +388,7 @@ export async function getWeeklyComparison(): Promise<{
         lastWeek: lastStats,
         volumePct: volumePct ?? 0,
         workoutsDiff: thisStats.workouts - lastStats.workouts,
+        exercisesDiff: thisStats.exercises - lastStats.exercises,
         setsPct: setsPct ?? 0,
         prsDiff: thisStats.prs - lastStats.prs,
         weekProgress,
@@ -387,6 +396,7 @@ export async function getWeeklyComparison(): Promise<{
         weekJustStarted,
         paceVolume,
         paceWorkouts,
+        paceExercises,
         paceSets,
         pacePrs,
       },
@@ -414,7 +424,7 @@ async function getWeekStats(
     .order("date", { ascending: true });
 
   if (wError || !workouts?.length) {
-    return { volume: 0, workouts: 0, sets: 0, prs: 0 };
+    return { volume: 0, workouts: 0, exercises: 0, sets: 0, prs: 0 };
   }
 
   const workoutIds = workouts.map((w) => w.id);
@@ -423,7 +433,7 @@ async function getWeekStats(
     .select("workout_id, reps")
     .in("workout_id", workoutIds);
 
-  if (sError) return { volume: 0, workouts: 0, sets: 0, prs: 0 };
+  if (sError) return { volume: 0, workouts: 0, exercises: 0, sets: 0, prs: 0 };
   const setsByWorkout = new Map<string, number[]>();
   for (const s of sets ?? []) {
     const list = setsByWorkout.get(s.workout_id) ?? [];
@@ -434,6 +444,8 @@ async function getWeekStats(
   let volume = 0;
   let setCount = 0;
   const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+  const sessionCount = new Set(workouts.map((w) => w.date)).size;
+  const exerciseEntryCount = workouts.length;
 
   for (const w of workouts) {
     const repsList = setsByWorkout.get(w.id) ?? [];
@@ -447,7 +459,8 @@ async function getWeekStats(
 
   return {
     volume: Math.round(volume),
-    workouts: workouts.length,
+    workouts: sessionCount,
+    exercises: exerciseEntryCount,
     sets: setCount,
     prs: prCount,
   };
@@ -545,6 +558,13 @@ const LOWER_BODY_KEYWORDS = [
   "calf",
   "calves",
   "lower body",
+  "squat",
+  "deadlift",
+  "lunge",
+  "hip",
+  "knee",
+  "posterior",
+  "hinge",
 ];
 
 const UPPER_BODY_KEYWORDS = [
@@ -1774,6 +1794,79 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
     trainingBalance,
     insightItems: insightResult.items,
     estimated1RMByExercise,
+  };
+}
+
+/** Deferred payload: monthly summary, plateau exercises, all-time strength gains. Merge with critical data for full InsightsInitialData. */
+export type InsightsDeferredData = {
+  monthly: MonthlySummary | null;
+  plateauExercises: { name: string }[];
+  topStrengthGainsAllTime: TopStrengthGain[];
+};
+
+/** Fetches only data needed for first paint (no monthly summary, plateau, or all-time gains). Use with getInsightsDeferredData for the rest. */
+export async function getInsightsCriticalData(): Promise<InsightsInitialData> {
+  const [
+    weeklyRes,
+    categoryRes,
+    muscleRes,
+    gainsRes,
+    balanceRes,
+    oneRMRes,
+  ] = await Promise.all([
+    getWeeklyComparison(),
+    getCategoryDistribution("this_week"),
+    getMuscleDistribution("this_week"),
+    getTopStrengthImprovements("this_week"),
+    getTrainingBalance("this_week"),
+    getAll1RMProgression(),
+  ]);
+
+  const estimated1RMByExercise = oneRMRes.data ?? {};
+  const weekly = weeklyRes.error ? null : weeklyRes.data;
+  const categoryDistribution = categoryRes.data ?? null;
+  const muscleDistribution = muscleRes.data ?? null;
+  const topStrengthGains = gainsRes.data ?? [];
+  const trainingBalance = balanceRes.data ?? null;
+
+  const insightResult = await getInsightsText(
+    weekly ?? null,
+    muscleDistribution ?? null,
+    "this_week",
+    null,
+    [],
+    topStrengthGains,
+    trainingBalance
+  );
+
+  return {
+    weekly,
+    weeklyError: weeklyRes.error,
+    monthly: null,
+    plateauExercises: [],
+    categoryDistribution,
+    muscleDistribution,
+    topStrengthGains,
+    topStrengthGainsAllTime: [],
+    trainingBalance,
+    insightItems: insightResult.items,
+    estimated1RMByExercise,
+  };
+}
+
+/** Fetches monthly summary, plateau exercises, and all-time strength gains. Call after getInsightsCriticalData and merge into state. */
+export async function getInsightsDeferredData(
+  estimated1RMByExercise: Estimated1RMByExercise
+): Promise<InsightsDeferredData> {
+  const [monthRes, plateauRes, gainsAllTimeRes] = await Promise.all([
+    getMonthlySummary(),
+    getPlateauExercises(),
+    getTopStrengthGainsAllTime(estimated1RMByExercise),
+  ]);
+  return {
+    monthly: monthRes.data ?? null,
+    plateauExercises: plateauRes ?? [],
+    topStrengthGainsAllTime: gainsAllTimeRes.data ?? [],
   };
 }
 

@@ -16,6 +16,20 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Calendar page: prevent horizontal scroll, fit mobile */
+.calendar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+.day-cell {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
 }
 
 /* DatePicker (react-day-picker) dark theme */
@@ -238,5 +252,18 @@ body {
 .wheel-picker-fade-bottom {
   bottom: 0;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.9), transparent);
+}
+
+/* Radar chart info widget: smooth fade when hovered category changes */
+@keyframes radar-widget-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.radar-widget-fade {
+  animation: radar-widget-fade 150ms ease;
 }
 

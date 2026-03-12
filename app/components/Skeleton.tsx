@@ -192,7 +192,7 @@ export function SkeletonCalendarGrid() {
   const WEEKDAYS = 7;
   const ROWS = 5;
   return (
-    <div className="grid grid-cols-7 gap-px border-t border-zinc-800/60 bg-zinc-800/40 p-2">
+    <div className="grid w-full grid-cols-7 gap-1.5 border-t border-zinc-800/60 bg-zinc-800/40 p-2">
       {Array.from({ length: WEEKDAYS }).map((_, i) => (
         <div
           key={`h-${i}`}
@@ -202,7 +202,7 @@ export function SkeletonCalendarGrid() {
       {Array.from({ length: WEEKDAYS * ROWS }).map((_, i) => (
         <div
           key={i}
-          className={`${skeletonBase} min-h-[4rem] rounded-lg`}
+          className={`${skeletonBase} aspect-square w-full rounded-[10px]`}
         />
       ))}
     </div>

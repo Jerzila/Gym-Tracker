@@ -1,28 +1,27 @@
-import { getWeeklyComparison, getCategoryDistribution, getMuscleDistribution, getMuscleHeatmapData } from "@/app/actions/insights";
+import { getWeeklyComparison, getCategoryDistribution, getMuscleDistribution } from "@/app/actions/insights";
 import { getProfile } from "@/app/actions/profile";
-import { getBodyweightStats, getBodyweightLogs } from "@/app/actions/bodyweight";
+import { getBodyweightStats } from "@/app/actions/bodyweight";
 import { getLastWorkoutSummary } from "@/app/actions/workouts";
+import { getStrengthRanking } from "@/app/actions/strengthRanking";
 import { DashboardPageContent } from "@/app/components/DashboardPageContent";
 
 export default async function DashboardPage() {
   const [
     weeklyRes,
     bodyweightStats,
-    bodyweightLogs,
     lastWorkoutRes,
     categoryRes,
     muscleRes,
-    heatmapRes,
     profile,
+    strengthRankingRes,
   ] = await Promise.all([
     getWeeklyComparison(),
     getBodyweightStats(),
-    getBodyweightLogs(),
     getLastWorkoutSummary(),
     getCategoryDistribution("this_week"),
     getMuscleDistribution("this_week"),
-    getMuscleHeatmapData("this_week"),
     getProfile(),
+    getStrengthRanking(),
   ]);
   const gender = profile?.gender === "female" ? "female" : "male";
 
@@ -30,22 +29,19 @@ export default async function DashboardPage() {
   const lastWorkout = lastWorkoutRes.data ?? null;
   const categoryDistribution = categoryRes.data ?? null;
   const muscleDistribution = muscleRes.data?.current ?? null;
-  const muscleHeatmapData = heatmapRes.data ?? [];
-
-  const sparkline = bodyweightLogs
-    .slice(0, 7)
-    .map((l) => ({ date: l.date, weight: l.weight }));
+  const strengthRanking = strengthRankingRes.data ?? null;
 
   return (
     <DashboardPageContent
       weekly={weekly}
       bodyweightStats={bodyweightStats}
-      bodyweightSparkline={sparkline}
+      profileWeightKg={profile?.body_weight ?? null}
+      heightCm={profile?.height ?? null}
       lastWorkout={lastWorkout}
       categoryDistribution={categoryDistribution}
       muscleDistribution={muscleDistribution}
-      muscleHeatmapData={muscleHeatmapData}
       gender={gender}
+      strengthRanking={strengthRanking}
     />
   );
 }

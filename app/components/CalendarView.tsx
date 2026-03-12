@@ -161,7 +161,7 @@ export function CalendarView() {
   const monthLabel = `${new Date(year, month - 1).toLocaleString("default", { month: "long" })} ${year}`;
 
   return (
-    <>
+    <div className="w-full max-w-[100vw] overflow-x-hidden">
       <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <Link
@@ -176,52 +176,52 @@ export function CalendarView() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-2xl px-4 py-6 sm:px-6">
-        <div className="mb-4 flex gap-3 justify-between">
-          <div className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+      <main className="mx-auto w-full min-w-0 max-w-2xl px-4 py-6 sm:px-6">
+        <div className="mb-4 grid grid-cols-3 gap-2">
+          <div className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center min-w-0">
+            <p className="truncate text-xs font-medium uppercase tracking-wider text-zinc-500">
               This Week
             </p>
-            <p className="mt-1 text-lg font-semibold text-zinc-200">
+            <p className="mt-1 truncate text-lg font-semibold text-zinc-200">
               {counts !== null ? counts.thisWeek : "—"} workouts
             </p>
           </div>
-          <div className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <div className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center min-w-0">
+            <p className="truncate text-xs font-medium uppercase tracking-wider text-zinc-500">
               This Month
             </p>
-            <p className="mt-1 text-lg font-semibold text-zinc-200">
+            <p className="mt-1 truncate text-lg font-semibold text-zinc-200">
               {counts !== null ? counts.thisMonth : "—"} workouts
             </p>
           </div>
-          <div className="flex-1 rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-center">
-            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <div className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center min-w-0">
+            <p className="truncate text-xs font-medium uppercase tracking-wider text-zinc-500">
               This Year
             </p>
-            <p className="mt-1 text-lg font-semibold text-zinc-200">
+            <p className="mt-1 truncate text-lg font-semibold text-zinc-200">
               {counts !== null ? counts.thisYear : "—"} workouts
             </p>
           </div>
         </div>
 
-        <section className="rounded-xl border border-zinc-800/80 bg-zinc-900/40">
-          <div className="flex items-center justify-between border-b border-zinc-800/60 px-4 py-3">
+        <section className="w-full min-w-0 rounded-xl border border-zinc-800/80 bg-zinc-900/40">
+          <div className="calendar-header flex w-full items-center justify-between border-b border-zinc-800/60 px-4 py-3 min-w-0">
             <button
               type="button"
               onClick={prevMonth}
               aria-label="Previous month"
-              className="tap-feedback rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
+              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
             >
               ←
             </button>
-            <h3 className="text-sm font-medium uppercase tracking-wider text-zinc-300">
+            <h3 className="min-w-0 flex-1 truncate px-2 text-center text-sm font-medium uppercase tracking-wider text-zinc-300">
               {monthLabel}
             </h3>
             <button
               type="button"
               onClick={nextMonth}
               aria-label="Next month"
-              className="tap-feedback rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
+              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
             >
               →
             </button>
@@ -235,7 +235,7 @@ export function CalendarView() {
             <SkeletonCalendarGrid />
           ) : (
           <div
-            className="grid grid-cols-7 gap-px border-t border-zinc-800/60 bg-zinc-800/40 p-2 transition-opacity duration-200 ease-out"
+            className="grid w-full grid-cols-7 gap-1.5 border-t border-zinc-800/60 bg-zinc-800/40 p-2 transition-opacity duration-200 ease-out"
             style={{
               opacity: monthTransitioning ? 0.6 : 1,
             }}
@@ -243,14 +243,14 @@ export function CalendarView() {
             {WEEKDAYS.map((day) => (
               <div
                 key={day}
-                className="py-2 text-center text-xs font-medium uppercase tracking-wider text-zinc-500"
+                className="truncate py-2 text-center text-xs font-medium uppercase tracking-wider text-zinc-500"
               >
                 {day}
               </div>
             ))}
             {daysGrid.map((d, i) => {
               if (!d) {
-                return <div key={`empty-${i}`} className="min-h-[4rem]" />;
+                return <div key={`empty-${i}`} className="day-cell aspect-square w-full rounded-[10px]" aria-hidden />;
               }
               const dateKey = toDateKey(d);
               const dayWorkouts = workoutsByDate.get(dateKey) ?? [];
@@ -266,7 +266,7 @@ export function CalendarView() {
                   key={dateKey}
                   type="button"
                   onClick={() => handleDayClick(dateKey)}
-                  className={`relative flex min-h-[4rem] flex-col justify-between items-start rounded-lg border px-2 py-2 text-left transition duration-150 hover:border-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 bg-zinc-900 border-zinc-800 ${
+                  className={`day-cell relative flex w-full aspect-square flex-col justify-between items-start rounded-[10px] border px-2 py-2 text-left transition duration-150 hover:border-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 bg-zinc-900 border-zinc-800 ${
                     isSelected ? "border-amber-400" : ""
                   } ${
                     isToday && !isSelected
@@ -274,7 +274,7 @@ export function CalendarView() {
                       : ""
                   }`}
                 >
-                  <span className="text-sm font-medium text-zinc-300">
+                  <span className="truncate text-sm font-medium text-zinc-300">
                     {d.getDate()}
                   </span>
                   {showDot && (
@@ -290,14 +290,14 @@ export function CalendarView() {
           </div>
           )}
 
-          <div className="flex flex-wrap gap-6 px-4 pb-4 pt-3 text-sm text-zinc-400 border-t border-zinc-800/60 mt-2">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" aria-hidden />
-              Workout completed
+          <div className="flex min-w-0 flex-wrap gap-6 px-4 pb-4 pt-3 text-sm text-zinc-400 border-t border-zinc-800/60 mt-2">
+            <span className="flex min-w-0 items-center gap-1.5 truncate">
+              <span className="w-2 h-2 shrink-0 rounded-full bg-green-500" aria-hidden />
+              <span className="truncate">Workout completed</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-zinc-500 shrink-0" aria-hidden />
-              No workout logged
+            <span className="flex min-w-0 items-center gap-1.5 truncate">
+              <span className="w-2 h-2 shrink-0 rounded-full bg-zinc-500" aria-hidden />
+              <span className="truncate">No workout logged</span>
             </span>
           </div>
         </section>
@@ -337,7 +337,7 @@ export function CalendarView() {
           )}
         </aside>
       </div>
-    </>
+    </div>
   );
 }
 

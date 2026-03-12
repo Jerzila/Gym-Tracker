@@ -264,6 +264,12 @@ export type LastWorkoutSummary = {
   title: string;
   exerciseCount: number;
   prHit: boolean;
+  /** Exercise names in workout order (for dashboard list). */
+  exerciseNames: string[];
+  /** Exercise IDs in same order as exerciseNames (for PR highlighting). */
+  exerciseIds: string[];
+  /** Exercise IDs that had a PR this session. */
+  prExerciseIds: string[];
 };
 
 /** Get the most recent workout day summary (date, category title, exercise count, PR). */
@@ -298,12 +304,12 @@ export async function getLastWorkoutSummary(): Promise<{
       .order("exercise_id");
 
     if (wError || !dayWorkouts?.length)
-      return { data: { date, title: "Workout", exerciseCount: 0, prHit: false } };
+      return { data: { date, title: "Workout", exerciseCount: 0, prHit: false, exerciseNames: [], exerciseIds: [], prExerciseIds: [] } };
 
     const exerciseIds = [...new Set(dayWorkouts.map((w) => w.exercise_id))];
     const { data: exercises, error: exError } = await supabase
       .from("exercises")
-      .select("id, category_id")
+      .select("id, name, category_id")
       .in("id", exerciseIds);
 
     if (exError || !exercises?.length) {
@@ -313,9 +319,20 @@ export async function getLastWorkoutSummary(): Promise<{
           title: "Workout",
           exerciseCount: dayWorkouts.length,
           prHit: false,
+          exerciseNames: [],
+          exerciseIds: [],
+          prExerciseIds: [],
         },
       };
     }
+
+    const nameById = new Map(
+      (exercises as { id: string; name: string }[]).map((e) => [e.id, e.name])
+    );
+    const exerciseNames = dayWorkouts.map(
+      (w) => nameById.get(w.exercise_id) ?? "Exercise"
+    );
+    const exerciseIdsInOrder = dayWorkouts.map((w) => w.exercise_id);
 
     const categoryIds = [...new Set(exercises.map((e) => e.category_id))];
     const { data: categories, error: catError } = await supabase
@@ -357,6 +374,9 @@ export async function getLastWorkoutSummary(): Promise<{
         title,
         exerciseCount: dayWorkouts.length,
         prHit: prExerciseIds.length > 0,
+        exerciseNames,
+        exerciseIds: exerciseIdsInOrder,
+        prExerciseIds,
       },
     };
   } catch (e) {
