@@ -77,7 +77,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
   }, [data.musclePercentiles]);
 
   const handleBodyPartPress = useCallback((part: ExtendedBodyPart) => {
-    setSelectedSlug(part.slug);
+    setSelectedSlug(part.slug ?? null);
   }, []);
 
   const selectedMuscle = selectedSlug != null ? strengthMuscleBySlug[selectedSlug] : null;
