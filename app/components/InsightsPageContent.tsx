@@ -397,8 +397,8 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         </section>
       )}
 
-      {/* Section 2 & 3: Weekly Activity + Improve Your Rank — equal-height widget grid */}
-      <section className="grid grid-cols-2 gap-6">
+      {/* Section 2 & 3: Weekly Activity + Improve Your Rank — side by side on all screens (match desktop on phone) */}
+      <section className="grid grid-cols-2 gap-4 md:gap-6">
         {/* Left: Weekly Activity */}
         <div className="flex min-h-0 flex-col">
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -418,7 +418,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
                 Week just started — tracking progress.
               </div>
             ) : (
-              <div className="grid h-full grid-cols-2 gap-3">
+              <div className="grid h-full grid-cols-2 gap-4 md:gap-3">
                 <WeeklyPaceCard
                   label="Workouts"
                   value={String(weekly.thisWeek.workouts)}
@@ -456,13 +456,13 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         )}
       </section>
 
-      <div className="border-t border-zinc-800/60 pt-4" aria-hidden />
+      <div className="border-t border-zinc-800/60 pt-2 sm:pt-4" aria-hidden />
 
       {/* Muscle Strength — diagram, list, weakest */}
       {strengthRanking && (
         <>
           <section id="muscle-strength">
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wider text-zinc-500">
               Muscle Strength
             </h3>
             <DashboardStrengthDiagram data={strengthRanking} gender={gender} />

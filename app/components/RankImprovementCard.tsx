@@ -82,10 +82,18 @@ export function RankImprovementCard({ data }: Props) {
     <div className="flex h-full flex-col justify-between rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 transition hover:border-zinc-700">
       <div className="space-y-4">
         <div className="flex items-center gap-3">
-          <RankBadge rank={content.nextRank} tier={content.nextTier} size={80} />
-          <p className="text-sm font-semibold text-zinc-200">
+          {/* Text left, badge right — text can wrap and fit; badge stays fixed size */}
+          <p className="min-w-0 flex-1 text-sm font-semibold text-zinc-200">
             Next Rank: {content.nextLabel}
           </p>
+          <div className="flex h-20 w-20 shrink-0 items-center justify-center md:h-16 md:w-16">
+            <RankBadge
+              rank={content.nextRank}
+              tier={content.nextTier}
+              size={96}
+              className="h-full w-full [&_img]:max-h-full [&_img]:max-w-full"
+            />
+          </div>
         </div>
 
         {content.limiting.length === 0 ? (

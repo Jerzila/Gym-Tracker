@@ -35,7 +35,7 @@ export function RankBadge({ rank, tier, size = 72, showTierLabel = false, classN
         alt={tierLabel}
         width={size}
         height={size}
-        className="h-auto w-auto object-contain"
+        className="h-auto w-auto max-h-full max-w-full object-contain"
         style={{ width: size, height: size }}
         unoptimized
       />

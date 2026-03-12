@@ -32,19 +32,19 @@ export function WeeklyProgressWidget({ weekly, lastWorkout }: Props) {
       </h2>
 
       <div className="flex flex-1 flex-col space-y-2 leading-tight">
-        {/* 3 stats */}
-        <div className="grid grid-cols-3 gap-2">
-          <div>
-            <p className="text-xs text-zinc-400">Exercises</p>
-            <p className="text-base font-semibold text-zinc-100">{exercises}</p>
+        {/* 3 stats — clean grid to prevent label overlap on mobile */}
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div className="flex flex-col items-center">
+            <span className="text-xs text-zinc-400">Exercises</span>
+            <span className="text-lg font-semibold text-zinc-100">{exercises}</span>
           </div>
-          <div>
-            <p className="text-xs text-zinc-400">Sets</p>
-            <p className="text-base font-semibold text-zinc-100">{sets}</p>
+          <div className="flex flex-col items-center">
+            <span className="text-xs text-zinc-400">Sets</span>
+            <span className="text-lg font-semibold text-zinc-100">{sets}</span>
           </div>
-          <div>
-            <p className="text-xs text-zinc-400">PRs</p>
-            <p className="text-base font-semibold text-zinc-100">{prs}</p>
+          <div className="flex flex-col items-center">
+            <span className="text-xs text-zinc-400">PRs</span>
+            <span className="text-lg font-semibold text-zinc-100">{prs}</span>
           </div>
         </div>
 

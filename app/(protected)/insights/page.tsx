@@ -19,7 +19,7 @@ export default async function InsightsPage() {
         <h2 className="text-lg font-semibold tracking-tight">Insights</h2>
       </div>
 
-      <main className="mx-auto max-w-xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-xl px-4 py-4 sm:px-6 sm:py-8">
         <InsightsPageContent
           exercises={exercises}
           gender={gender}
