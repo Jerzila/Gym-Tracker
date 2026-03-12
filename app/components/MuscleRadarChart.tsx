@@ -158,7 +158,7 @@ function MuscleRadarChartInner({ range, current, previous, tooltipData }: Props)
   }, []);
 
   const hasData = data.some(
-    (d) => (d[currentKey] ?? 0) > 0 || (d[previousKey] ?? 0) > 0
+    (d) => Number(d[currentKey] ?? 0) > 0 || Number(d[previousKey] ?? 0) > 0
   );
 
   if (!hasData) {
