@@ -178,27 +178,27 @@ export function CalendarView() {
 
       <main className="mx-auto w-full min-w-0 max-w-2xl px-4 py-6 sm:px-6">
         <div className="mb-4 grid grid-cols-3 gap-2">
-          <div className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center min-w-0">
-            <p className="truncate text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <div className="w-full min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center">
+            <p className="break-words text-xs font-medium uppercase tracking-wider text-zinc-500">
               This Week
             </p>
-            <p className="mt-1 truncate text-lg font-semibold text-zinc-200">
+            <p className="mt-1 break-words text-base font-semibold text-zinc-200 sm:text-lg">
               {counts !== null ? counts.thisWeek : "—"} workouts
             </p>
           </div>
-          <div className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center min-w-0">
-            <p className="truncate text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <div className="w-full min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center">
+            <p className="break-words text-xs font-medium uppercase tracking-wider text-zinc-500">
               This Month
             </p>
-            <p className="mt-1 truncate text-lg font-semibold text-zinc-200">
+            <p className="mt-1 break-words text-base font-semibold text-zinc-200 sm:text-lg">
               {counts !== null ? counts.thisMonth : "—"} workouts
             </p>
           </div>
-          <div className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center min-w-0">
-            <p className="truncate text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <div className="w-full min-w-0 rounded-xl border border-zinc-800 bg-zinc-950 p-3.5 text-center">
+            <p className="break-words text-xs font-medium uppercase tracking-wider text-zinc-500">
               This Year
             </p>
-            <p className="mt-1 truncate text-lg font-semibold text-zinc-200">
+            <p className="mt-1 break-words text-base font-semibold text-zinc-200 sm:text-lg">
               {counts !== null ? counts.thisYear : "—"} workouts
             </p>
           </div>

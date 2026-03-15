@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { SkeletonPanel } from "@/app/components/Skeleton";
@@ -73,6 +74,7 @@ export function DashboardPageContent({
   gender = "male",
   strengthRanking,
 }: Props) {
+  const router = useRouter();
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const weightKg = bodyweightStats.latest?.weight ?? profileWeightKg ?? null;
@@ -210,13 +212,23 @@ export function DashboardPageContent({
 
       {/* Training Balance (Radar) Preview */}
       <section className="animate-fade-in" style={{ animationDelay: "125ms" }}>
-        <Link href="/insights" prefetch={true} className="block">
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700 hover:bg-zinc-900/70">
+        <div className="relative">
+          {/* Background tap area → Insights */}
+          <div
+            className="absolute inset-0 rounded-xl cursor-pointer tap-feedback"
+            onClick={() => router.push("/insights")}
+          />
+
+          {/* Card content sits above the navigation layer */}
+          <div className="relative z-10 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700 hover:bg-zinc-900/70">
             <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
               Training Balance
             </h2>
             {categoryDistribution?.current?.length ? (
-              <div className="min-h-[160px] w-full overflow-hidden rounded-lg">
+              <div
+                className="min-h-[160px] w-full overflow-hidden rounded-lg"
+                onClickCapture={(e) => e.stopPropagation()}
+              >
                 <MuscleRadarChart
                   range="this_week"
                   current={categoryDistribution.current}
@@ -228,9 +240,14 @@ export function DashboardPageContent({
                 Log workouts to see distribution
               </div>
             )}
-            <p className="mt-1.5 text-center text-[11px] text-zinc-500">Tap for full Insights</p>
+            <p
+              className="mt-1.5 text-center text-[11px] text-zinc-500 cursor-pointer"
+              onClick={() => router.push("/insights")}
+            >
+              Tap for full Insights
+            </p>
           </div>
-        </Link>
+        </div>
       </section>
     </div>
   );
