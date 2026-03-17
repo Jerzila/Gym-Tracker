@@ -50,6 +50,7 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
         lastShownMessageRef.current = state.message;
         toast.show(state.message);
       }
+      window.dispatchEvent(new CustomEvent("liftly-request-install-prompt"));
     }
     if (state?.message || state?.error) {
       setShowSpinner(false);

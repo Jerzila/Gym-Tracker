@@ -10,6 +10,7 @@ const DEFAULT_CATEGORY_NAMES = [
   "Biceps",
   "Triceps",
   "Shoulders",
+  "Forearms",
   "Quads",
   "Hamstrings",
   "Glutes",
@@ -21,7 +22,7 @@ function isConnectionError(e: unknown): boolean {
   return msg.includes("fetch failed") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("network");
 }
 
-/** Get current user's categories. Ensures default categories exist if none (e.g. existing user before trigger). */
+/** Get current user's categories. Ensures all default categories (including Forearms) exist. */
 export async function getCategories(): Promise<Category[]> {
   try {
     const supabase = await createServerClient();
@@ -37,13 +38,20 @@ export async function getCategories(): Promise<Category[]> {
     if (error) throw new Error(error.message);
 
     const list = (data ?? []) as Category[];
-    if (list.length === 0) {
-      const inserted = await ensureDefaultCategories(supabase, user.id);
-      if (inserted.length > 0) {
-        return inserted;
-      }
-    }
-    return list;
+    const existing = new Set(list.map((c) => c.name.toLowerCase()));
+    const hasAllDefaults = DEFAULT_CATEGORY_NAMES.every((name) =>
+      existing.has(name.toLowerCase())
+    );
+    if (hasAllDefaults) return list;
+
+    await ensureDefaultCategories(supabase, user.id);
+    const { data: refreshed, error: refreshedError } = await supabase
+      .from("categories")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("name");
+    if (refreshedError) throw new Error(refreshedError.message);
+    return (refreshed ?? []) as Category[];
   } catch (e) {
     if (isConnectionError(e)) {
       throw new Error("Can't connect to Supabase. Check NEXT_PUBLIC_SUPABASE_URL and your API key in .env.local.");
@@ -52,15 +60,15 @@ export async function getCategories(): Promise<Category[]> {
   }
 }
 
-/** Create default categories for a user. Returns created categories. Used when user has none. */
+/** Ensure default categories for a user (idempotent). */
 async function ensureDefaultCategories(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   userId: string
-): Promise<Category[]> {
+): Promise<void> {
   const rows = DEFAULT_CATEGORY_NAMES.map((name) => ({ user_id: userId, name }));
-  const { data, error } = await supabase.from("categories").insert(rows).select("*");
-  if (error) return [];
-  return (data ?? []) as Category[];
+  await supabase
+    .from("categories")
+    .upsert(rows, { onConflict: "user_id,name", ignoreDuplicates: true });
 }
 
 export async function createCategory(formData: FormData): Promise<{ error?: string }> {

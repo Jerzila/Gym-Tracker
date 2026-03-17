@@ -8,6 +8,7 @@ import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
 import { formatWeight } from "@/lib/formatWeight";
+import { formatTopPercentDisplay } from "@/lib/formatPercentile";
 import { useUnits } from "@/app/components/UnitsContext";
 
 const MOBILE_BREAKPOINT = 768;
@@ -26,26 +27,42 @@ function useIsMobile() {
 /** Fallback for body parts not in our strength map; Newbie rank uses getRankColor("newbie") (gray). */
 const DEFAULT_FILL = "#2a2a2a";
 
-/** Body slug → strength rank muscle (for tap card). */
+/**
+ * Body slug → strength rank muscle (for tap card).
+ * Core: rectus_abdominis/upper_abs/lower_abs → "abs"; obliques_left/obliques_right → "obliques" (library slugs).
+ * Forearms: forearm_left/forearm_right → "forearm" (one slug, both sides).
+ */
 const SLUG_TO_STRENGTH_MUSCLE: Record<string, StrengthRankMuscle> = {
   chest: "chest",
   "upper-back": "back",
   "lower-back": "back",
   deltoids: "shoulders",
-  biceps: "arms",
-  triceps: "arms",
+  biceps: "biceps",
+  triceps: "triceps",
   quadriceps: "legs",
   hamstring: "legs",
   gluteal: "legs",
   calves: "legs",
+  // Core (front only): abs = rectus/upper/lower abs; obliques = side abs
+  abs: "core",
+  obliques: "core",
+  // Forearms (front and back)
+  forearm: "forearms",
 };
+
+/** Core muscle regions — front diagram only. */
+const CORE_DIAGRAM_SLUGS = ["abs", "obliques"] as const;
 
 const STRENGTH_MUSCLE_LABEL: Record<StrengthRankMuscle, string> = {
   chest: "Chest",
   back: "Back",
   legs: "Legs",
   shoulders: "Shoulders",
-  arms: "Arms",
+  biceps: "Biceps",
+  triceps: "Triceps",
+  forearms: "Forearms",
+  traps: "Traps",
+  core: "Core",
 };
 
 /** Legend order and labels for rank colors. */
@@ -74,22 +91,30 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [view, setView] = useState<"front" | "back">("front");
 
-  const { bodyData, strengthMuscleBySlug } = useMemo(() => {
+  const { bodyDataFront, bodyDataBack, strengthMuscleBySlug } = useMemo(() => {
     const musclePercentiles = data.musclePercentiles;
     const slugToMuscle = { ...SLUG_TO_STRENGTH_MUSCLE };
-    const bodyData: ExtendedBodyPart[] = [];
+    const allParts: ExtendedBodyPart[] = [];
     for (const [slug, muscle] of Object.entries(slugToMuscle)) {
+      const exerciseCount = data.exerciseCountByMuscle?.[muscle] ?? 0;
+      const isEmpty = (muscle === "core" || muscle === "forearms") && exerciseCount === 0;
+      // For core/forearms with no exercises, do not apply a rank color; use default fill.
+      if (isEmpty) continue;
       const pct = musclePercentiles[muscle];
       const rank = getRank(pct).rank;
-      // Newbie (no data) uses lowest rank color (gray) so diagram shows full neutral body
       const fill = getRankColor(rank as RankSlug);
-      bodyData.push({
+      allParts.push({
         slug: slug as ExtendedBodyPart["slug"],
         color: fill,
       });
     }
-    return { bodyData, strengthMuscleBySlug: slugToMuscle };
-  }, [data.musclePercentiles]);
+    // Core regions (abs, obliques) only on front view; back view excludes them
+    const bodyDataFront = allParts;
+    const bodyDataBack = allParts.filter(
+      (p) => p.slug && !CORE_DIAGRAM_SLUGS.includes(p.slug as (typeof CORE_DIAGRAM_SLUGS)[number])
+    );
+    return { bodyDataFront, bodyDataBack, strengthMuscleBySlug: slugToMuscle };
+  }, [data.musclePercentiles, data.exerciseCountByMuscle]);
 
   const handleBodyPartPress = useCallback((part: ExtendedBodyPart) => {
     setSelectedSlug(part.slug ?? null);
@@ -98,16 +123,18 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
   const selectedMuscle = selectedSlug != null ? strengthMuscleBySlug[selectedSlug] : null;
   const muscleCard = useMemo(() => {
     if (!selectedMuscle) return null;
+    const exerciseCount = data.exerciseCountByMuscle?.[selectedMuscle] ?? 0;
+    const isEmpty = (selectedMuscle === "core" || selectedMuscle === "forearms") && exerciseCount === 0;
     const pct = data.musclePercentiles[selectedMuscle];
     const rankInfo = data.muscleRanks[selectedMuscle];
     const r = getRank(pct);
     const progress = getProgressToNextTier(pct);
     const bestEx = data.bestExerciseByMuscle[selectedMuscle];
-    const topPct = 100 - pct;
-    const topLabel = pct >= 99 ? "Top 1%" : pct >= 90 ? "Top 10%" : `Top ${topPct}%`;
+    const topLabel = formatTopPercentDisplay(pct);
     return {
       muscle: selectedMuscle,
       label: STRENGTH_MUSCLE_LABEL[selectedMuscle],
+      isEmpty,
       rank: r.rank as RankSlug,
       tier: r.tier,
       rankLabel: rankInfo.rankLabel,
@@ -118,7 +145,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
     };
   }, [selectedMuscle, data]);
 
-  if (bodyData.length === 0) {
+  if (bodyDataFront.length === 0) {
     return (
       <p className="text-sm text-zinc-500">No strength data per muscle yet. Log more exercises.</p>
     );
@@ -135,36 +162,55 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
       {muscleCard ? (
         <div key={muscleCard.muscle} className="muscle-panel-content">
           <p className="font-semibold text-zinc-100">{muscleCard.label}</p>
-          <div className="mt-2 flex justify-center">
-            <RankBadge rank={muscleCard.rank} tier={muscleCard.tier} size={isMobile ? 40 : 52} />
-          </div>
-          <p className="mt-1.5 text-center text-sm font-medium text-zinc-300">
-            {muscleCard.rankLabel}
-          </p>
-          <p className={`text-center text-zinc-400 ${isMobile ? "text-sm" : "text-xs"}`}>{muscleCard.topLabel}</p>
-          {muscleCard.bestExercise ? (
-            <p className={`mt-2 border-t border-zinc-700 pt-2 text-zinc-400 ${isMobile ? "text-sm" : "text-xs"}`}>
-              <span className="font-medium text-zinc-300">Top exercise</span>
-              <br />
-              {muscleCard.bestExercise.name} —{" "}
-              {formatWeight(muscleCard.bestExercise.estimated1RM, { units })} 1RM
-            </p>
-          ) : (
-            <p className={`mt-2 border-t border-zinc-700 pt-2 text-zinc-500 ${isMobile ? "text-sm" : "text-xs"}`}>
+          {muscleCard.isEmpty ? (
+            <p className="mt-2 text-sm text-zinc-500">
               No strength data yet
               <br />
-              <span className={isMobile ? "text-xs" : "text-[10px]"}>Log {muscleCard.label.toLowerCase()} exercises to start ranking.</span>
+              <span className="text-xs">
+                Log exercises in this muscle group to see your rank.
+              </span>
             </p>
+          ) : (
+            <>
+              <div className="mt-2 flex justify-center [&_img]:object-contain" style={{ marginBottom: 8 }}>
+                <RankBadge rank={muscleCard.rank} tier={muscleCard.tier} size={isMobile ? 56 : 72} />
+              </div>
+              <p className="text-center text-sm font-medium text-zinc-300">
+                {muscleCard.rankLabel}
+              </p>
+              <p className={`text-center text-zinc-400 ${isMobile ? "text-sm" : "text-xs"}`}>{muscleCard.topLabel}</p>
+            </>
           )}
-          <div className="mt-2">
-            <p className={`text-zinc-500 ${isMobile ? "text-xs" : "text-[10px]"}`}>Next: {muscleCard.nextLabel}</p>
-            <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
-              <div
-                className="h-full rounded-full bg-amber-500 transition-all duration-200"
-                style={{ width: `${muscleCard.progressPct}%` }}
-              />
+          {!muscleCard.isEmpty && (
+            muscleCard.bestExercise ? (
+              <p className={`mt-2 border-t border-zinc-700 pt-2 text-zinc-400 ${isMobile ? "text-sm" : "text-xs"}`}>
+                <span className="font-medium text-zinc-300">Top exercise</span>
+                <br />
+                {muscleCard.muscle === "core"
+                  ? muscleCard.bestExercise.name
+                  : `${muscleCard.bestExercise.name} — ${formatWeight(muscleCard.bestExercise.estimated1RM, { units })} 1RM`}
+              </p>
+            ) : (
+              <p className={`mt-2 border-t border-zinc-700 pt-2 text-zinc-500 ${isMobile ? "text-sm" : "text-xs"}`}>
+                No strength data yet
+                <br />
+                <span className={isMobile ? "text-xs" : "text-[10px]"}>
+                  Log {muscleCard.label.toLowerCase()} exercises to start ranking.
+                </span>
+              </p>
+            )
+          )}
+          {!muscleCard.isEmpty && (
+            <div className="mt-2">
+              <p className={`text-zinc-500 ${isMobile ? "text-xs" : "text-[10px]"}`}>Next: {muscleCard.nextLabel}</p>
+              <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-amber-500 transition-all duration-200"
+                  style={{ width: `${muscleCard.progressPct}%` }}
+                />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       ) : (
         <div className="flex min-h-[140px] flex-col items-center justify-center py-4 text-center">
@@ -174,8 +220,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
     </div>
   );
 
-  const bodyProps = {
-    data: bodyData,
+  const bodyPropsBase = {
     gender: (gender === "female" ? "female" : "male") as "male" | "female",
     scale: 1.28,
     defaultFill: DEFAULT_FILL,
@@ -217,7 +262,11 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
           </div>
           <div className="flex flex-row items-center justify-center gap-4">
             <div className="flex w-[60%] max-w-[260px] flex-shrink-0 items-center justify-center">
-              <Body {...bodyProps} side={view} />
+              <Body
+                {...bodyPropsBase}
+                data={view === "front" ? bodyDataFront : bodyDataBack}
+                side={view}
+              />
             </div>
             {infoCard}
           </div>
@@ -228,8 +277,8 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
       {!isMobile && (
         <div className="grid grid-cols-[2.2fr_1fr] items-center gap-3 md:gap-4">
           <div className="flex min-w-0 w-full flex-row justify-center gap-2 overflow-visible md:gap-3">
-            <Body {...bodyProps} side="front" />
-            <Body {...bodyProps} side="back" />
+            <Body {...bodyPropsBase} data={bodyDataFront} side="front" />
+            <Body {...bodyPropsBase} data={bodyDataBack} side="back" />
           </div>
           {infoCard}
         </div>

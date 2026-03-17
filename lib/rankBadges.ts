@@ -41,19 +41,23 @@ export function getRankColor(rank: RankSlug): string {
   return RANK_COLORS[rank] ?? RANK_COLORS.newbie;
 }
 
-/** Percentile bands (min inclusive, max exclusive) → rank slug. */
+/**
+ * Global percentile bands: "Top X%" (higher = stronger).
+ * Newbie = Top 100–90%, Starter = Top 90–80%, … GOAT = Top 1%.
+ * III = bottom third of band, II = middle, I = top third.
+ */
 const BANDS: { min: number; max: number; rank: RankSlug }[] = [
-  { min: 0, max: 9, rank: "newbie" },
-  { min: 9, max: 18, rank: "starter" },
-  { min: 18, max: 30, rank: "apprentice" },
-  { min: 30, max: 50, rank: "lifter" },
-  { min: 50, max: 65, rank: "semi-pro" },
-  { min: 65, max: 75, rank: "pro" },
-  { min: 75, max: 84, rank: "elite" },
-  { min: 84, max: 90, rank: "master" },
-  { min: 90, max: 96, rank: "grandmaster" },
-  { min: 96, max: 99, rank: "titan" },
-  { min: 99, max: 101, rank: "goat" },
+  { min: 90, max: 100, rank: "newbie" },
+  { min: 80, max: 90, rank: "starter" },
+  { min: 70, max: 80, rank: "apprentice" },
+  { min: 60, max: 70, rank: "lifter" },
+  { min: 50, max: 60, rank: "semi-pro" },
+  { min: 35, max: 50, rank: "pro" },
+  { min: 20, max: 35, rank: "elite" },
+  { min: 10, max: 20, rank: "master" },
+  { min: 5, max: 10, rank: "grandmaster" },
+  { min: 2, max: 5, rank: "titan" },
+  { min: 0, max: 2, rank: "goat" },
 ];
 
 export type GetRankResult = {
@@ -64,13 +68,14 @@ export type GetRankResult = {
   rankLabel: string;
 };
 
+/** III = bottom third, II = middle, I = top third of band. */
 function getTier(percentile: number, min: number, max: number): "I" | "II" | "III" {
   const width = max - min;
   if (width <= 0) return "I";
   const third = width / 3;
-  if (percentile < min + third) return "I";
+  if (percentile < min + third) return "III";
   if (percentile < min + 2 * third) return "II";
-  return "III";
+  return "I";
 }
 
 const RANK_DISPLAY: Record<RankSlug, string> = {
@@ -117,7 +122,8 @@ export const RANK_LADDER: { min: number; max: number; rank: RankSlug; displayNam
 export function getRank(percentile: number): GetRankResult {
   const clamped = Math.max(0, Math.min(100, percentile));
   for (const band of BANDS) {
-    if (clamped >= band.min && clamped < band.max) {
+    const inBand = clamped >= band.min && (band.rank === "goat" ? clamped <= band.max : clamped < band.max);
+    if (inBand) {
       const tier = getTier(clamped, band.min, band.max);
       const display = band.rank === "goat" ? "GOAT 🐐" : `${RANK_DISPLAY[band.rank]} ${tier}`;
       return {
@@ -158,24 +164,24 @@ export type ProgressToNextResult = {
  */
 export function getProgressToNextTier(percentile: number): ProgressToNextResult {
   const clamped = Math.max(0, Math.min(100, percentile));
-  if (clamped === 0) {
+  if (clamped <= 2) {
     return {
-      progressPct: 0,
-      nextLabel: "Starter I",
-      nextRank: "starter",
+      progressPct: 100,
+      nextLabel: "GOAT 🐐",
+      nextRank: "goat",
       nextTier: "I",
       tierStart: 0,
-      tierEnd: 9,
+      tierEnd: 2,
     };
   }
   for (const band of BANDS) {
-    if (clamped >= band.min && clamped < band.max) {
+    const inBand = clamped >= band.min && (band.rank === "goat" ? clamped <= band.max : clamped < band.max);
+    if (inBand) {
       const width = band.max - band.min;
       const third = width / 3;
       const tier = getTier(clamped, band.min, band.max);
-      const tierStart =
-        tier === "I" ? band.min : tier === "II" ? band.min + third : band.min + 2 * third;
-      const tierEnd = tier === "I" ? band.min + third : tier === "II" ? band.min + 2 * third : band.max;
+      const tierStart = tier === "III" ? band.min : tier === "II" ? band.min + third : band.min + 2 * third;
+      const tierEnd = tier === "III" ? band.min + third : tier === "II" ? band.min + 2 * third : band.max;
       const progressPct =
         tierEnd > tierStart
           ? Math.round(((clamped - tierStart) / (tierEnd - tierStart)) * 100)
@@ -183,7 +189,7 @@ export function getProgressToNextTier(percentile: number): ProgressToNextResult 
       let nextLabel: string;
       let nextRank: RankSlug;
       let nextTier: "I" | "II" | "III";
-      if (tier === "III") {
+      if (tier === "I") {
         const nextBand = BANDS[BANDS.indexOf(band) + 1];
         if (nextBand) {
           nextRank = nextBand.rank;
@@ -191,12 +197,12 @@ export function getProgressToNextTier(percentile: number): ProgressToNextResult 
           nextLabel = nextRank === "goat" ? "GOAT 🐐" : `${RANK_DISPLAY[nextRank]} I`;
         } else {
           nextRank = "goat";
-          nextTier = "III";
+          nextTier = "I";
           nextLabel = "GOAT 🐐";
         }
       } else {
         nextRank = band.rank;
-        nextTier = tier === "I" ? "II" : "III";
+        nextTier = tier === "III" ? "II" : "I";
         nextLabel = `${RANK_DISPLAY[band.rank]} ${nextTier}`;
       }
       return {
@@ -210,11 +216,11 @@ export function getProgressToNextTier(percentile: number): ProgressToNextResult 
     }
   }
   return {
-    progressPct: 100,
-    nextLabel: "GOAT 🐐",
-    nextRank: "goat",
-    nextTier: "III",
-    tierStart: 99,
+    progressPct: 0,
+    nextLabel: "Starter I",
+    nextRank: "starter",
+    nextTier: "I",
+    tierStart: 90,
     tierEnd: 100,
   };
 }

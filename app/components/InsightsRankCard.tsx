@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { RankBadge } from "@/app/components/RankBadge";
 import { getRank, getProgressToNextTier } from "@/lib/rankBadges";
+import { formatTopPercentDisplay } from "@/lib/formatPercentile";
 import type { RankSlug } from "@/lib/rankBadges";
 
 type Props = {
@@ -14,20 +15,14 @@ export function InsightsRankCard({ overallPercentile }: Props) {
   const { rank, tier, rankLabel, nextLabel, progressPct, topLabel } = useMemo(() => {
     const r = getRank(overallPercentile);
     const p = getProgressToNextTier(overallPercentile);
-    const topPct = 100 - overallPercentile;
-    const top =
-      overallPercentile >= 99
-        ? "Top 1% of lifters"
-        : overallPercentile >= 90
-          ? "Top 10% of lifters"
-          : `Top ${topPct}% of lifters`;
+    const topLabel = `${formatTopPercentDisplay(overallPercentile)} of lifters`;
     return {
       rank: r.rank as RankSlug,
       tier: r.tier,
       rankLabel: r.rankLabel,
       nextLabel: p.nextLabel,
       progressPct: p.progressPct,
-      topLabel: top,
+      topLabel,
     };
   }, [overallPercentile]);
 

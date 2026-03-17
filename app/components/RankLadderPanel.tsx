@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { RANK_LADDER, getRank, getProgressToNextTier } from "@/lib/rankBadges";
+import { formatTopPercentDisplay } from "@/lib/formatPercentile";
 import type { RankSlug } from "@/lib/rankBadges";
 
 type Props = {
@@ -21,16 +22,8 @@ export function RankLadderPanel({ isOpen, onClose, overallPercentile }: Props) {
     return { rankLabel: r.rankLabel, rank: r.rank as RankSlug };
   })();
   const progress = getProgressToNextTier(overallPercentile);
-  const nextRankTopPct = Math.round(100 - progress.tierEnd);
-  const nextRankTopLabel =
-    progress.tierEnd >= 99 ? "Top 1%" : progress.tierEnd >= 90 ? "Top 10%" : `Top ${nextRankTopPct}%`;
-  const topPct = 100 - overallPercentile;
-  const topLabel =
-    overallPercentile >= 99
-      ? "Top 1%"
-      : overallPercentile >= 90
-        ? "Top 10%"
-        : `Top ${topPct}%`;
+  const nextRankTopLabel = formatTopPercentDisplay(progress.tierEnd);
+  const topLabel = formatTopPercentDisplay(overallPercentile);
 
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent) => {

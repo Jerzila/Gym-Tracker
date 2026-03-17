@@ -2,35 +2,23 @@
 
 import { getBodyweightStats } from "@/app/actions/bodyweight";
 import { getProfile } from "@/app/actions/profile";
-import {
-  getAll1RMProgression,
-  type Estimated1RMByExercise,
-} from "@/app/actions/insights";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   computeStrengthRanking,
   categoryToStrengthMuscles,
+  epleyEstimated1RM,
+  isUnilateralExercise,
+  UNILATERAL_WEIGHT_FACTOR,
+  getNextRankThreshold,
+  getWeightIncreaseSuggestions,
+  getTopExercisesByMuscleForSuggestions,
   type StrengthRankingOutput,
   type StrengthRankMuscle,
+  type ExerciseDataPoint,
+  type WeightIncreaseSuggestion,
   STRENGTH_RANK_MUSCLES,
+  PRIMARY_STRENGTH_RANK_MUSCLES,
 } from "@/lib/strengthRanking";
-
-/**
- * Get best estimated 1RM (kg) per exercise from full progression.
- * Uses the maximum 1RM ever recorded per exercise.
- */
-function best1RMByExerciseFromProgression(
-  estimated1RMByExercise: Estimated1RMByExercise
-): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const [exerciseId, points] of Object.entries(estimated1RMByExercise)) {
-    if (points?.length) {
-      const best = Math.max(...points.map((p) => p.estimated1RM));
-      out[exerciseId] = Math.round(best * 10) / 10;
-    }
-  }
-  return out;
-}
 
 export type BestExerciseByMuscle = {
   name: string;
@@ -40,10 +28,27 @@ export type BestExerciseByMuscle = {
 /** Up to 3 exercises per muscle, sorted by estimated1RM descending (for rank improvement UI). */
 export type TopExercisesByMuscle = Record<StrengthRankMuscle, BestExerciseByMuscle[]>;
 
+export type CoreExerciseType = "plank" | "situps" | "hanging_leg_raise" | "weighted";
+
+export type CoreImprovementSuggestion = {
+  name: string;
+  type: CoreExerciseType;
+  /** Display string like "+20 seconds" / "+5 reps" / "+2 kg" */
+  improvementLabel: string;
+};
+
 export type StrengthRankingWithExercises = StrengthRankingOutput & {
   bestExerciseByMuscle: Record<StrengthRankMuscle, BestExerciseByMuscle | null>;
   /** Top 2–3 exercises per muscle by 1RM (for multi-exercise improvement display). */
   topExercisesByMuscle: TopExercisesByMuscle;
+  /** Weight increase suggestions per muscle to reach next rank (multiple paths). */
+  improvementSuggestionsByMuscle: Record<StrengthRankMuscle, WeightIncreaseSuggestion[]>;
+  /** Which muscles should be shown in the Muscle Strength Rankings UI. */
+  visibleMuscles: StrengthRankMuscle[];
+  /** Number of exercises that map to each muscle (for empty-state UI). */
+  exerciseCountByMuscle: Record<StrengthRankMuscle, number>;
+  /** Core-specific “Improve” suggestions (time/reps/weight). */
+  coreImprovementSuggestions: CoreImprovementSuggestion[];
 };
 
 export type GetStrengthRankingResult = {
@@ -51,45 +56,197 @@ export type GetStrengthRankingResult = {
   error?: string;
 };
 
-/** Default ranking when user has no workouts, no 1RM data, or no bodyweight: Newbie I, percentile 0. */
+const emptyMuscleRank = {
+  strengthScore: 0,
+  rank: "Newbie",
+  tier: "III" as const,
+  rankLabel: "Newbie III",
+  rankSlug: "newbie" as const,
+  progressToNextPct: 0,
+  nextRankLabel: "Starter I",
+  topPercentile: 90,
+};
+
+/** Default ranking when user has no workouts, no 1RM data, or no bodyweight: Newbie I. */
 function defaultStrengthRankingWithExercises(): StrengthRankingWithExercises {
-  const musclePercentiles = {
+  const zeros = {
     chest: 0,
     back: 0,
     legs: 0,
     shoulders: 0,
-    arms: 0,
+    biceps: 0,
+    triceps: 0,
+    forearms: 0,
+    traps: 0,
+    core: 0,
   } as Record<StrengthRankMuscle, number>;
-  const muscleRanks = {
-    chest: { percentile: 0, rank: "Newbie", rankLabel: "Newbie I" },
-    back: { percentile: 0, rank: "Newbie", rankLabel: "Newbie I" },
-    legs: { percentile: 0, rank: "Newbie", rankLabel: "Newbie I" },
-    shoulders: { percentile: 0, rank: "Newbie", rankLabel: "Newbie I" },
-    arms: { percentile: 0, rank: "Newbie", rankLabel: "Newbie I" },
-  } as Record<StrengthRankMuscle, { percentile: number; rank: string; rankLabel: string }>;
+  const muscleRanks = Object.fromEntries(
+    STRENGTH_RANK_MUSCLES.map((m) => [m, { ...emptyMuscleRank }])
+  ) as Record<StrengthRankMuscle, typeof emptyMuscleRank>;
   const bestExerciseByMuscle: Record<StrengthRankMuscle, BestExerciseByMuscle | null> = {
     chest: null,
     back: null,
     legs: null,
     shoulders: null,
-    arms: null,
+    biceps: null,
+    triceps: null,
+    forearms: null,
+    traps: null,
+    core: null,
   };
   const topExercisesByMuscle: TopExercisesByMuscle = {
     chest: [],
     back: [],
     legs: [],
     shoulders: [],
-    arms: [],
+    biceps: [],
+    triceps: [],
+    forearms: [],
+    traps: [],
+    core: [],
   };
+  const improvementSuggestionsByMuscle = Object.fromEntries(
+    STRENGTH_RANK_MUSCLES.map((m) => [m, [] as WeightIncreaseSuggestion[]])
+  ) as Record<StrengthRankMuscle, WeightIncreaseSuggestion[]>;
   return {
-    musclePercentiles,
+    muscleScores: { ...zeros },
     muscleRanks,
-    overallPercentile: 0,
+    musclePercentiles: { ...zeros },
+    overallScore: 0,
     overallRank: "Newbie",
     overallRankLabel: "Newbie I",
+    overallRankSlug: "newbie",
+    overallProgressToNextPct: 0,
+    overallNextRankLabel: "Starter I",
+    overallNextRankSlug: "starter",
+    overallPercentile: 0,
     bestExerciseByMuscle,
     topExercisesByMuscle,
+    improvementSuggestionsByMuscle,
+    visibleMuscles: [...PRIMARY_STRENGTH_RANK_MUSCLES],
+    exerciseCountByMuscle: { ...zeros },
+    coreImprovementSuggestions: [],
   };
+}
+
+/** Exercise name → core (auto-map even if category is not Core). */
+function exerciseNameMapsToCore(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return (
+    n.includes("sit-up") ||
+    n.includes("sit up") ||
+    n.includes("situp") ||
+    n.includes("crunch") ||
+    n.includes("plank") ||
+    (n.includes("hanging") && (n.includes("leg raise") || n.includes("legraise"))) ||
+    n.includes("leg raise") ||
+    n.includes("legraise") ||
+    n.includes("ab wheel") ||
+    n.includes("cable crunch")
+  );
+}
+
+/** Exercise name → forearms (auto-map even if category is not Forearms). */
+function exerciseNameMapsToForearms(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return (
+    n.includes("wrist curl") ||
+    n.includes("reverse wrist") ||
+    n.includes("farmer") ||
+    n.includes("plate pinch")
+  );
+}
+
+function exerciseNameMapsToBiceps(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return (
+    n.includes("bicep curl") ||
+    n.includes("hammer curl") ||
+    n.includes("preacher curl") ||
+    n.includes("incline curl") ||
+    n.includes("cable curl")
+  );
+}
+
+function exerciseNameMapsToTriceps(name: string): boolean {
+  const n = name.trim().toLowerCase();
+  return (
+    n.includes("tricep pushdown") ||
+    n.includes("skull crusher") ||
+    n.includes("overhead tricep extension") ||
+    n.includes("dip") ||
+    n.includes("close grip bench")
+  );
+}
+
+/** Effective strength muscles for an exercise (category + name-based). */
+function getEffectiveMusclesForExercise(
+  categoryName: string,
+  exerciseName: string
+): StrengthRankMuscle[] {
+  const fromCategory = categoryToStrengthMuscles(categoryName);
+  const added: StrengthRankMuscle[] = [];
+  if (exerciseNameMapsToCore(exerciseName) && !fromCategory.includes("core")) added.push("core");
+  if (exerciseNameMapsToForearms(exerciseName) && !fromCategory.includes("forearms"))
+    added.push("forearms");
+  if (exerciseNameMapsToBiceps(exerciseName) && !fromCategory.includes("biceps"))
+    added.push("biceps");
+  if (exerciseNameMapsToTriceps(exerciseName) && !fromCategory.includes("triceps"))
+    added.push("triceps");
+  const set = new Set<StrengthRankMuscle>([...fromCategory, ...added]);
+  return [...set];
+}
+
+function normalizeCoreExerciseType(exerciseName: string): CoreExerciseType {
+  const n = exerciseName.trim().toLowerCase();
+  if (n.includes("plank")) return "plank";
+  if (n.includes("sit-up") || n.includes("sit up") || n.includes("situp") || n.includes("crunch"))
+    return "situps";
+  if (n.includes("hanging") && (n.includes("leg raise") || n.includes("legraise") || n.includes("raise")))
+    return "hanging_leg_raise";
+  if (n.includes("leg raise") || n.includes("legraise")) return "hanging_leg_raise";
+  return "weighted";
+}
+
+function coreScoreFromBestPerformance(args: {
+  type: CoreExerciseType;
+  bestRepsOrSeconds: number;
+  bestWeightKg: number;
+  bodyweightKg: number;
+}): number {
+  const bw = args.bodyweightKg > 0 ? args.bodyweightKg : 0;
+  if (args.type === "plank") return Math.max(0, args.bestRepsOrSeconds) / 60;
+  if (args.type === "situps") return Math.max(0, args.bestRepsOrSeconds) / 40;
+  if (args.type === "hanging_leg_raise") return Math.max(0, args.bestRepsOrSeconds) / 20;
+  // weighted
+  if (bw <= 0) return 0;
+  return Math.max(0, args.bestWeightKg) / bw;
+}
+
+function formatCoreImprovement(type: CoreExerciseType, current: number, requiredScore: number, bodyweightKg: number): string {
+  if (type === "plank") {
+    const requiredSeconds = requiredScore * 60;
+    const add = Math.max(0, requiredSeconds - current);
+    const rounded = Math.max(5, Math.round(add / 5) * 5);
+    return `+${rounded} seconds`;
+  }
+  if (type === "situps") {
+    const requiredReps = requiredScore * 40;
+    const add = Math.max(0, requiredReps - current);
+    const rounded = Math.max(1, Math.round(add));
+    return `+${rounded} reps`;
+  }
+  if (type === "hanging_leg_raise") {
+    const requiredReps = requiredScore * 20;
+    const add = Math.max(0, requiredReps - current);
+    const rounded = Math.max(1, Math.round(add));
+    return `+${rounded} reps`;
+  }
+  const bw = bodyweightKg > 0 ? bodyweightKg : 0;
+  const requiredWeight = bw > 0 ? requiredScore * bw : 0;
+  const add = Math.max(0, requiredWeight - current);
+  const rounded = Math.max(1, Math.round(add));
+  return `+${rounded} kg`;
 }
 
 /**
@@ -106,32 +263,25 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
     } = await supabase.auth.getUser();
     if (!user) return { data: null, error: "Not authenticated" };
 
-    const [bodyweightStats, profile, oneRMRes] = await Promise.all([
+    const [bodyweightStats, profile] = await Promise.all([
       getBodyweightStats(),
       getProfile(),
-      getAll1RMProgression(),
     ]);
 
-    // Bodyweight in kg: prefer latest log, fallback to profile
     const bodyweightKg =
       bodyweightStats.latest?.weight ??
       (profile?.body_weight != null ? profile.body_weight : 0);
 
-    const estimated1RMByExercise = oneRMRes.data ?? {};
-    const best1RMByExercise = best1RMByExerciseFromProgression(estimated1RMByExercise);
-    const exerciseIds = Object.keys(best1RMByExercise);
+    const { data: allExercises } = await supabase
+      .from("exercises")
+      .select("id, name, category_id")
+      .eq("user_id", user.id);
 
-    // No bodyweight or no workout/1RM data → return default Newbie I ranking so UI always shows something
-    if (bodyweightKg <= 0 || exerciseIds.length === 0) {
+    if (!allExercises?.length && bodyweightKg <= 0) {
       return { data: defaultStrengthRankingWithExercises() };
     }
 
-    const { data: exercises } = await supabase
-      .from("exercises")
-      .select("id, name, category_id")
-      .in("id", exerciseIds)
-      .eq("user_id", user.id);
-    const categoryIds = [...new Set((exercises ?? []).map((e) => e.category_id))];
+    const categoryIds = [...new Set((allExercises ?? []).map((e) => e.category_id))];
     const { data: categories } = await supabase
       .from("categories")
       .select("id, name")
@@ -140,55 +290,257 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
 
     const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
     const categoryByExercise: Record<string, string> = {};
-    for (const e of exercises ?? []) {
+    for (const e of allExercises ?? []) {
       const name = categoryNameById.get(e.category_id);
       if (name != null) categoryByExercise[e.id] = name;
     }
 
+    // Fetch all workouts and sets to build exercise data points (with date for recency)
+    const { data: workouts } = await supabase
+      .from("workouts")
+      .select("id, exercise_id, date, weight")
+      .eq("user_id", user.id)
+      .order("date", { ascending: true });
+
+    const workoutIds = (workouts ?? []).map((w) => w.id);
+    const { data: sets } =
+      workoutIds.length > 0
+        ? await supabase.from("sets").select("workout_id, reps").in("workout_id", workoutIds)
+        : { data: [] as { workout_id: string; reps: number }[] };
+
+    const setsByWorkout = new Map<string, number[]>();
+    for (const s of sets ?? []) {
+      const list = setsByWorkout.get(s.workout_id) ?? [];
+      list.push(s.reps);
+      setsByWorkout.set(s.workout_id, list);
+    }
+
+    const exerciseNameById = new Map((allExercises ?? []).map((e) => [e.id, e.name]));
+    const referenceDate = new Date().toISOString().slice(0, 10);
+
+    const exerciseDataPoints: ExerciseDataPoint[] = [];
+    for (const w of workouts ?? []) {
+      const name = exerciseNameById.get(w.exercise_id) ?? "";
+      const categoryName = categoryByExercise[w.exercise_id] ?? "";
+      const weightKg = Number(w.weight) || 0;
+      const adjustedWeight = isUnilateralExercise(name) ? weightKg * UNILATERAL_WEIGHT_FACTOR : weightKg;
+      const repsList = setsByWorkout.get(w.id) ?? [];
+      for (const reps of repsList) {
+        const estimated1RM = Math.round(epleyEstimated1RM(adjustedWeight, reps) * 10) / 10;
+        if (estimated1RM > 0) {
+          exerciseDataPoints.push({
+            exerciseId: w.exercise_id,
+            exerciseName: name,
+            categoryName,
+            estimated1RM,
+            date: w.date,
+          });
+        }
+      }
+    }
+
+    const exerciseCountByMuscle: Record<StrengthRankMuscle, number> = {
+      chest: 0,
+      back: 0,
+      legs: 0,
+      shoulders: 0,
+      biceps: 0,
+      triceps: 0,
+      forearms: 0,
+      traps: 0,
+      core: 0,
+    };
+    for (const ex of allExercises ?? []) {
+      const muscles = getEffectiveMusclesForExercise(categoryByExercise[ex.id] ?? "", ex.name);
+      for (const m of muscles) exerciseCountByMuscle[m] += 1;
+    }
+
+    // --- Core scoring (special rules) ---
+    // Core exercises: category maps to core OR exercise name matches (sit-ups, planks, ab wheel, etc.).
+    const coreExerciseIds = (allExercises ?? [])
+      .filter((e) =>
+        getEffectiveMusclesForExercise(categoryByExercise[e.id] ?? "", e.name).includes("core")
+      )
+      .map((e) => e.id);
+
+    let coreScore: number | null = null;
+    const coreImprovementSuggestions: CoreImprovementSuggestion[] = [];
+
+    if (coreExerciseIds.length > 0) {
+      const { data: coreWorkouts } = await supabase
+        .from("workouts")
+        .select("id, exercise_id, weight")
+        .eq("user_id", user.id)
+        .in("exercise_id", coreExerciseIds);
+
+      const workoutIds = (coreWorkouts ?? []).map((w) => w.id);
+      const { data: coreSets } =
+        workoutIds.length > 0
+          ? await supabase.from("sets").select("workout_id, reps").in("workout_id", workoutIds)
+          : { data: [] as { workout_id: string; reps: number }[] };
+
+      const setsByWorkout = new Map<string, number[]>();
+      for (const s of coreSets ?? []) {
+        const list = setsByWorkout.get(s.workout_id) ?? [];
+        list.push(s.reps);
+        setsByWorkout.set(s.workout_id, list);
+      }
+
+      const bestByExercise = new Map<
+        string,
+        { type: CoreExerciseType; bestRepsOrSeconds: number; bestWeightKg: number; score: number; name: string }
+      >();
+
+      for (const ex of allExercises ?? []) {
+        if (!coreExerciseIds.includes(ex.id)) continue;
+        const type = normalizeCoreExerciseType(ex.name);
+        bestByExercise.set(ex.id, {
+          type,
+          bestRepsOrSeconds: 0,
+          bestWeightKg: 0,
+          score: 0,
+          name: ex.name,
+        });
+      }
+
+      // Compute best performance per exercise from workouts+sets
+      for (const w of coreWorkouts ?? []) {
+        const current = bestByExercise.get(w.exercise_id);
+        if (!current) continue;
+        const repsList = setsByWorkout.get(w.id) ?? [];
+        const bestSet = repsList.length ? Math.max(...repsList) : 0;
+        const weightKg = Number(w.weight) || 0;
+        current.bestRepsOrSeconds = Math.max(current.bestRepsOrSeconds, bestSet);
+        current.bestWeightKg = Math.max(current.bestWeightKg, weightKg);
+      }
+
+      const scored = [...bestByExercise.values()].map((v) => {
+        const score = coreScoreFromBestPerformance({
+          type: v.type,
+          bestRepsOrSeconds: v.bestRepsOrSeconds,
+          bestWeightKg: v.bestWeightKg,
+          bodyweightKg,
+        });
+        return { ...v, score: Math.round(score * 100) / 100 };
+      });
+
+      const top3 = scored
+        .map((x) => x.score)
+        .filter((s) => s > 0)
+        .sort((a, b) => b - a)
+        .slice(0, 3);
+      coreScore = top3.length > 0 ? Math.round((top3.reduce((a, b) => a + b, 0) / top3.length) * 100) / 100 : 0;
+
+      // Improvement suggestions: next rank threshold from lib (same score thresholds as other muscles).
+      const nextRankScore = getNextRankThreshold(coreScore ?? 0, "core");
+      const requiredScore = nextRankScore ?? coreScore + 0.15;
+
+      const topExercises = scored
+        .filter((x) => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3);
+
+      for (const ex of topExercises) {
+        const currentMetric =
+          ex.type === "weighted" ? ex.bestWeightKg : ex.bestRepsOrSeconds;
+        coreImprovementSuggestions.push({
+          name: ex.name,
+          type: ex.type,
+          improvementLabel: formatCoreImprovement(ex.type, currentMetric, requiredScore, bodyweightKg),
+        });
+      }
+    }
+
+    // Empty state: if user has no core exercises at all, do not show suggestions.
+    if (exerciseCountByMuscle.core === 0) {
+      coreScore = 0;
+      coreImprovementSuggestions.length = 0;
+    }
+
     const output = computeStrengthRanking({
-      best1RMByExercise,
-      categoryByExercise,
-      bodyweightKg,
-      liftlyUserPercentiles: null, // Future: blend when Liftly has enough users
+      exerciseDataPoints,
+      bodyweightKg: bodyweightKg > 0 ? bodyweightKg : 1,
+      referenceDate,
+      coreScore,
     });
+
+    const topExercisesData = getTopExercisesByMuscleForSuggestions(
+      exerciseDataPoints,
+      bodyweightKg > 0 ? bodyweightKg : 1,
+      referenceDate
+    );
 
     const bestExerciseByMuscle: Record<StrengthRankMuscle, BestExerciseByMuscle | null> = {
       chest: null,
       back: null,
       legs: null,
       shoulders: null,
-      arms: null,
+      biceps: null,
+      triceps: null,
+      forearms: null,
+      traps: null,
+      core: null,
     };
     const topExercisesByMuscle: TopExercisesByMuscle = {
       chest: [],
       back: [],
       legs: [],
       shoulders: [],
-      arms: [],
+      biceps: [],
+      triceps: [],
+      forearms: [],
+      traps: [],
+      core: [],
     };
+    const improvementSuggestionsByMuscle = Object.fromEntries(
+      STRENGTH_RANK_MUSCLES.map((m) => [m, [] as WeightIncreaseSuggestion[]])
+    ) as Record<StrengthRankMuscle, WeightIncreaseSuggestion[]>;
+
     for (const muscle of STRENGTH_RANK_MUSCLES) {
-      const candidates: { exerciseId: string; name: string; estimated1RM: number }[] = [];
-      for (const [exerciseId, categoryName] of Object.entries(categoryByExercise)) {
-        if (categoryToStrengthMuscles(categoryName).includes(muscle)) {
-          const estimated1RM = best1RMByExercise[exerciseId] ?? 0;
-          const ex = exercises?.find((e) => e.id === exerciseId);
-          if (ex && estimated1RM > 0)
-            candidates.push({ exerciseId, name: ex.name, estimated1RM });
+      const list = topExercisesData[muscle] ?? [];
+      if (list.length > 0) {
+        bestExerciseByMuscle[muscle] = { name: list[0].name, estimated1RM: list[0].estimated1RM };
+        topExercisesByMuscle[muscle] = list.map(({ name, estimated1RM }) => ({ name, estimated1RM }));
+        if (muscle !== "core") {
+          const nextScore = getNextRankThreshold(output.muscleScores[muscle], muscle);
+          if (nextScore != null && nextScore > output.muscleScores[muscle]) {
+            const suggestions = getWeightIncreaseSuggestions(
+              bodyweightKg > 0 ? bodyweightKg : 1,
+              output.muscleScores[muscle],
+              nextScore,
+              list.map(({ exerciseId, name, estimated1RM, multiplier }) => ({
+                exerciseId,
+                name,
+                estimated1RM,
+                multiplier,
+              }))
+            );
+            improvementSuggestionsByMuscle[muscle] = suggestions;
+          }
         }
       }
-      if (candidates.length > 0) {
-        const sorted = [...candidates].sort((a, b) => b.estimated1RM - a.estimated1RM);
-        const best = sorted[0];
-        bestExerciseByMuscle[muscle] = { name: best.name, estimated1RM: best.estimated1RM };
-        topExercisesByMuscle[muscle] = sorted.slice(0, 3).map(({ name, estimated1RM }) => ({ name, estimated1RM }));
-      }
     }
+
+    // Visibility: Core and Forearms always appear (like chest, back, etc.). Traps only if user has exercises.
+    const hasExerciseFor = (muscle: StrengthRankMuscle) =>
+      Object.values(categoryByExercise).some((cat) => categoryToStrengthMuscles(cat).includes(muscle));
+
+    const visibleMuscles: StrengthRankMuscle[] = [
+      ...PRIMARY_STRENGTH_RANK_MUSCLES,
+      ...(exerciseCountByMuscle.forearms > 0 ? (["forearms"] as const) : []),
+      ...(exerciseCountByMuscle.core > 0 ? (["core"] as const) : []),
+      ...(hasExerciseFor("traps") ? (["traps"] as const) : []),
+    ];
 
     return {
       data: {
         ...output,
         bestExerciseByMuscle,
         topExercisesByMuscle,
+        improvementSuggestionsByMuscle,
+        visibleMuscles,
+        exerciseCountByMuscle,
+        coreImprovementSuggestions,
       },
     };
   } catch (e) {

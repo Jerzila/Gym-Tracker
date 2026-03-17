@@ -12,7 +12,6 @@ import {
   getMuscleHeatmapData,
   type WeeklyComparison,
   type MuscleHeatmapPoint,
-  type PaceStatus,
   type CategoryDistribution,
   type MuscleDistribution,
   type MonthlySummary,
@@ -46,6 +45,7 @@ import {
 } from "recharts";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
+import { InstallPromptOnNewRank } from "@/app/components/InstallPromptOnNewRank";
 
 const MuscleRadarChart = dynamic(
   () => import("@/app/components/MuscleRadarChart").then((m) => ({ default: m.MuscleRadarChart })),
@@ -68,13 +68,6 @@ const MuscleRankList = dynamic(
   { ssr: false }
 );
 
-const WeakestMuscleCard = dynamic(
-  () =>
-    import("@/app/components/WeakestMuscleCard").then((m) => ({
-      default: m.WeakestMuscleCard,
-    })),
-  { ssr: false }
-);
 
 const InsightsRankCard = dynamic(
   () =>
@@ -390,6 +383,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
 
   return (
     <div className="space-y-6">
+      <InstallPromptOnNewRank overallRankSlug={strengthRanking?.overallRankSlug} />
       {/* Section 1: Top Rank Card */}
       {strengthRanking && (
         <section>
@@ -397,64 +391,17 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         </section>
       )}
 
-      {/* Section 2 & 3: Weekly Activity + Improve Your Rank — side by side on all screens (match desktop on phone) */}
-      <section className="grid grid-cols-2 gap-4 md:gap-6">
-        {/* Left: Weekly Activity */}
-        <div className="flex min-h-0 flex-col">
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Weekly Activity
+      {/* Section 2: Improve Your Rank — full width under Rank Card */}
+      {strengthRanking && (
+        <section className="mt-4 w-full">
+          <h3 className="mb-1 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            Improve Your Rank
           </h3>
-          <div className="min-h-0 flex-1">
-            {!weekly ? (
-              <div className="h-full rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
-                No data yet.
-              </div>
-            ) : weekly.noLastWeekData ? (
-              <div className="h-full rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
-                No comparison data from last week.
-              </div>
-            ) : weekly.weekJustStarted ? (
-              <div className="h-full rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center text-sm text-zinc-500">
-                Week just started — tracking progress.
-              </div>
-            ) : (
-              <div className="grid h-full grid-cols-2 gap-4 md:gap-3">
-                <WeeklyPaceCard
-                  label="Workouts"
-                  value={String(weekly.thisWeek.workouts)}
-                  pace={weekly.paceWorkouts}
-                />
-                <WeeklyPaceCard
-                  label="Exercises"
-                  value={String(weekly.thisWeek.exercises)}
-                  pace={weekly.paceExercises}
-                />
-                <WeeklyPaceCard
-                  label="Sets"
-                  value={String(weekly.thisWeek.sets)}
-                  pace={weekly.paceSets}
-                />
-                <WeeklyPaceCard
-                  label="PRs"
-                  value={String(weekly.thisWeek.prs)}
-                  pace={weekly.pacePrs}
-                />
-              </div>
-            )}
+          <div className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 py-2.5 px-3">
+            <RankImprovementCard data={strengthRanking} />
           </div>
-        </div>
-        {/* Right: Improve Your Rank */}
-        {strengthRanking && (
-          <div className="flex min-h-0 min-w-0 flex-col">
-            <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
-              Improve Your Rank
-            </h3>
-            <div className="min-h-0 flex-1">
-              <RankImprovementCard data={strengthRanking} />
-            </div>
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
       <div className="border-t border-zinc-800/60 pt-2 sm:pt-4" aria-hidden />
 
@@ -469,9 +416,6 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
           </section>
           <section className="mt-6">
             <MuscleRankList data={strengthRanking} />
-          </section>
-          <section className="mt-6">
-            <WeakestMuscleCard data={strengthRanking} />
           </section>
         </>
       )}
@@ -793,48 +737,6 @@ const MetricCard = memo(function MetricCard({
       <p className="mt-0.5 text-lg font-semibold text-zinc-100">{value}</p>
       {sub != null && (
         <p className="mt-0.5 text-xs text-zinc-500">{sub}</p>
-      )}
-    </div>
-  );
-});
-
-const PACE_TOOLTIP =
-  "Based on your progress at this point in the week compared to the same time last week.";
-
-function paceLabel(pace: PaceStatus | null): string {
-  if (!pace) return "";
-  if (pace === "ahead") return "Ahead of last week";
-  if (pace === "on_pace") return "On pace with last week";
-  return "Slightly behind last week";
-}
-
-function paceStatusClass(pace: PaceStatus | null): string {
-  if (!pace) return "text-zinc-500";
-  if (pace === "ahead") return "text-emerald-400";
-  if (pace === "on_pace") return "text-zinc-400";
-  return "text-red-400/90";
-}
-
-const WeeklyPaceCard = memo(function WeeklyPaceCard({
-  label,
-  value,
-  pace,
-}: {
-  label: string;
-  value: string;
-  pace: PaceStatus | null;
-}) {
-  return (
-    <div
-      className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3"
-      title={PACE_TOOLTIP}
-    >
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold text-zinc-100">{value}</p>
-      {pace != null && (
-        <p className={`mt-0.5 text-xs ${paceStatusClass(pace)}`}>
-          {paceLabel(pace)}
-        </p>
       )}
     </div>
   );

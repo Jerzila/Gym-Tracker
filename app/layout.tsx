@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
+import { InstallPromptProvider } from "@/app/components/InstallPromptProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,8 +24,8 @@ export const metadata: Metadata = {
     title: "Liftly",
   },
   icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
+    icon: "/liftlyicon.jpg",
+    apple: "/liftlyicon.jpg",
   },
   themeColor: "#000000",
 };
@@ -44,11 +45,17 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
+      <head>
+        <link rel="icon" href="/liftlyicon.jpg" />
+        <link rel="apple-touch-icon" href="/liftlyicon.jpg" />
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
-        <Analytics />
+        <InstallPromptProvider>
+          {children}
+          <Analytics />
+        </InstallPromptProvider>
       </body>
     </html>
   );

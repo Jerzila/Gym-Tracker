@@ -12,7 +12,11 @@ const MUSCLE_LABELS: Record<StrengthRankMuscle, string> = {
   back: "Back",
   legs: "Legs",
   shoulders: "Shoulders",
-  arms: "Arms",
+  biceps: "Biceps",
+  triceps: "Triceps",
+  forearms: "Forearms",
+  traps: "Traps",
+  core: "Core",
 };
 
 type Props = {
@@ -23,7 +27,7 @@ export function WeakestMuscleCard({ data }: Props) {
   const weakest = useMemo(() => {
     let minPct = 101;
     let minMuscle: StrengthRankMuscle | null = null;
-    for (const m of ["chest", "back", "legs", "shoulders", "arms"] as const) {
+    for (const m of ["chest", "back", "legs", "shoulders", "biceps", "triceps"] as const) {
       const pct = data.musclePercentiles[m];
       if (pct < minPct) {
         minPct = pct;
@@ -32,12 +36,13 @@ export function WeakestMuscleCard({ data }: Props) {
     }
     if (minMuscle == null) return null;
     const rankInfo = data.muscleRanks[minMuscle];
-    const r = getRank(minPct);
+    const rank = (rankInfo.rankSlug ?? getRank(minPct).rank) as RankSlug;
+    const tier = rankInfo.tier ?? getRank(minPct).tier;
     return {
       muscle: minMuscle,
       label: MUSCLE_LABELS[minMuscle],
-      rank: r.rank as RankSlug,
-      tier: r.tier,
+      rank,
+      tier,
       rankLabel: rankInfo.rankLabel,
     };
   }, [data]);

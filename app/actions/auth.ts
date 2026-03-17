@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -49,4 +50,44 @@ export async function getUser() {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
+}
+
+export async function requestPasswordReset(formData: FormData) {
+  const email = (formData.get("email") as string)?.trim();
+  if (!email) {
+    return { error: "Email is required." };
+  }
+
+  const supabase = await createServerClient();
+  const headersList = await headers();
+  const host = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
+  const protocol = headersList.get("x-forwarded-proto") ?? "https";
+  const origin = host ? `${protocol}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: origin ? `${origin}/reset-password` : undefined,
+  });
+
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
+export async function updatePassword(formData: FormData) {
+  const password = formData.get("password") as string;
+  const confirm = formData.get("confirm") as string;
+
+  if (!password || !confirm) {
+    return { error: "Password and confirmation are required." };
+  }
+  if (password.length < 6) {
+    return { error: "Password must be at least 6 characters." };
+  }
+  if (password !== confirm) {
+    return { error: "Passwords do not match." };
+  }
+
+  const supabase = await createServerClient();
+  const { error } = await supabase.auth.updateUser({ password });
+
+  if (error) return { error: error.message };
+  return { success: true };
 }

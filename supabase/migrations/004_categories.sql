@@ -27,7 +27,7 @@ do $$
 declare
   uid uuid;
   cat_chest_id uuid;
-  default_names text[] := array['Chest', 'Back', 'Biceps', 'Triceps', 'Shoulders', 'Quads', 'Hamstrings', 'Glutes', 'Core'];
+  default_names text[] := array['Chest', 'Back', 'Biceps', 'Triceps', 'Shoulders', 'Forearms', 'Traps', 'Quads', 'Hamstrings', 'Glutes', 'Core'];
   n text;
 begin
   for uid in select distinct user_id from public.exercises where user_id is not null
@@ -58,7 +58,7 @@ security definer
 set search_path = public
 as $$
 declare
-  default_names text[] := array['Chest', 'Back', 'Biceps', 'Triceps', 'Shoulders', 'Quads', 'Hamstrings', 'Glutes', 'Core'];
+  default_names text[] := array['Chest', 'Back', 'Biceps', 'Triceps', 'Shoulders', 'Forearms', 'Traps', 'Quads', 'Hamstrings', 'Glutes', 'Core'];
   n text;
 begin
   foreach n in array default_names

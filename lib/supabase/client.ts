@@ -11,14 +11,15 @@ function getSupabaseConfig() {
 
   if (!url || !anonKey) {
     throw new Error(
-      "Missing Supabase env: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY"
+      "Missing Supabase env: NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY (or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY)"
     );
   }
   return { url, key: anonKey };
 }
 
 /**
- * Browser Supabase client for Client Components (e.g. login/signup forms).
+ * Browser Supabase client. Use in Client Components only.
+ * Session is persisted in cookies; detectSessionInUrl handles password reset callback.
  */
 export function createClient() {
   const { url, key } = getSupabaseConfig();
