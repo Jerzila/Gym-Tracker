@@ -6,6 +6,7 @@ import { buttonClass } from "@/app/components/Button";
 import { COUNTRIES, getFlagEmoji } from "@/lib/countries";
 import { getAgeFromBirthday } from "@/lib/age";
 import type { Profile } from "@/lib/types";
+import { localCalendarDateYYYYMMDD } from "@/lib/localCalendarDate";
 
 const GENDER_OPTIONS = [
   { value: "", label: "Select…" },
@@ -32,7 +33,18 @@ export function ProfileSetupForm({ profile }: ProfileSetupFormProps) {
   const currentAge = getAgeFromBirthday(birthday || null);
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form
+      action={formAction}
+      className="space-y-4"
+      onSubmit={(e) => {
+        const form = e.currentTarget;
+        const el = form.elements.namedItem("setup_log_date");
+        if (el instanceof HTMLInputElement) {
+          el.value = localCalendarDateYYYYMMDD();
+        }
+      }}
+    >
+      <input type="hidden" name="setup_log_date" defaultValue="" />
       <div>
         <label htmlFor="name" className={labelClass}>
           Name

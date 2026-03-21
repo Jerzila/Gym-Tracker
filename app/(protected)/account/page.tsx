@@ -1,50 +1,39 @@
-import { signOut } from "@/app/actions/auth";
 import { getProfile } from "@/app/actions/profile";
-import { AccountProfileSection } from "@/app/components/AccountProfileSection";
-import { AccountBodyMetricsSection } from "@/app/components/AccountBodyMetricsSection";
-import { UnitsSetting } from "@/app/components/UnitsSetting";
-import { InstallAppButton } from "@/app/components/InstallAppButton";
+import { getStrengthRanking } from "@/app/actions/strengthRanking";
+import { getAccountLifetimeStats, type AccountLifetimeStats } from "@/app/actions/workouts";
+import { AccountAchievementsCard } from "@/app/components/AccountAchievementsCard";
+import { AccountHeroSection } from "@/app/components/AccountHeroSection";
+import { AccountOverallStatsCard } from "@/app/components/AccountOverallStatsCard";
+import { AccountRankSection } from "@/app/components/AccountRankSection";
+import { overallRankDisplayFromOutput } from "@/lib/strengthRanking";
 
 export default async function AccountPage() {
-  const profile = await getProfile();
+  const [profile, strengthRes, statsRes] = await Promise.all([
+    getProfile(),
+    getStrengthRanking(),
+    getAccountLifetimeStats(),
+  ]);
+
+  const strengthRanking = strengthRes.data ?? null;
+  const stats: AccountLifetimeStats = statsRes.data ?? {
+    workoutCount: 0,
+    exerciseCount: 0,
+    setCount: 0,
+    prCount: 0,
+  };
+
+  const rankDisplay = strengthRanking ? overallRankDisplayFromOutput(strengthRanking) : null;
 
   return (
-    <main className="mx-auto max-w-xl px-4 pb-24 pt-6 sm:px-6">
-      <h1 className="mb-6 text-xl font-semibold text-zinc-100">Account</h1>
-
-      <div className="space-y-6">
-        {/* 1. Profile */}
-        <AccountProfileSection profile={profile} />
-
-        {/* 2. Body Metrics */}
-        <AccountBodyMetricsSection profile={profile} />
-
-        {/* 3. Preferences */}
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-          <h2 className="mb-4 text-sm uppercase tracking-wide text-zinc-400">
-            Preferences
-          </h2>
-          <UnitsSetting profile={profile} />
-          <div className="mt-4">
-            <InstallAppButton variant="in-app" />
-          </div>
-        </section>
-
-        {/* 4. Account */}
-        <section className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-5">
-          <h2 className="mb-4 text-sm uppercase tracking-wide text-zinc-400">
-            Account
-          </h2>
-          <form action={signOut}>
-            <button
-              type="submit"
-              className="rounded-lg border border-red-500 px-4 py-2 text-red-500 transition-colors hover:bg-red-500/10"
-            >
-              Sign Out
-            </button>
-          </form>
-        </section>
-      </div>
+    <main className="mx-auto max-w-xl space-y-4 px-4 pb-24 pt-4 sm:px-6">
+      <AccountHeroSection profile={profile} />
+      <AccountRankSection display={rankDisplay} />
+      <AccountOverallStatsCard stats={stats} />
+      <AccountAchievementsCard
+        workoutCount={stats.workoutCount}
+        prCount={stats.prCount}
+        overallRank={strengthRanking?.overallRank ?? null}
+      />
     </main>
   );
 }

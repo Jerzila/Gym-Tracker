@@ -58,7 +58,7 @@ export default async function BodyweightPage() {
 
         <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
         <BMICard
-          weightKg={stats.latest?.weight ?? null}
+          weightKg={stats.latest?.weight ?? profile?.body_weight ?? null}
           heightCm={profile?.height ?? null}
         />
 

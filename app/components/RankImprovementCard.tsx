@@ -3,10 +3,9 @@
 import { useMemo, useState } from "react";
 import { RankBadge } from "@/app/components/RankBadge";
 import { RankLadderPanel } from "@/app/components/RankLadderPanel";
-import { getRank } from "@/lib/rankBadges";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
-import type { StrengthRankMuscle } from "@/lib/strengthRanking";
+import { overallRankDisplayFromOutput, type StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
 
 const MUSCLE_LABELS: Record<StrengthRankMuscle, string> = {
@@ -43,9 +42,20 @@ export function RankImprovementCard({ data }: Props) {
   const [ladderOpen, setLadderOpen] = useState(false);
 
   const content = useMemo(() => {
-    const nextLabel = data.overallNextRankLabel ?? "Starter I";
-    const nextRank = (data.overallNextRankSlug ?? "starter") as "newbie" | "starter" | "apprentice" | "lifter" | "semi-pro" | "pro" | "elite" | "master" | "grandmaster" | "titan" | "goat";
-    const nextTier = "I" as const;
+    const nextLabel = data.overallNextRankLabel ?? "";
+    const nextRank = (data.overallNextRankSlug ?? data.overallRankSlug) as
+      | "newbie"
+      | "starter"
+      | "apprentice"
+      | "lifter"
+      | "semi-pro"
+      | "pro"
+      | "elite"
+      | "master"
+      | "grandmaster"
+      | "titan"
+      | "goat";
+    const nextTier = (data.overallNextRankTier ?? data.overallTier) as "I" | "II" | "III";
     const suggestionsByMuscle = data.improvementSuggestionsByMuscle ?? {};
     const limiting = PRIMARY_MUSCLES.filter(
       (m) => (suggestionsByMuscle[m]?.length ?? 0) > 0
@@ -75,39 +85,45 @@ export function RankImprovementCard({ data }: Props) {
   return (
     <div className="flex h-full flex-col justify-between">
       <div className="space-y-1.5">
-        <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 text-xs font-semibold text-zinc-200">
-            Next Rank: {content.nextLabel}
-          </p>
-          <div className="flex h-6 w-6 shrink-0 items-center justify-center">
-            <RankBadge
-              rank={content.nextRank}
-              tier={content.nextTier}
-              size={24}
-              className="h-full w-full [&_img]:max-h-full [&_img]:max-w-full"
-            />
-          </div>
-        </div>
-
-        {content.progressPct < 100 && (
-          <div className="space-y-0.5">
-            <div
-              className="h-1 w-full overflow-hidden rounded-full bg-zinc-800"
-              role="progressbar"
-              aria-valuenow={Math.round(content.progressPct)}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-label={`Progress to ${content.nextLabel}`}
-            >
-              <div
-                className="h-full rounded-full bg-amber-500 transition-all duration-300"
-                style={{ width: `${Math.min(100, Math.max(0, content.progressPct))}%` }}
-              />
+        {content.nextLabel ? (
+          <>
+            <div className="flex items-center gap-2">
+              <p className="min-w-0 flex-1 text-xs font-semibold text-zinc-200">
+                Next rank: {content.nextLabel}
+              </p>
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center">
+                <RankBadge
+                  rank={content.nextRank}
+                  tier={content.nextTier}
+                  size={24}
+                  className="h-full w-full [&_img]:max-h-full [&_img]:max-w-full"
+                />
+              </div>
             </div>
-            <p className="text-[10px] text-zinc-500">
-              {Math.round(content.progressPct)}% to {content.nextLabel}
-            </p>
-          </div>
+
+            {content.progressPct < 100 && (
+              <div className="space-y-0.5">
+                <div
+                  className="h-1 w-full overflow-hidden rounded-full bg-zinc-800"
+                  role="progressbar"
+                  aria-valuenow={Math.round(content.progressPct)}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-label={`Progress to ${content.nextLabel}`}
+                >
+                  <div
+                    className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                    style={{ width: `${Math.min(100, Math.max(0, content.progressPct))}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-zinc-500">
+                  {Math.round(content.progressPct)}% to {content.nextLabel}
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <p className="text-xs font-semibold text-zinc-200">Peak overall rank</p>
         )}
         {content.limiting.length === 0 ? (
           <p className="text-xs text-emerald-400/90">
@@ -158,7 +174,7 @@ export function RankImprovementCard({ data }: Props) {
       <RankLadderPanel
         isOpen={ladderOpen}
         onClose={() => setLadderOpen(false)}
-        overallPercentile={data.overallPercentile}
+        display={overallRankDisplayFromOutput(data)}
       />
     </div>
   );

@@ -1,12 +1,12 @@
 /**
- * Liftly Strength Ranking System
- *
- * Uses a non-linear strength score (Estimated1RM / Bodyweight) with difficulty
- * multipliers, recency weighting, and weighted top-3 exercises per muscle.
- * Supports unilateral exercises, core (reps/time), and precise improvement suggestions.
+ * Liftly strength ranking — deterministic ratio-based model.
+ * 1RM = weight × (1 + reps / 30); strength_ratio = 1RM / bodyweight (per spec).
+ * Muscle score: hybrid of top-3 and full-set averages (3+ exercises); ranks use muscle threshold tables.
  */
 
-// --- Strength rank muscle groups ---
+import type { RankSlug } from "@/lib/rankBadges";
+
+// --- Muscle groups ---
 
 export const DEFAULT_STRENGTH_MUSCLE_GROUPS = [
   "chest",
@@ -36,6 +36,43 @@ export const STRENGTH_RANK_MUSCLES = [
 ] as const;
 export type StrengthRankMuscle = (typeof STRENGTH_RANK_MUSCLES)[number];
 
+/** Muscles included in weighted overall score (Section 4–5 overall). */
+export const OVERALL_RANK_MUSCLES = [
+  "chest",
+  "back",
+  "shoulders",
+  "biceps",
+  "triceps",
+  "legs",
+  "core",
+  "forearms",
+] as const satisfies readonly StrengthRankMuscle[];
+
+const MUSCLE_WEIGHT: Record<(typeof OVERALL_RANK_MUSCLES)[number], number> = {
+  legs: 1.3,
+  back: 1.2,
+  chest: 1.2,
+  shoulders: 1.0,
+  triceps: 0.9,
+  biceps: 0.9,
+  core: 0.8,
+  forearms: 0.7,
+};
+
+export const RANK_ORDER = [
+  "Newbie",
+  "Starter",
+  "Apprentice",
+  "Lifter",
+  "Semi-Pro",
+  "Pro",
+  "Elite",
+  "Master",
+  "Grandmaster",
+  "Titan",
+  "GOAT",
+] as const;
+
 export function categoryToStrengthMuscles(categoryName: string): StrengthRankMuscle[] {
   const name = categoryName.trim().toLowerCase();
   if (!name) return [];
@@ -63,188 +100,404 @@ export function categoryToStrengthMuscles(categoryName: string): StrengthRankMus
   return [];
 }
 
-// --- 1. Global percentile structure (Top 100–90% = Newbie, … Top 1% = GOAT) ---
+// --- Rank steps (threshold = minimum ratio for this rank tier). Match: highest step where score >= threshold. ---
 
-export const RANK_ORDER = [
-  "Newbie",
-  "Starter",
-  "Apprentice",
-  "Lifter",
-  "Semi-Pro",
-  "Pro",
-  "Elite",
-  "Master",
-  "Grandmaster",
-  "Titan",
-  "GOAT",
-] as const;
+export type RankStep = {
+  threshold: number;
+  baseRank: (typeof RANK_ORDER)[number];
+  tier: "I" | "II" | "III";
+  /** Full label e.g. "Pro II" or "GOAT 🐐" */
+  fullLabel: string;
+};
 
-/** Each rank = percentile bracket. III = bottom third, II = middle, I = top third. */
-export const PERCENTILE_RANGES_BY_RANK: { rank: string; minPct: number; maxPct: number }[] = [
-  { rank: "Newbie", minPct: 90, maxPct: 100 },
-  { rank: "Starter", minPct: 80, maxPct: 90 },
-  { rank: "Apprentice", minPct: 70, maxPct: 80 },
-  { rank: "Lifter", minPct: 60, maxPct: 70 },
-  { rank: "Semi-Pro", minPct: 50, maxPct: 60 },
-  { rank: "Pro", minPct: 35, maxPct: 50 },
-  { rank: "Elite", minPct: 20, maxPct: 35 },
-  { rank: "Master", minPct: 10, maxPct: 20 },
-  { rank: "Grandmaster", minPct: 5, maxPct: 10 },
-  { rank: "Titan", minPct: 2, maxPct: 5 },
-  { rank: "GOAT", minPct: 1, maxPct: 2 },
+function step(
+  threshold: number,
+  baseRank: (typeof RANK_ORDER)[number],
+  tier: "I" | "II" | "III"
+): RankStep {
+  const fullLabel = baseRank === "GOAT" ? "GOAT 🐐" : `${baseRank} ${tier}`;
+  return { threshold, baseRank, tier, fullLabel };
+}
+
+/** Ordered from strongest (highest threshold) to weakest. Base ratios × 1.05 (rounded 2dp) for realism vs machine/assisted chest work. */
+const CHEST_STEPS: RankStep[] = [
+  step(2.42, "GOAT", "I"),
+  step(2.31, "Titan", "III"),
+  step(2.24, "Titan", "II"),
+  step(2.16, "Titan", "I"),
+  step(2.1, "Grandmaster", "III"),
+  step(2.04, "Grandmaster", "II"),
+  step(1.97, "Grandmaster", "I"),
+  step(1.92, "Master", "III"),
+  step(1.87, "Master", "II"),
+  step(1.82, "Master", "I"),
+  step(1.73, "Elite", "III"),
+  step(1.66, "Elite", "II"),
+  step(1.59, "Elite", "I"),
+  step(1.52, "Pro", "III"),
+  step(1.47, "Pro", "II"),
+  step(1.42, "Pro", "I"),
+  step(1.31, "Semi-Pro", "III"),
+  step(1.22, "Semi-Pro", "II"),
+  step(1.13, "Semi-Pro", "I"),
+  step(1.05, "Lifter", "III"),
+  step(0.97, "Lifter", "II"),
+  step(0.88, "Lifter", "I"),
+  step(0.79, "Apprentice", "III"),
+  step(0.72, "Apprentice", "II"),
+  step(0.66, "Apprentice", "I"),
+  step(0.61, "Starter", "III"),
+  step(0.57, "Starter", "II"),
+  step(0.53, "Starter", "I"),
+  step(0.47, "Newbie", "III"),
+  step(0.37, "Newbie", "II"),
+  step(0.26, "Newbie", "I"),
 ];
 
-// --- 2. Per-muscle strength score thresholds ---
-
-type ThresholdEntry = { score: number; rank: string };
-
-const CHEST_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.3, rank: "Newbie" },
-  { score: 0.45, rank: "Starter" },
-  { score: 0.65, rank: "Apprentice" },
-  { score: 0.85, rank: "Lifter" },
-  { score: 1.05, rank: "Semi-Pro" },
-  { score: 1.2, rank: "Pro" },
-  { score: 1.4, rank: "Elite" },
-  { score: 1.55, rank: "Master" },
-  { score: 1.7, rank: "Grandmaster" },
-  { score: 1.9, rank: "Titan" },
-  { score: 2.1, rank: "GOAT" },
+const BACK_STEPS: RankStep[] = [
+  step(2.1, "GOAT", "I"),
+  step(1.98, "Titan", "III"),
+  step(1.9, "Titan", "II"),
+  step(1.83, "Titan", "I"),
+  step(1.75, "Grandmaster", "III"),
+  step(1.68, "Grandmaster", "II"),
+  step(1.62, "Grandmaster", "I"),
+  step(1.58, "Master", "III"),
+  step(1.53, "Master", "II"),
+  step(1.48, "Master", "I"),
+  step(1.4, "Elite", "III"),
+  step(1.33, "Elite", "II"),
+  step(1.26, "Elite", "I"),
+  step(1.15, "Pro", "III"),
+  step(1.1, "Pro", "II"),
+  step(1.05, "Pro", "I"),
+  step(1.0, "Semi-Pro", "III"),
+  step(0.94, "Semi-Pro", "II"),
+  step(0.88, "Semi-Pro", "I"),
+  step(0.82, "Lifter", "III"),
+  step(0.77, "Lifter", "II"),
+  step(0.72, "Lifter", "I"),
+  step(0.65, "Apprentice", "III"),
+  step(0.6, "Apprentice", "II"),
+  step(0.55, "Apprentice", "I"),
+  step(0.5, "Starter", "III"),
+  step(0.46, "Starter", "II"),
+  step(0.42, "Starter", "I"),
+  step(0.38, "Newbie", "III"),
+  step(0.3, "Newbie", "II"),
+  step(0.2, "Newbie", "I"),
 ];
 
-const BACK_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.35, rank: "Newbie" },
-  { score: 0.5, rank: "Starter" },
-  { score: 0.7, rank: "Apprentice" },
-  { score: 0.9, rank: "Lifter" },
-  { score: 1.1, rank: "Semi-Pro" },
-  { score: 1.25, rank: "Pro" },
-  { score: 1.45, rank: "Elite" },
-  { score: 1.6, rank: "Master" },
-  { score: 1.75, rank: "Grandmaster" },
-  { score: 1.9, rank: "Titan" },
-  { score: 2.05, rank: "GOAT" },
+const SHOULDERS_STEPS: RankStep[] = [
+  step(1.65, "GOAT", "I"),
+  step(1.56, "Titan", "III"),
+  step(1.5, "Titan", "II"),
+  step(1.45, "Titan", "I"),
+  step(1.4, "Grandmaster", "III"),
+  step(1.34, "Grandmaster", "II"),
+  step(1.28, "Grandmaster", "I"),
+  step(1.23, "Master", "III"),
+  step(1.18, "Master", "II"),
+  step(1.13, "Master", "I"),
+  step(1.05, "Elite", "III"),
+  step(1.0, "Elite", "II"),
+  step(0.95, "Elite", "I"),
+  step(0.9, "Pro", "III"),
+  step(0.87, "Pro", "II"),
+  step(0.84, "Pro", "I"),
+  step(0.8, "Semi-Pro", "III"),
+  step(0.75, "Semi-Pro", "II"),
+  step(0.7, "Semi-Pro", "I"),
+  step(0.65, "Lifter", "III"),
+  step(0.6, "Lifter", "II"),
+  step(0.55, "Lifter", "I"),
+  step(0.5, "Apprentice", "III"),
+  step(0.45, "Apprentice", "II"),
+  step(0.4, "Apprentice", "I"),
+  step(0.35, "Starter", "III"),
+  step(0.3, "Starter", "II"),
+  step(0.25, "Starter", "I"),
+  step(0.2, "Newbie", "III"),
+  step(0.15, "Newbie", "II"),
+  step(0.1, "Newbie", "I"),
 ];
 
-const LEGS_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.4, rank: "Newbie" },
-  { score: 0.6, rank: "Starter" },
-  { score: 0.85, rank: "Apprentice" },
-  { score: 1.1, rank: "Lifter" },
-  { score: 1.35, rank: "Semi-Pro" },
-  { score: 1.6, rank: "Pro" },
-  { score: 1.85, rank: "Elite" },
-  { score: 2.1, rank: "Master" },
-  { score: 2.35, rank: "Grandmaster" },
-  { score: 2.6, rank: "Titan" },
-  { score: 2.9, rank: "GOAT" },
+/** Base ratios × 0.95 (rounded 2dp); slightly easier tiers for isolation curl progression. */
+const BICEPS_STEPS: RankStep[] = [
+  step(1.33, "GOAT", "I"),
+  step(1.24, "Titan", "III"),
+  step(1.19, "Titan", "II"),
+  step(1.14, "Titan", "I"),
+  step(1.09, "Grandmaster", "III"),
+  step(1.05, "Grandmaster", "II"),
+  step(1.0, "Grandmaster", "I"),
+  step(0.96, "Master", "III"),
+  step(0.91, "Master", "II"),
+  step(0.86, "Master", "I"),
+  step(0.81, "Elite", "III"),
+  step(0.75, "Elite", "II"),
+  step(0.7, "Elite", "I"),
+  step(0.66, "Pro", "III"),
+  step(0.64, "Pro", "II"),
+  step(0.61, "Pro", "I"),
+  step(0.57, "Semi-Pro", "III"),
+  step(0.52, "Semi-Pro", "II"),
+  step(0.48, "Semi-Pro", "I"),
+  step(0.46, "Lifter", "III"),
+  step(0.42, "Lifter", "II"),
+  step(0.38, "Lifter", "I"),
+  step(0.33, "Apprentice", "III"),
+  step(0.28, "Apprentice", "II"),
+  step(0.24, "Apprentice", "I"),
+  step(0.2, "Starter", "III"),
+  step(0.17, "Starter", "II"),
+  step(0.14, "Starter", "I"),
+  step(0.11, "Newbie", "III"),
+  step(0.08, "Newbie", "II"),
+  step(0.05, "Newbie", "I"),
 ];
 
-const SHOULDERS_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.18, rank: "Newbie" },
-  { score: 0.3, rank: "Starter" },
-  { score: 0.42, rank: "Apprentice" },
-  { score: 0.55, rank: "Lifter" },
-  { score: 0.7, rank: "Semi-Pro" },
-  { score: 0.85, rank: "Pro" },
-  { score: 1.0, rank: "Elite" },
-  { score: 1.12, rank: "Master" },
-  { score: 1.25, rank: "Grandmaster" },
-  { score: 1.38, rank: "Titan" },
-  { score: 1.5, rank: "GOAT" },
+/** Base ratios × 1.08 (rounded 2dp); stricter vs dip-machine–inflated loads. */
+const TRICEPS_STEPS: RankStep[] = [
+  step(1.46, "GOAT", "I"),
+  step(1.37, "Titan", "III"),
+  step(1.31, "Titan", "II"),
+  step(1.24, "Titan", "I"),
+  step(1.19, "Grandmaster", "III"),
+  step(1.13, "Grandmaster", "II"),
+  step(1.08, "Grandmaster", "I"),
+  step(1.04, "Master", "III"),
+  step(0.98, "Master", "II"),
+  step(0.93, "Master", "I"),
+  step(0.86, "Elite", "III"),
+  step(0.8, "Elite", "II"),
+  step(0.75, "Elite", "I"),
+  step(0.7, "Pro", "III"),
+  step(0.67, "Pro", "II"),
+  step(0.64, "Pro", "I"),
+  step(0.59, "Semi-Pro", "III"),
+  step(0.55, "Semi-Pro", "II"),
+  step(0.52, "Semi-Pro", "I"),
+  step(0.49, "Lifter", "III"),
+  step(0.44, "Lifter", "II"),
+  step(0.41, "Lifter", "I"),
+  step(0.37, "Apprentice", "III"),
+  step(0.31, "Apprentice", "II"),
+  step(0.26, "Apprentice", "I"),
+  step(0.22, "Starter", "III"),
+  step(0.18, "Starter", "II"),
+  step(0.15, "Starter", "I"),
+  step(0.11, "Newbie", "III"),
+  step(0.09, "Newbie", "II"),
+  step(0.05, "Newbie", "I"),
 ];
 
-const BICEPS_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.07, rank: "Newbie" },
-  { score: 0.11, rank: "Starter" },
-  { score: 0.16, rank: "Apprentice" },
-  { score: 0.23, rank: "Lifter" },
-  { score: 0.32, rank: "Semi-Pro" },
-  { score: 0.42, rank: "Pro" },
-  { score: 0.5, rank: "Elite" },
-  { score: 0.58, rank: "Master" },
-  { score: 0.65, rank: "Grandmaster" },
-  { score: 0.75, rank: "Titan" },
-  { score: 0.85, rank: "GOAT" },
+const LEGS_STEPS: RankStep[] = [
+  step(3.25, "GOAT", "I"),
+  step(3.08, "Titan", "III"),
+  step(2.97, "Titan", "II"),
+  step(2.86, "Titan", "I"),
+  step(2.75, "Grandmaster", "III"),
+  step(2.67, "Grandmaster", "II"),
+  step(2.58, "Grandmaster", "I"),
+  step(2.51, "Master", "III"),
+  step(2.44, "Master", "II"),
+  step(2.36, "Master", "I"),
+  step(2.25, "Elite", "III"),
+  step(2.13, "Elite", "II"),
+  step(2.02, "Elite", "I"),
+  step(1.85, "Pro", "III"),
+  step(1.76, "Pro", "II"),
+  step(1.68, "Pro", "I"),
+  step(1.55, "Semi-Pro", "III"),
+  step(1.43, "Semi-Pro", "II"),
+  step(1.32, "Semi-Pro", "I"),
+  step(1.25, "Lifter", "III"),
+  step(1.14, "Lifter", "II"),
+  step(1.03, "Lifter", "I"),
+  step(0.92, "Apprentice", "III"),
+  step(0.85, "Apprentice", "II"),
+  step(0.78, "Apprentice", "I"),
+  step(0.72, "Starter", "III"),
+  step(0.67, "Starter", "II"),
+  step(0.62, "Starter", "I"),
+  step(0.58, "Newbie", "III"),
+  step(0.45, "Newbie", "II"),
+  step(0.35, "Newbie", "I"),
 ];
 
-const TRICEPS_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.16, rank: "Newbie" },
-  { score: 0.24, rank: "Starter" },
-  { score: 0.36, rank: "Apprentice" },
-  { score: 0.52, rank: "Lifter" },
-  { score: 0.68, rank: "Semi-Pro" },
-  { score: 0.85, rank: "Pro" },
-  { score: 1.05, rank: "Elite" },
-  { score: 1.2, rank: "Master" },
-  { score: 1.35, rank: "Grandmaster" },
-  { score: 1.5, rank: "Titan" },
-  { score: 1.7, rank: "GOAT" },
+const CORE_STEPS: RankStep[] = [
+  step(1.5, "GOAT", "I"),
+  step(1.33, "Titan", "III"),
+  step(1.22, "Titan", "II"),
+  step(1.11, "Titan", "I"),
+  step(1.0, "Grandmaster", "III"),
+  step(0.94, "Grandmaster", "II"),
+  step(0.88, "Grandmaster", "I"),
+  step(0.83, "Master", "III"),
+  step(0.77, "Master", "II"),
+  step(0.71, "Master", "I"),
+  step(0.65, "Elite", "III"),
+  step(0.59, "Elite", "II"),
+  step(0.53, "Elite", "I"),
+  step(0.48, "Pro", "III"),
+  step(0.44, "Pro", "II"),
+  step(0.41, "Pro", "I"),
+  step(0.38, "Semi-Pro", "III"),
+  step(0.35, "Semi-Pro", "II"),
+  step(0.32, "Semi-Pro", "I"),
+  step(0.3, "Lifter", "III"),
+  step(0.27, "Lifter", "II"),
+  step(0.24, "Lifter", "I"),
+  step(0.21, "Apprentice", "III"),
+  step(0.18, "Apprentice", "II"),
+  step(0.15, "Apprentice", "I"),
+  step(0.12, "Starter", "III"),
+  step(0.09, "Starter", "II"),
+  step(0.06, "Starter", "I"),
+  step(0.03, "Newbie", "III"),
+  step(0.02, "Newbie", "II"),
+  step(0.01, "Newbie", "I"),
 ];
 
-const FOREARMS_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.05, rank: "Newbie" },
-  { score: 0.08, rank: "Starter" },
-  { score: 0.12, rank: "Apprentice" },
-  { score: 0.18, rank: "Lifter" },
-  { score: 0.25, rank: "Semi-Pro" },
-  { score: 0.32, rank: "Pro" },
-  { score: 0.4, rank: "Elite" },
-  { score: 0.48, rank: "Master" },
-  { score: 0.55, rank: "Grandmaster" },
-  { score: 0.62, rank: "Titan" },
-  { score: 0.7, rank: "GOAT" },
+const FOREARMS_STEPS: RankStep[] = [
+  step(2.75, "GOAT", "I"),
+  step(2.5, "Titan", "III"),
+  step(2.33, "Titan", "II"),
+  step(2.16, "Titan", "I"),
+  step(2.0, "Grandmaster", "III"),
+  step(1.88, "Grandmaster", "II"),
+  step(1.76, "Grandmaster", "I"),
+  step(1.65, "Master", "III"),
+  step(1.54, "Master", "II"),
+  step(1.43, "Master", "I"),
+  step(1.3, "Elite", "III"),
+  step(1.18, "Elite", "II"),
+  step(1.06, "Elite", "I"),
+  step(0.95, "Pro", "III"),
+  step(0.89, "Pro", "II"),
+  step(0.83, "Pro", "I"),
+  step(0.75, "Semi-Pro", "III"),
+  step(0.69, "Semi-Pro", "II"),
+  step(0.63, "Semi-Pro", "I"),
+  step(0.58, "Lifter", "III"),
+  step(0.51, "Lifter", "II"),
+  step(0.44, "Lifter", "I"),
+  step(0.35, "Apprentice", "III"),
+  step(0.3, "Apprentice", "II"),
+  step(0.25, "Apprentice", "I"),
+  step(0.2, "Starter", "III"),
+  step(0.16, "Starter", "II"),
+  step(0.12, "Starter", "I"),
+  step(0.08, "Newbie", "III"),
+  step(0.05, "Newbie", "II"),
+  step(0.02, "Newbie", "I"),
 ];
 
-const CORE_THRESHOLDS: ThresholdEntry[] = [
-  { score: 0.3, rank: "Newbie" },
-  { score: 0.45, rank: "Starter" },
-  { score: 0.6, rank: "Apprentice" },
-  { score: 0.75, rank: "Lifter" },
-  { score: 0.9, rank: "Semi-Pro" },
-  { score: 1.05, rank: "Pro" },
-  { score: 1.2, rank: "Elite" },
-  { score: 1.35, rank: "Master" },
-  { score: 1.5, rank: "Grandmaster" },
-  { score: 1.65, rank: "Titan" },
-  { score: 1.8, rank: "GOAT" },
+/** Overall rank: thresholds + exact display percentile (Section 6 & 8). */
+const OVERALL_STEPS: (RankStep & { topPercentLabel: string })[] = [
+  { ...step(2.22, "GOAT", "I"), topPercentLabel: "Top 1%" },
+  { ...step(2.1, "Titan", "III"), topPercentLabel: "Top 2%" },
+  { ...step(2.01, "Titan", "II"), topPercentLabel: "Top 3%" },
+  { ...step(1.94, "Titan", "I"), topPercentLabel: "Top 4%" },
+  { ...step(1.88, "Grandmaster", "III"), topPercentLabel: "Top 5%" },
+  { ...step(1.82, "Grandmaster", "II"), topPercentLabel: "Top 5.6%" },
+  { ...step(1.76, "Grandmaster", "I"), topPercentLabel: "Top 6.3%" },
+  { ...step(1.7, "Master", "III"), topPercentLabel: "Top 7%" },
+  { ...step(1.6, "Master", "II"), topPercentLabel: "Top 9.6%" },
+  { ...step(1.51, "Master", "I"), topPercentLabel: "Top 12.3%" },
+  { ...step(1.4, "Elite", "III"), topPercentLabel: "Top 15%" },
+  { ...step(1.32, "Elite", "II"), topPercentLabel: "Top 18.3%" },
+  { ...step(1.24, "Elite", "I"), topPercentLabel: "Top 21.6%" },
+  { ...step(1.15, "Pro", "III"), topPercentLabel: "Top 25%" },
+  { ...step(1.08, "Pro", "II"), topPercentLabel: "Top 28.3%" },
+  { ...step(1.01, "Pro", "I"), topPercentLabel: "Top 31.6%" },
+  { ...step(0.94, "Semi-Pro", "III"), topPercentLabel: "Top 35%" },
+  { ...step(0.88, "Semi-Pro", "II"), topPercentLabel: "Top 40%" },
+  { ...step(0.82, "Semi-Pro", "I"), topPercentLabel: "Top 45%" },
+  { ...step(0.77, "Lifter", "III"), topPercentLabel: "Top 50%" },
+  { ...step(0.71, "Lifter", "II"), topPercentLabel: "Top 56.6%" },
+  { ...step(0.65, "Lifter", "I"), topPercentLabel: "Top 63.3%" },
+  { ...step(0.58, "Apprentice", "III"), topPercentLabel: "Top 70%" },
+  { ...step(0.53, "Apprentice", "II"), topPercentLabel: "Top 74%" },
+  { ...step(0.48, "Apprentice", "I"), topPercentLabel: "Top 78%" },
+  { ...step(0.43, "Starter", "III"), topPercentLabel: "Top 82%" },
+  { ...step(0.39, "Starter", "II"), topPercentLabel: "Top 84.6%" },
+  { ...step(0.35, "Starter", "I"), topPercentLabel: "Top 87.3%" },
+  { ...step(0.31, "Newbie", "III"), topPercentLabel: "Top 90%" },
+  { ...step(0.25, "Newbie", "II"), topPercentLabel: "Top 93.3%" },
+  { ...step(0.18, "Newbie", "I"), topPercentLabel: "Top 96.6%" },
 ];
 
-/** Per-muscle thresholds. Traps use Back. */
-export function getThresholdsForMuscle(muscle: StrengthRankMuscle): ThresholdEntry[] {
+/** Fixed "Top X%" string per rank tier (muscles + overall display; not computed from ranges). */
+const EXACT_TOP_PERCENT_BY_RANK_TIER: Record<string, string> = Object.fromEntries(
+  OVERALL_STEPS.map((s) => [`${s.baseRank} ${s.tier}`, s.topPercentLabel])
+);
+
+export function exactTopPercentileLabelForRankTier(
+  baseRank: (typeof RANK_ORDER)[number],
+  tier: "I" | "II" | "III"
+): string {
+  return EXACT_TOP_PERCENT_BY_RANK_TIER[`${baseRank} ${tier}`] ?? "Top 96.6%";
+}
+
+export function getStepsForMuscle(muscle: StrengthRankMuscle): RankStep[] {
   switch (muscle) {
     case "chest":
-      return CHEST_THRESHOLDS;
+      return CHEST_STEPS;
     case "back":
     case "traps":
-      return BACK_THRESHOLDS;
+      return BACK_STEPS;
     case "legs":
-      return LEGS_THRESHOLDS;
+      return LEGS_STEPS;
     case "shoulders":
-      return SHOULDERS_THRESHOLDS;
+      return SHOULDERS_STEPS;
     case "biceps":
-      return BICEPS_THRESHOLDS;
+      return BICEPS_STEPS;
     case "triceps":
-      return TRICEPS_THRESHOLDS;
+      return TRICEPS_STEPS;
     case "forearms":
-      return FOREARMS_THRESHOLDS;
+      return FOREARMS_STEPS;
     case "core":
-      return CORE_THRESHOLDS;
+      return CORE_STEPS;
     default:
-      return CHEST_THRESHOLDS;
+      return CHEST_STEPS;
   }
 }
 
-/** Rank slug for badge/UI (lowercase, kebab). */
-export function rankToSlug(rank: string): string {
-  const slug = rank.toLowerCase().replace(/\s+/g, "-");
-  return slug === "semi-pro" ? "semi-pro" : slug === "goat" ? "goat" : slug;
+export function rankToSlug(rank: string): RankSlug {
+  const r = rank.trim().toLowerCase();
+  if (r === "semi-pro") return "semi-pro";
+  if (r === "goat") return "goat";
+  return r.replace(/\s+/g, "-") as RankSlug;
 }
 
-/**
- * Map strength score to rank, tier (III = lowest, I = highest), and progress.
- * Uses per-muscle thresholds. Progress = (score - currentThreshold) / (nextThreshold - currentThreshold).
- */
+function matchStep(score: number, steps: RankStep[]): RankStep {
+  for (const s of steps) {
+    if (score >= s.threshold) return s;
+  }
+  const last = steps[steps.length - 1];
+  return last;
+}
+
+function nextStrongerStep(current: RankStep, steps: RankStep[]): RankStep | null {
+  const idx = steps.findIndex(
+    (s) => s.threshold === current.threshold && s.baseRank === current.baseRank && s.tier === current.tier
+  );
+  if (idx <= 0) return null;
+  return steps[idx - 1];
+}
+
+function progressToNextRank(score: number, current: RankStep, steps: RankStep[]): number {
+  const next = nextStrongerStep(current, steps);
+  if (!next) return 100;
+  const low = current.threshold;
+  const high = next.threshold;
+  if (high <= low) return 100;
+  const p = ((score - low) / (high - low)) * 100;
+  return Math.min(100, Math.max(0, Math.round(p)));
+}
+
 export function strengthScoreToRank(
   score: number,
   muscle: StrengthRankMuscle
@@ -252,183 +505,77 @@ export function strengthScoreToRank(
   rank: string;
   tier: "I" | "II" | "III";
   rankLabel: string;
-  rankSlug: string;
+  rankSlug: RankSlug;
   currentThreshold: number;
   nextThreshold: number | null;
+  nextRankLabel: string | null;
   progressToNextPct: number;
-  /** "Top X%" (0-100) for display. */
-  topPercentile: number;
+  topPercentileLabel: string;
 } {
-  const thresholds = getThresholdsForMuscle(muscle);
-  const clamped = Math.max(0, score);
-
-  for (let i = 0; i < thresholds.length; i++) {
-    const current = thresholds[i];
-    const next = thresholds[i + 1];
-    const bandMax = next ? next.score : current.score + 0.01;
-    if (clamped < bandMax) {
-      const width = bandMax - current.score;
-      const progressInBand = width > 0 ? (clamped - current.score) / width : 0;
-      const third = 1 / 3;
-      let tier: "I" | "II" | "III";
-      if (progressInBand < third) tier = "III";
-      else if (progressInBand < 2 * third) tier = "II";
-      else tier = "I";
-      const tierStart = current.score + (tier === "III" ? 0 : tier === "II" ? third * width : 2 * third * width);
-      const tierEnd = current.score + (tier === "III" ? third * width : tier === "II" ? 2 * third * width : width);
-      const progressToNextPct =
-        tierEnd > tierStart
-          ? Math.round(((clamped - tierStart) / (tierEnd - tierStart)) * 100)
-          : 100;
-      const rankLabel = current.rank === "GOAT" ? "GOAT 🐐" : `${current.rank} ${tier}`;
-      const pctRange = PERCENTILE_RANGES_BY_RANK[i];
-      const tierIndex = tier === "III" ? 0 : tier === "II" ? 1 : 2;
-      const pctWidth = (pctRange.maxPct - pctRange.minPct) / 3;
-      const topPercentile = Math.round(
-        pctRange.minPct + (tierIndex + 0.5) * pctWidth
-      );
-      return {
-        rank: current.rank,
-        tier,
-        rankLabel,
-        rankSlug: rankToSlug(current.rank),
-        currentThreshold: current.score,
-        nextThreshold: next?.score ?? null,
-        progressToNextPct: Math.min(100, Math.max(0, progressToNextPct)),
-        topPercentile: Math.min(100, Math.max(1, topPercentile)),
-      };
-    }
-  }
-  const last = thresholds[thresholds.length - 1];
-  const pctRange = PERCENTILE_RANGES_BY_RANK[PERCENTILE_RANGES_BY_RANK.length - 1];
+  const steps = getStepsForMuscle(muscle);
+  const matched = matchStep(Math.max(0, score), steps);
+  const next = nextStrongerStep(matched, steps);
+  const progressToNextPct = progressToNextRank(Math.max(0, score), matched, steps);
+  const topPercentileLabel = exactTopPercentileLabelForRankTier(matched.baseRank, matched.tier);
   return {
-    rank: last.rank,
-    tier: "I",
-    rankLabel: last.rank === "GOAT" ? "GOAT 🐐" : `${last.rank} I`,
-    rankSlug: rankToSlug(last.rank),
-    currentThreshold: last.score,
-    nextThreshold: null,
-    progressToNextPct: 100,
-    topPercentile: Math.round((pctRange.minPct + pctRange.maxPct) / 2),
+    rank: matched.baseRank,
+    tier: matched.tier,
+    rankLabel: matched.fullLabel,
+    rankSlug: rankToSlug(matched.baseRank),
+    currentThreshold: matched.threshold,
+    nextThreshold: next?.threshold ?? null,
+    nextRankLabel: next ? next.fullLabel : null,
+    progressToNextPct,
+    topPercentileLabel,
   };
 }
 
-/** Next rank threshold for a muscle (for improvement suggestions). */
 export function getNextRankThreshold(score: number, muscle: StrengthRankMuscle): number | null {
-  const thresholds = getThresholdsForMuscle(muscle);
-  for (const t of thresholds) {
-    if (score < t.score) return t.score;
+  const steps = getStepsForMuscle(muscle);
+  const asc = [...steps].sort((a, b) => a.threshold - b.threshold);
+  for (const s of asc) {
+    if (s.threshold > score) return s.threshold;
   }
   return null;
 }
 
-/** Legacy: single global threshold list (chest) for callers that don't pass muscle. */
-export const STRENGTH_SCORE_THRESHOLDS = CHEST_THRESHOLDS;
-
-// --- 2 & 3. Exercise strength score and muscle score ---
-
-/** Epley: Estimated1RM = Weight × (1 + Reps / 30). */
 export function epleyEstimated1RM(weightKg: number, reps: number): number {
   if (reps <= 0) return weightKg;
   return weightKg * (1 + reps / 30);
 }
 
 /**
- * Exercise strength score for weight-based exercises:
- * (Estimated1RM / Bodyweight) × ExerciseMultiplier
+ * Per-muscle score from exercise strength ratios (one ratio per exercise, best set).
+ * 1 lift → that ratio; 2 lifts → mean of both; 3+ → (top3_avg × 0.7) + (all_avg × 0.3).
+ * Exercises with ratio ≤ 0 are omitted.
  */
-export function exerciseStrengthScore(
-  estimated1RMKg: number,
-  bodyweightKg: number,
-  exerciseMultiplier: number
-): number {
-  if (bodyweightKg <= 0) return 0;
-  return (estimated1RMKg / bodyweightKg) * exerciseMultiplier;
-}
-
-/**
- * Muscle score = weighted average of top 3 exercise scores.
- * 3 exercises: 0.5×best + 0.3×second + 0.2×third
- * 2 exercises: 0.7×best + 0.3×second
- * 1 exercise: score as-is
- */
-export function muscleScoreFromTopExercises(scores: number[]): number {
-  const sorted = [...scores].filter((s) => s > 0).sort((a, b) => b - a);
+export function muscleScoreFromExerciseRatios(ratios: number[]): number {
+  const sorted = [...ratios].filter((r) => r > 0).sort((a, b) => b - a);
   if (sorted.length === 0) return 0;
-  if (sorted.length === 1) return Math.round(sorted[0] * 100) / 100;
-  if (sorted.length === 2)
-    return Math.round((0.7 * sorted[0] + 0.3 * sorted[1]) * 100) / 100;
-  return Math.round((0.5 * sorted[0] + 0.3 * sorted[1] + 0.2 * sorted[2]) * 100) / 100;
-}
-
-// --- 4. Exercise difficulty multipliers (prevent machines from inflating ranks) ---
-// Free weight compound = 1.0, Dumbbells = 0.9, Cable = 0.80, Machines = 0.65, Assisted = 0.55
-
-const EXERCISE_MULTIPLIER_KEYWORDS: { keywords: string[]; multiplier: number }[] = [
-  { keywords: ["assisted", "push-up", "pushup", "pull-up assist", "band "], multiplier: 0.55 },
-  { keywords: ["machine", "smith", "leg press", "pec deck", "cable row", "machine row", "machine curl", "machine shoulder", "machine press", "leg extension", "leg curl", "hack squat machine"], multiplier: 0.65 },
-  { keywords: ["cable", "cable fly", "cable crossover", "cable curl", "lat pulldown", "pull-down", "pushdown", "tricep pushdown"], multiplier: 0.8 },
-  { keywords: ["dumbbell", "db ", "db press", "db row", "db shoulder", "db curl", "dumbbell press", "dumbbell row", "dumbbell curl", "hammer curl", "concentration curl", "arnold press", "single arm"], multiplier: 0.9 },
-  { keywords: ["barbell", "bench press", "ohp", "overhead press", "military press", "bent over row", "pendlay", "squat", "deadlift", "rdl", "pull-up", "pullup", "chin-up", "close grip bench", "cgbp", "dip", "dips", "ez bar", "skull crusher"], multiplier: 1.0 },
-];
-
-const DEFAULT_EXERCISE_MULTIPLIER = 0.8;
-
-/** Resolve exercise difficulty multiplier from name (and optionally category). */
-export function getExerciseMultiplier(exerciseName: string, _categoryName?: string): number {
-  const name = exerciseName.trim().toLowerCase();
-  for (const { keywords, multiplier } of EXERCISE_MULTIPLIER_KEYWORDS) {
-    if (keywords.some((kw) => name.includes(kw))) return multiplier;
+  if (sorted.length === 1) return Math.round(sorted[0] * 10000) / 10000;
+  if (sorted.length === 2) {
+    const avg = (sorted[0] + sorted[1]) / 2;
+    return Math.round(avg * 10000) / 10000;
   }
-  return DEFAULT_EXERCISE_MULTIPLIER;
+  const top3 = sorted.slice(0, 3);
+  const top3Average = top3.reduce((a, b) => a + b, 0) / 3;
+  const allLiftsAverage = sorted.reduce((a, b) => a + b, 0) / sorted.length;
+  const muscleScore = top3Average * 0.7 + allLiftsAverage * 0.3;
+  return Math.round(muscleScore * 10000) / 10000;
 }
 
-// --- 5. Unilateral detection ---
-
-const UNILATERAL_KEYWORDS = [
-  "single arm",
-  "one arm",
-  "unilateral",
-  "concentration curl",
-  "single leg",
-  "one leg",
-  "single-leg",
-  "one-leg",
-];
-
-export function isUnilateralExercise(exerciseName: string): boolean {
-  const name = exerciseName.trim().toLowerCase();
-  return UNILATERAL_KEYWORDS.some((kw) => name.includes(kw));
-}
-
-/** Adjusted weight for unilateral: Weight × 1.8 (approximates bilateral). */
-export const UNILATERAL_WEIGHT_FACTOR = 1.8;
-
-// --- 6. Recency weighting ---
-
-/** Recency weight by days ago: 0–30 = 100%, 30–60 = 85%, 60–120 = 70%, >120 = 50%. */
-export function recencyWeight(daysAgo: number): number {
-  if (daysAgo <= 30) return 1.0;
-  if (daysAgo <= 60) return 0.85;
-  if (daysAgo <= 120) return 0.7;
-  return 0.5;
-}
-
-export function daysBetween(dateStr: string, referenceDate: string): number {
-  const a = new Date(dateStr);
-  const b = new Date(referenceDate);
-  return Math.floor((b.getTime() - a.getTime()) / (24 * 60 * 60 * 1000));
-}
-
-// --- 7 & 8. Improvement suggestions ---
+export type WeightIncreaseSuggestion = {
+  exerciseId: string;
+  exerciseName: string;
+  current1RM: number;
+  required1RM: number;
+  increaseKg: number;
+  label: string;
+};
 
 const REALISTIC_INCREMENTS_KG = [0.5, 1, 2, 2.5, 5];
 const MAX_SUGGESTED_INCREASE_KG = 15;
 
-/**
- * Round a weight increase to the nearest realistic increment (0.5, 1, 2, 2.5, 5 kg).
- * Never suggest more than 15 kg.
- */
 export function roundToRealisticIncrement(kg: number): number | null {
   if (kg <= 0) return null;
   if (kg > MAX_SUGGESTED_INCREASE_KG) return null;
@@ -440,34 +587,17 @@ export function roundToRealisticIncrement(kg: number): number | null {
   return Math.min(MAX_SUGGESTED_INCREASE_KG, Math.round(kg * 2) / 2);
 }
 
-export type WeightIncreaseSuggestion = {
-  exerciseName: string;
-  exerciseId: string;
-  current1RM: number;
-  required1RM: number;
-  increaseKg: number;
-  /** Display label e.g. "+3 kg" */
-  label: string;
-};
-
-/**
- * For a muscle with current score and target (next rank) score, compute weight
- * increase suggestions for top exercises. Increases are rounded to realistic
- * increments (0.5, 1, 2, 2.5, 5 kg); displayed cap is 15 kg so all muscles
- * show the same "+X kg" format (exercises needing >15 kg show "+15 kg").
- */
+/** Ratio model: required 1RM = nextThreshold × bodyweight (no equipment multipliers). */
 export function getWeightIncreaseSuggestions(
   bodyweightKg: number,
   currentMuscleScore: number,
   nextRankScore: number,
-  exercises: { exerciseId: string; name: string; estimated1RM: number; multiplier: number }[]
+  exercises: { exerciseId: string; name: string; estimated1RM: number }[]
 ): WeightIncreaseSuggestion[] {
-  if (bodyweightKg <= 0 || nextRankScore <= currentMuscleScore || exercises.length === 0)
-    return [];
+  if (bodyweightKg <= 0 || nextRankScore <= currentMuscleScore || exercises.length === 0) return [];
   const suggestions: WeightIncreaseSuggestion[] = [];
+  const required1RM = nextRankScore * bodyweightKg;
   for (const ex of exercises) {
-    if (ex.multiplier <= 0) continue;
-    const required1RM = (nextRankScore * bodyweightKg) / ex.multiplier;
     const weightIncrease = required1RM - ex.estimated1RM;
     if (weightIncrease <= 0) continue;
     const rounded = roundToRealisticIncrement(weightIncrease);
@@ -485,84 +615,116 @@ export function getWeightIncreaseSuggestions(
   return suggestions;
 }
 
-// --- 9. Rank progress (exposed via strengthScoreToRank) ---
-// progressToNextPct already in strengthScoreToRank.
-
-// --- 10. Core scoring (reps/time) ---
-
-/** Core exercise score: sit-ups = reps/40, plank = seconds/60, hanging leg raise = reps/20, weighted = weight/bw. */
-export function coreExerciseScore(
-  type: "situps" | "plank" | "hanging_leg_raise" | "weighted",
-  value: number,
-  bodyweightKg: number
-): number {
-  if (type === "plank") return value / 60;
-  if (type === "situps") return value / 40;
-  if (type === "hanging_leg_raise") return value / 20;
-  if (bodyweightKg <= 0) return 0;
-  return value / bodyweightKg;
-}
-
-/** Core muscle score = average of top 3 core exercise scores. */
-export function coreMuscleScoreFromTop3(scores: number[]): number {
-  const top3 = [...scores].filter((s) => s > 0).sort((a, b) => b - a).slice(0, 3);
-  if (top3.length === 0) return 0;
-  const sum = top3.reduce((a, b) => a + b, 0);
-  return Math.round((sum / top3.length) * 100) / 100;
-}
-
-// --- Output types ---
-
 export type MuscleRankOutput = {
   strengthScore: number;
   rank: string;
   tier: "I" | "II" | "III";
   rankLabel: string;
-  rankSlug: string;
+  rankSlug: RankSlug;
   progressToNextPct: number;
   nextRankLabel: string | null;
-  /** "Top X%" (1-100) for display. */
-  topPercentile: number;
+  topPercentileLabel: string;
 };
+
+/** Snapshot for dashboard / account rank widgets (deterministic labels from ranking output). */
+export type OverallRankDisplaySnapshot = {
+  rankSlug: RankSlug;
+  tier: "I" | "II" | "III";
+  rankLabel: string;
+  topPercentileLabel: string;
+  nextRankLabel: string;
+  nextRankSlug: RankSlug | null;
+  nextRankTier: "I" | "II" | "III" | null;
+  nextTopPercentileLabel: string | null;
+  progressPct: number;
+};
+
+export function overallRankDisplayFromOutput(o: StrengthRankingOutput): OverallRankDisplaySnapshot {
+  return {
+    rankSlug: o.overallRankSlug,
+    tier: o.overallTier,
+    rankLabel: o.overallRankLabel,
+    topPercentileLabel: o.overallTopPercentileLabel,
+    nextRankLabel: o.overallNextRankLabel ?? "",
+    nextRankSlug: o.overallNextRankSlug,
+    nextRankTier: o.overallNextRankTier,
+    nextTopPercentileLabel: o.overallNextTopPercentileLabel,
+    progressPct: o.overallProgressToNextPct,
+  };
+}
 
 export type StrengthRankingOutput = {
   muscleScores: Record<StrengthRankMuscle, number>;
   muscleRanks: Record<StrengthRankMuscle, MuscleRankOutput>;
-  /** Backward compat: percentile from muscle score (0–100) for "Top X%" display. */
+  /** @deprecated Numeric legacy field; prefer topPercentileLabel on muscle ranks. Kept 0 for compatibility. */
   musclePercentiles: Record<StrengthRankMuscle, number>;
   overallScore: number;
   overallRank: string;
   overallRankLabel: string;
-  overallRankSlug: string;
+  overallRankSlug: RankSlug;
+  overallTier: "I" | "II" | "III";
   overallProgressToNextPct: number;
   overallNextRankLabel: string | null;
-  /** Next rank slug for badge (e.g. "elite"). */
-  overallNextRankSlug: string | null;
-  /** Backward compatibility: overall score mapped to 0–100 for UI that expects percentile. */
+  overallNextRankSlug: RankSlug | null;
+  overallNextRankTier: "I" | "II" | "III" | null;
+  /** Exact label e.g. "Top 18.3%" */
+  overallTopPercentileLabel: string;
+  /** Next rank's Top X% label when applicable. */
+  overallNextTopPercentileLabel: string | null;
+  /** @deprecated Use overallTopPercentileLabel. */
   overallPercentile: number;
 };
-
-// --- Input: exercise data with recency ---
 
 export type ExerciseDataPoint = {
   exerciseId: string;
   exerciseName: string;
   categoryName: string;
-  /** Estimated 1RM (kg), already adjusted for unilateral if needed. */
+  /** Muscle this data point contributes to (same exercise may emit multiple points, e.g. farmer carry). */
+  forMuscle: StrengthRankMuscle;
+  /** Best-effort estimated 1RM (kg) for this set — used for suggestions. */
   estimated1RM: number;
-  /** Date of the workout (YYYY-MM-DD) for recency. */
+  /** strength_ratio for this set (1RM/bw or forearm farmer rule only on forearms), precomputed in action. */
+  strengthRatio: number;
   date: string;
 };
 
 export type StrengthRankingInput = {
-  /** Per-exercise data points (can be multiple per exercise for recency weighting). */
   exerciseDataPoints: ExerciseDataPoint[];
   bodyweightKg: number;
-  /** Reference date for recency (e.g. today). */
-  referenceDate: string;
-  /** Optional core score (average of top 3 core exercises). */
   coreScore?: number | null;
 };
+
+function defaultMuscleRankOutput(): MuscleRankOutput {
+  const info = strengthScoreToRank(0, "chest");
+  return {
+    strengthScore: 0,
+    rank: info.rank,
+    tier: info.tier,
+    rankLabel: info.rankLabel,
+    rankSlug: info.rankSlug,
+    progressToNextPct: info.progressToNextPct,
+    nextRankLabel: info.nextRankLabel,
+    topPercentileLabel: info.topPercentileLabel,
+  };
+}
+
+function matchOverallStep(score: number): (typeof OVERALL_STEPS)[number] {
+  for (const s of OVERALL_STEPS) {
+    if (score >= s.threshold) return s;
+  }
+  return OVERALL_STEPS[OVERALL_STEPS.length - 1];
+}
+
+function nextOverallStep(current: (typeof OVERALL_STEPS)[number]): (typeof OVERALL_STEPS)[number] | null {
+  const idx = OVERALL_STEPS.findIndex(
+    (s) =>
+      s.threshold === current.threshold &&
+      s.baseRank === current.baseRank &&
+      s.tier === current.tier
+  );
+  if (idx <= 0) return null;
+  return OVERALL_STEPS[idx - 1];
+}
 
 function defaultStrengthRankingOutput(): StrengthRankingOutput {
   const muscleScores = Object.fromEntries(
@@ -572,77 +734,51 @@ function defaultStrengthRankingOutput(): StrengthRankingOutput {
     STRENGTH_RANK_MUSCLES.map((m) => [m, 0])
   ) as Record<StrengthRankMuscle, number>;
   const muscleRanks = Object.fromEntries(
-    STRENGTH_RANK_MUSCLES.map((m) => [
-      m,
-      {
-        strengthScore: 0,
-        rank: "Newbie",
-        tier: "III",
-        rankLabel: "Newbie III",
-        rankSlug: "newbie",
-        progressToNextPct: 0,
-        nextRankLabel: "Starter I",
-        topPercentile: 90,
-      } as MuscleRankOutput,
-    ])
+    STRENGTH_RANK_MUSCLES.map((m) => [m, defaultMuscleRankOutput()])
   ) as Record<StrengthRankMuscle, MuscleRankOutput>;
+  const last = OVERALL_STEPS[OVERALL_STEPS.length - 1];
+  const next = OVERALL_STEPS[OVERALL_STEPS.length - 2];
   return {
     muscleScores,
     muscleRanks,
     musclePercentiles,
     overallScore: 0,
-    overallRank: "Newbie",
-    overallRankLabel: "Newbie I",
-    overallRankSlug: "newbie",
+    overallRank: last.baseRank,
+    overallRankLabel: last.fullLabel,
+    overallRankSlug: rankToSlug(last.baseRank),
+    overallTier: last.tier,
     overallProgressToNextPct: 0,
-    overallNextRankLabel: "Starter I",
-    overallNextRankSlug: "starter",
+    overallNextRankLabel: next.fullLabel,
+    overallNextRankSlug: rankToSlug(next.baseRank),
+    overallNextRankTier: next.tier,
+    overallTopPercentileLabel: last.topPercentLabel,
+    overallNextTopPercentileLabel: next.topPercentLabel,
     overallPercentile: 0,
   };
 }
 
-/** Map overall strength score to 0–100 so getRank(percentile) in rankBadges matches score-based rank. */
-export function scoreToPercentile(score: number): number {
-  if (score <= 0) return 0;
-  const maxScore = 2.05;
-  const pct = (score / maxScore) * 100;
-  return Math.min(99, Math.round(pct));
-}
-
-/**
- * Compute Liftly strength ranking from exercise data points (with recency),
- * bodyweight, and optional core score.
- */
 export function computeStrengthRanking(input: StrengthRankingInput): StrengthRankingOutput {
-  const { exerciseDataPoints, bodyweightKg, referenceDate, coreScore } = input;
-  const bodyweight = bodyweightKg > 0 ? bodyweightKg : 1;
+  const { exerciseDataPoints, coreScore } = input;
 
-  // Build per-exercise recency-weighted best score (score = (1RM/bw)*mult*recency, take max per exercise)
-  const multiplierByKey = new Map<string, number>();
-  const nameByKey = new Map<string, string>();
-  const categoryByKey = new Map<string, string>();
-  const scoreByExercise = new Map<string, number>();
-  const estimated1RMByExercise = new Map<string, number>();
+  const bestByExerciseMuscle = new Map<
+    string,
+    { ratio: number; estimated1RM: number; name: string }
+  >();
 
   for (const pt of exerciseDataPoints) {
-    const key = pt.exerciseId;
-    nameByKey.set(key, pt.exerciseName);
-    categoryByKey.set(key, pt.categoryName);
-    if (!multiplierByKey.has(key))
-      multiplierByKey.set(key, getExerciseMultiplier(pt.exerciseName, pt.categoryName));
-    const mult = multiplierByKey.get(key)!;
-    const daysAgo = daysBetween(pt.date, referenceDate);
-    const recency = recencyWeight(daysAgo);
-    const rawScore = (pt.estimated1RM / bodyweight) * mult * recency;
-    const current = scoreByExercise.get(key) ?? 0;
-    if (rawScore > current) {
-      scoreByExercise.set(key, rawScore);
-      estimated1RMByExercise.set(key, pt.estimated1RM);
+    if (pt.forMuscle === "core") continue;
+    const mapKey = `${pt.exerciseId}:${pt.forMuscle}`;
+    const cur = bestByExerciseMuscle.get(mapKey);
+    if (!cur || pt.strengthRatio > cur.ratio) {
+      bestByExerciseMuscle.set(mapKey, {
+        ratio: pt.strengthRatio,
+        estimated1RM: pt.estimated1RM,
+        name: pt.exerciseName,
+      });
     }
   }
 
-  // Group by muscle (non-core)
-  const scoresByMuscle: Record<StrengthRankMuscle, { score: number; exerciseId: string; name: string; estimated1RM: number; multiplier: number }[]> = {
+  const scoresByMuscle: Record<StrengthRankMuscle, { exerciseId: string; name: string; ratio: number; estimated1RM: number }[]> = {
     chest: [],
     back: [],
     legs: [],
@@ -654,38 +790,36 @@ export function computeStrengthRanking(input: StrengthRankingInput): StrengthRan
     core: [],
   };
 
-  for (const [exerciseId, score] of scoreByExercise) {
-    if (score <= 0) continue;
-    const categoryName = categoryByKey.get(exerciseId) ?? "";
-    const muscles = categoryToStrengthMuscles(categoryName).filter((m) => m !== "core");
-    const multiplier = multiplierByKey.get(exerciseId) ?? DEFAULT_EXERCISE_MULTIPLIER;
-    const estimated1RM = estimated1RMByExercise.get(exerciseId) ?? 0;
-    const name = nameByKey.get(exerciseId) ?? "";
-    for (const m of muscles) {
-      scoresByMuscle[m].push({ score, exerciseId, name, estimated1RM, multiplier });
-    }
+  for (const [mapKey, val] of bestByExerciseMuscle) {
+    if (val.ratio <= 0) continue;
+    const colon = mapKey.indexOf(":");
+    const exerciseId = mapKey.slice(0, colon);
+    const m = mapKey.slice(colon + 1) as StrengthRankMuscle;
+    scoresByMuscle[m].push({
+      exerciseId,
+      name: val.name,
+      ratio: val.ratio,
+      estimated1RM: val.estimated1RM,
+    });
   }
 
   const muscleScores = {} as Record<StrengthRankMuscle, number>;
   const muscleRanks = {} as Record<StrengthRankMuscle, MuscleRankOutput>;
+  const musclePercentiles = {} as Record<StrengthRankMuscle, number>;
 
   for (const m of STRENGTH_RANK_MUSCLES) {
     if (m === "core") {
-      muscleScores.core =
-        coreScore != null && Number.isFinite(coreScore)
-          ? Math.max(0, Math.round(coreScore * 100) / 100)
-          : 0;
+      const s =
+        coreScore != null && Number.isFinite(coreScore) ? Math.max(0, Math.round(coreScore * 10000) / 10000) : 0;
+      muscleScores.core = s;
     } else {
-      const list = scoresByMuscle[m].map((x) => x.score);
-      muscleScores[m] = muscleScoreFromTopExercises(list);
+      const list = scoresByMuscle[m];
+      muscleScores[m] = muscleScoreFromExerciseRatios(list.map((x) => x.ratio));
     }
+
     const score = muscleScores[m];
     const rankInfo = strengthScoreToRank(score, m);
-    const thresholds = getThresholdsForMuscle(m);
-    const nextLabel =
-      rankInfo.nextThreshold != null
-        ? (thresholds.find((t) => t.score === rankInfo.nextThreshold)?.rank ?? "") + " I"
-        : null;
+
     muscleRanks[m] = {
       strengthScore: score,
       rank: rankInfo.rank,
@@ -693,148 +827,112 @@ export function computeStrengthRanking(input: StrengthRankingInput): StrengthRan
       rankLabel: rankInfo.rankLabel,
       rankSlug: rankInfo.rankSlug,
       progressToNextPct: rankInfo.progressToNextPct,
-      nextRankLabel: nextLabel,
-      topPercentile: rankInfo.topPercentile,
+      nextRankLabel: rankInfo.nextRankLabel,
+      topPercentileLabel: rankInfo.topPercentileLabel,
     };
+    musclePercentiles[m] = 0;
   }
 
-  const musclePercentiles = {} as Record<StrengthRankMuscle, number>;
-  for (const m of STRENGTH_RANK_MUSCLES) {
-    musclePercentiles[m] = muscleRanks[m].topPercentile;
+  let weightedSum = 0;
+  let weightTotal = 0;
+  for (const m of OVERALL_RANK_MUSCLES) {
+    const s = muscleScores[m];
+    if (s <= 0) continue;
+    const w = MUSCLE_WEIGHT[m];
+    weightedSum += s * w;
+    weightTotal += w;
   }
 
-  const primaryTopPcts = PRIMARY_STRENGTH_RANK_MUSCLES.map((m) => muscleRanks[m].topPercentile);
-  const overallTopPercentile =
-    primaryTopPcts.length > 0
-      ? Math.round(
-          primaryTopPcts.reduce((a, b) => a + b, 0) / primaryTopPcts.length
-        )
-      : 90;
-  const overallRankInfo = percentileToRankAndTier(overallTopPercentile);
-  const primaryScores = PRIMARY_STRENGTH_RANK_MUSCLES.map((m) => muscleScores[m]);
   const overallScore =
-    primaryScores.length > 0
-      ? Math.round(
-          (primaryScores.reduce((a, b) => a + b, 0) / primaryScores.length) * 100
-        ) / 100
-      : 0;
-  const currentRankIndex = RANK_ORDER.indexOf(overallRankInfo.rank as (typeof RANK_ORDER)[number]);
-  const nextRankEntry = currentRankIndex >= 0 && currentRankIndex < RANK_ORDER.length - 1
-    ? PERCENTILE_RANGES_BY_RANK[currentRankIndex + 1]
-    : null;
-  const overallNextRankLabel = nextRankEntry ? `${nextRankEntry.rank} I` : null;
-  const overallNextRankSlug = nextRankEntry ? rankToSlug(nextRankEntry.rank) : null;
+    weightTotal > 0 ? Math.round((weightedSum / weightTotal) * 10000) / 10000 : 0;
+
+  const overallMatched = matchOverallStep(Math.max(0, overallScore));
+  const overallNext = nextOverallStep(overallMatched);
+  const overallStepsCore: RankStep[] = OVERALL_STEPS.map(
+    ({ threshold, baseRank, tier, fullLabel }) => ({ threshold, baseRank, tier, fullLabel })
+  );
+  const overallProgressToNextPct = progressToNextRank(
+    Math.max(0, overallScore),
+    overallMatched,
+    overallStepsCore
+  );
 
   return {
     muscleScores,
     muscleRanks,
     musclePercentiles,
     overallScore,
-    overallRank: overallRankInfo.rank,
-    overallRankLabel: overallRankInfo.rankLabel,
-    overallRankSlug: overallRankInfo.rankSlug,
-    overallProgressToNextPct: overallRankInfo.progressToNextPct,
-    overallNextRankLabel,
-    overallNextRankSlug,
-    overallPercentile: overallTopPercentile,
+    overallRank: overallMatched.baseRank,
+    overallRankLabel: overallMatched.fullLabel,
+    overallRankSlug: rankToSlug(overallMatched.baseRank),
+    overallTier: overallMatched.tier,
+    overallProgressToNextPct,
+    overallNextRankLabel: overallNext?.fullLabel ?? null,
+    overallNextRankSlug: overallNext ? rankToSlug(overallNext.baseRank) : null,
+    overallNextRankTier: overallNext?.tier ?? null,
+    overallTopPercentileLabel: overallMatched.topPercentLabel,
+    overallNextTopPercentileLabel: overallNext?.topPercentLabel ?? null,
+    overallPercentile: 0,
   };
 }
 
-/** Map "Top X%" percentile to rank and tier (global brackets). III = bottom third, I = top. */
-function percentileToRankAndTier(topPct: number): {
-  rank: string;
-  tier: "I" | "II" | "III";
-  rankLabel: string;
-  rankSlug: string;
-  progressToNextPct: number;
-} {
-  const clamped = Math.max(1, Math.min(100, topPct));
-  for (let i = 0; i < PERCENTILE_RANGES_BY_RANK.length; i++) {
-    const { rank, minPct, maxPct } = PERCENTILE_RANGES_BY_RANK[i];
-    if (clamped <= maxPct && clamped >= minPct) {
-      const width = maxPct - minPct;
-      const progressInBand = width > 0 ? (clamped - minPct) / width : 0;
-      const third = 1 / 3;
-      let tier: "I" | "II" | "III";
-      if (progressInBand < third) tier = "III";
-      else if (progressInBand < 2 * third) tier = "II";
-      else tier = "I";
-      const tierStart = minPct + (tier === "III" ? 0 : tier === "II" ? third * width : 2 * third * width);
-      const tierEnd = minPct + (tier === "III" ? third * width : tier === "II" ? 2 * third * width : width);
-      const progressToNextPct =
-        tierEnd > tierStart
-          ? Math.round(((clamped - tierStart) / (tierEnd - tierStart)) * 100)
-          : 100;
-      const rankLabel = rank === "GOAT" ? "GOAT 🐐" : `${rank} ${tier}`;
-      return {
-        rank,
-        tier,
-        rankLabel,
-        rankSlug: rankToSlug(rank),
-        progressToNextPct: Math.min(100, Math.max(0, progressToNextPct)),
-      };
-    }
-  }
-  const last = PERCENTILE_RANGES_BY_RANK[PERCENTILE_RANGES_BY_RANK.length - 1];
-  return {
-    rank: last.rank,
-    tier: "I",
-    rankLabel: last.rank === "GOAT" ? "GOAT 🐐" : `${last.rank} I`,
-    rankSlug: rankToSlug(last.rank),
-    progressToNextPct: 100,
-  };
-}
-
-/** Get top exercises per muscle (by score) for improvement UI. Includes multiplier and estimated1RM. */
 export function getTopExercisesByMuscleForSuggestions(
-  exerciseDataPoints: ExerciseDataPoint[],
-  bodyweightKg: number,
-  referenceDate: string
+  exerciseDataPoints: ExerciseDataPoint[]
 ): Record<
   StrengthRankMuscle,
-  { exerciseId: string; name: string; estimated1RM: number; multiplier: number; score: number }[]
+  { exerciseId: string; name: string; estimated1RM: number; ratio: number }[]
 > {
+  const bestByExerciseMuscle = new Map<
+    string,
+    { ratio: number; estimated1RM: number; name: string }
+  >();
+
+  for (const pt of exerciseDataPoints) {
+    if (pt.forMuscle === "core") continue;
+    const mapKey = `${pt.exerciseId}:${pt.forMuscle}`;
+    const cur = bestByExerciseMuscle.get(mapKey);
+    if (!cur || pt.strengthRatio > cur.ratio) {
+      bestByExerciseMuscle.set(mapKey, {
+        ratio: pt.strengthRatio,
+        estimated1RM: pt.estimated1RM,
+        name: pt.exerciseName,
+      });
+    }
+  }
+
+  const byMuscle = new Map<
+    StrengthRankMuscle,
+    { exerciseId: string; name: string; estimated1RM: number; ratio: number }[]
+  >();
+  for (const m of STRENGTH_RANK_MUSCLES) byMuscle.set(m, []);
+
+  for (const [mapKey, val] of bestByExerciseMuscle) {
+    if (val.ratio <= 0) continue;
+    const colon = mapKey.indexOf(":");
+    const exerciseId = mapKey.slice(0, colon);
+    const m = mapKey.slice(colon + 1) as StrengthRankMuscle;
+    byMuscle.get(m)!.push({
+      exerciseId,
+      name: val.name,
+      estimated1RM: val.estimated1RM,
+      ratio: val.ratio,
+    });
+  }
+
   const out = {} as Record<
     StrengthRankMuscle,
-    { exerciseId: string; name: string; estimated1RM: number; multiplier: number; score: number }[]
+    { exerciseId: string; name: string; estimated1RM: number; ratio: number }[]
   >;
   for (const m of STRENGTH_RANK_MUSCLES) {
-    out[m] = [];
-  }
-  const multiplierByKey = new Map<string, number>();
-  const scoreByExercise = new Map<string, { score: number; estimated1RM: number }>();
-  for (const pt of exerciseDataPoints) {
-    const mult = getExerciseMultiplier(pt.exerciseName, pt.categoryName);
-    multiplierByKey.set(pt.exerciseId, mult);
-    const daysAgo = daysBetween(pt.date, referenceDate);
-    const recency = recencyWeight(daysAgo);
-    const score = (pt.estimated1RM / (bodyweightKg || 1)) * mult * recency;
-    const cur = scoreByExercise.get(pt.exerciseId);
-    if (!cur || score > cur.score) {
-      scoreByExercise.set(pt.exerciseId, { score, estimated1RM: pt.estimated1RM });
-    }
-  }
-  const categoryByExercise = new Map<string, string>();
-  const nameByExercise = new Map<string, string>();
-  for (const pt of exerciseDataPoints) {
-    categoryByExercise.set(pt.exerciseId, pt.categoryName);
-    nameByExercise.set(pt.exerciseId, pt.exerciseName);
-  }
-  const byMuscle = new Map<StrengthRankMuscle, { exerciseId: string; name: string; estimated1RM: number; multiplier: number; score: number }[]>();
-  for (const m of STRENGTH_RANK_MUSCLES) byMuscle.set(m, []);
-  for (const [exerciseId, { score, estimated1RM }] of scoreByExercise) {
-    const categoryName = categoryByExercise.get(exerciseId) ?? "";
-    const muscles = categoryToStrengthMuscles(categoryName).filter((m) => m !== "core");
-    const multiplier = multiplierByKey.get(exerciseId) ?? DEFAULT_EXERCISE_MULTIPLIER;
-    const name = nameByExercise.get(exerciseId) ?? "";
-    for (const m of muscles) {
-      byMuscle.get(m)!.push({ exerciseId, name, estimated1RM, multiplier, score });
-    }
-  }
-  for (const m of STRENGTH_RANK_MUSCLES) {
     const list = byMuscle.get(m) ?? [];
-    list.sort((a, b) => b.score - a.score);
+    list.sort((a, b) => b.ratio - a.ratio);
     out[m] = list.slice(0, 3);
   }
   return out;
 }
+
+/** Legacy export for any stray imports */
+export const STRENGTH_SCORE_THRESHOLDS = CHEST_STEPS.map((s) => ({
+  score: s.threshold,
+  rank: s.baseRank,
+}));

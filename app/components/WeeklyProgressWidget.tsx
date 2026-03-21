@@ -24,6 +24,7 @@ export function WeeklyProgressWidget({ weekly, lastWorkout }: Props) {
   const exercises = weekly?.thisWeek.exercises ?? 0;
   const sets = weekly?.thisWeek.sets ?? 0;
   const prs = weekly?.thisWeek.prs ?? 0;
+  const isEmptyWeek = exercises === 0 && sets === 0 && prs === 0;
 
   return (
     <div className="flex h-full flex-col rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700">
@@ -48,6 +49,12 @@ export function WeeklyProgressWidget({ weekly, lastWorkout }: Props) {
           </div>
         </div>
 
+        {isEmptyWeek && (
+          <p className="mt-3 text-center text-[11px] leading-snug text-zinc-500 opacity-70">
+            Log your first workout to start tracking your weekly progress.
+          </p>
+        )}
+
         {/* Last workout — compact, max 3 exercises */}
         {lastWorkout && lastWorkout.exerciseCount > 0 ? (
           <>
@@ -70,15 +77,17 @@ export function WeeklyProgressWidget({ weekly, lastWorkout }: Props) {
                 )}
               </div>
             </div>
-            <Link
-              href={`/calendar?date=${lastWorkout.date}`}
-              prefetch={true}
-              className="mt-auto flex justify-end text-xs font-medium text-orange-500 transition hover:text-orange-400"
-            >
-              See more →
-            </Link>
+            {!isEmptyWeek && (
+              <Link
+                href={`/calendar?date=${lastWorkout.date}`}
+                prefetch={true}
+                className="mt-auto flex justify-end text-xs font-medium text-orange-500 transition hover:text-orange-400"
+              >
+                See more →
+              </Link>
+            )}
           </>
-        ) : (
+        ) : !isEmptyWeek ? (
           <Link
             href="/calendar"
             prefetch={true}
@@ -86,7 +95,7 @@ export function WeeklyProgressWidget({ weekly, lastWorkout }: Props) {
           >
             See more →
           </Link>
-        )}
+        ) : null}
       </div>
     </div>
   );

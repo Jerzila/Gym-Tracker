@@ -29,6 +29,7 @@ import {
 import { getCurrentYearMonth } from "@/lib/insightsDates";
 import type { Exercise } from "@/lib/types";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
+import { overallRankDisplayFromOutput } from "@/lib/strengthRanking";
 import { SkeletonInsightsPage, SkeletonPanel } from "@/app/components/Skeleton";
 import { useWorkoutDataCache } from "@/app/components/WorkoutDataCacheContext";
 import {
@@ -387,7 +388,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
       {/* Section 1: Top Rank Card */}
       {strengthRanking && (
         <section>
-          <InsightsRankCard overallPercentile={strengthRanking.overallPercentile} />
+          <InsightsRankCard display={overallRankDisplayFromOutput(strengthRanking)} />
         </section>
       )}
 

@@ -8,6 +8,7 @@ import { useUnits } from "@/app/components/UnitsContext";
 import { SkeletonPanel } from "@/app/components/Skeleton";
 import type { WeeklyComparison } from "@/app/actions/insights";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
+import { overallRankDisplayFromOutput } from "@/lib/strengthRanking";
 
 const MuscleRadarChart = dynamic(
   () =>
@@ -41,7 +42,8 @@ const WeeklyProgressWidget = dynamic(
   { ssr: false }
 );
 
-import { calculateBMI, getBMICategory, getBMIPosition, BMI_BAR_SEGMENTS } from "@/lib/bmi";
+import { calculateBMI, getBMICategory } from "@/lib/bmi";
+import { BMISlider } from "@/app/components/BMISlider";
 import type { CategoryDistribution, MuscleDistributionPoint } from "@/app/actions/insights";
 import type { LastWorkoutSummary } from "@/app/actions/workouts";
 
@@ -96,7 +98,7 @@ export function DashboardPageContent({
       <section className="animate-fade-in grid grid-cols-2 gap-3 items-stretch" style={{ animationDelay: "25ms" }}>
         <WeeklyProgressWidget weekly={weekly} lastWorkout={lastWorkout} />
         {strengthRanking ? (
-          <DashboardRankWidget overallPercentile={strengthRanking.overallPercentile} />
+          <DashboardRankWidget display={overallRankDisplayFromOutput(strengthRanking)} />
         ) : (
           <div className="flex h-full min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
             <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
@@ -144,7 +146,6 @@ export function DashboardPageContent({
                     <p className="mt-3 text-sm text-zinc-500">Add your height in settings to see BMI.</p>
                   );
                 }
-                const position = getBMIPosition(bmi);
                 return (
                   <div className="mt-3 w-full">
                     <p className="mb-1.5 flex flex-wrap items-baseline gap-2">
@@ -153,32 +154,7 @@ export function DashboardPageContent({
                         {category.label}
                       </span>
                     </p>
-                    <div className="mb-0.5 flex justify-between text-[11px] text-zinc-500">
-                      <span>18.5</span>
-                      <span>25</span>
-                      <span>30</span>
-                    </div>
-                    <div className="relative flex h-2.5 w-full overflow-hidden rounded-full">
-                      {BMI_BAR_SEGMENTS.map((seg) => (
-                        <div
-                          key={seg.label}
-                          className="h-full flex-shrink-0"
-                          style={{ width: `${seg.widthPercent}%`, backgroundColor: seg.color }}
-                          title={seg.label}
-                        />
-                      ))}
-                      <div
-                        className="absolute -top-1 h-4 w-4 rounded-full border-2 border-zinc-900 bg-white shadow"
-                        style={{ left: `${position}%`, transform: "translateX(-50%)" }}
-                        title={`BMI ${bmi}`}
-                      />
-                    </div>
-                    <div className="mt-1 flex justify-between text-[10px] text-zinc-500">
-                      <span>Underweight</span>
-                      <span>Normal</span>
-                      <span>Overweight</span>
-                      <span>Obese</span>
-                    </div>
+                    <BMISlider bmi={bmi} compact />
                   </div>
                 );
               })()}

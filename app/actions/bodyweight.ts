@@ -9,13 +9,26 @@ function isConnectionError(e: unknown): boolean {
   return msg.includes("fetch failed") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("network");
 }
 
+/** Postgres unique_violation — concurrent setup inserts race the same partial unique index. */
+function looksLikeUniqueViolation(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.code === "23505") return true;
+  const m = (err.message ?? "").toLowerCase();
+  return m.includes("duplicate key") || m.includes("unique constraint") || m.includes("already exists");
+}
+
+function isoDateOnly(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 export async function getBodyweightLogs(): Promise<BodyweightLog[]> {
   try {
     const supabase = await createServerClient();
     const { data, error } = await supabase
       .from("bodyweight_logs")
       .select("*")
-      .order("date", { ascending: false });
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false });
     if (error) throw new Error(error.message);
     return (data ?? []).map((row) => ({
       id: row.id,
@@ -23,6 +36,7 @@ export async function getBodyweightLogs(): Promise<BodyweightLog[]> {
       weight: Number(row.weight),
       date: row.date,
       created_at: row.created_at,
+      source: (row as { source?: string | null }).source ?? null,
     })) as BodyweightLog[];
   } catch (e) {
     if (isConnectionError(e)) {
@@ -82,11 +96,22 @@ export async function getBodyweightStats(): Promise<BodyweightStats> {
  * Creates the first bodyweight log for the current user if they have none.
  * Used when saving onboarding/setup weight so dashboard, BMI, and charts work.
  * No-op if the user already has at least one bodyweight log.
+ *
+ * `date` should be the user's calendar day of setup (YYYY-MM-DD), ideally from the client (local timezone).
+ * Requires DB migrations 014 (`source`) and 015 (partial unique on setup per user).
  */
-export async function ensureFirstBodyweightLog(weightKg: number): Promise<{ error?: string }> {
+export async function ensureFirstBodyweightLog(
+  weightKg: number,
+  options?: { source?: string; date?: string }
+): Promise<{ error?: string }> {
   if (!Number.isFinite(weightKg) || weightKg <= 0) {
     return { error: "Invalid weight for first bodyweight log." };
   }
+  const source = options?.source ?? "setup";
+  const dateRaw = options?.date?.trim();
+  const date =
+    dateRaw && /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : isoDateOnly(new Date());
+
   try {
     const supabase = await createServerClient();
     const {
@@ -94,23 +119,39 @@ export async function ensureFirstBodyweightLog(weightKg: number): Promise<{ erro
     } = await supabase.auth.getUser();
     if (!user) return { error: "Not authenticated." };
 
-    const { data: existing } = await supabase
+    const { data: existing, error: selectErr } = await supabase
       .from("bodyweight_logs")
       .select("id")
       .eq("user_id", user.id)
       .limit(1);
 
+    if (selectErr) return { error: selectErr.message };
     if (existing && existing.length > 0) {
       return {};
     }
 
-    const date = new Date().toISOString().slice(0, 10);
-    const { error } = await supabase
-      .from("bodyweight_logs")
-      .insert({ user_id: user.id, weight: weightKg, date } as Record<string, unknown>);
+    const row = {
+      user_id: user.id,
+      weight: weightKg,
+      date,
+      source,
+    };
 
-    if (error) return { error: error.message };
+    const { error: insertErr } = await supabase
+      .from("bodyweight_logs")
+      .insert(row as Record<string, unknown>);
+
+    if (insertErr) {
+      if (looksLikeUniqueViolation(insertErr)) {
+        revalidatePath("/");
+        revalidatePath("/account");
+        revalidatePath("/bodyweight");
+        return {};
+      }
+      return { error: insertErr.message };
+    }
     revalidatePath("/");
+    revalidatePath("/account");
     revalidatePath("/bodyweight");
     return {};
   } catch (e) {
@@ -147,6 +188,7 @@ export async function createBodyweightLog(formData: FormData): Promise<{ error?:
 
     if (error) return { error: error.message };
     revalidatePath("/");
+    revalidatePath("/account");
     revalidatePath("/bodyweight");
     return {};
   } catch (e) {
@@ -164,6 +206,7 @@ export async function deleteBodyweightLog(id: string): Promise<{ error?: string 
     const { error } = await supabase.from("bodyweight_logs").delete().eq("id", id);
     if (error) return { error: error.message };
     revalidatePath("/");
+    revalidatePath("/account");
     revalidatePath("/bodyweight");
     return {};
   } catch (e) {

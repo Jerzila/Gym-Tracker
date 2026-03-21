@@ -82,6 +82,7 @@ export async function createWorkout(
   );
 
   revalidatePath("/");
+  revalidatePath("/account");
   revalidatePath("/exercises");
   revalidatePath(`/exercise/${exerciseId}`);
   return { message };
@@ -116,6 +117,7 @@ export async function deleteWorkout(
     if (workoutError) return { error: workoutError.message };
 
     revalidatePath("/");
+    revalidatePath("/account");
     revalidatePath(`/exercise/${exerciseId}`);
     return {};
   } catch (e) {
@@ -123,6 +125,98 @@ export async function deleteWorkout(
       return { error: "Can't connect to Supabase. Check your .env.local." };
     }
     return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
+export type AccountLifetimeStats = {
+  workoutCount: number;
+  exerciseCount: number;
+  setCount: number;
+  prCount: number;
+};
+
+/** Lifetime totals for Account dashboard (workouts, distinct exercises, sets, PR events). */
+export async function getAccountLifetimeStats(): Promise<{
+  data: AccountLifetimeStats | null;
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: null, error: "Not authenticated" };
+
+    const { data: workouts, error: wError } = await supabase
+      .from("workouts")
+      .select("id, exercise_id, date, weight")
+      .eq("user_id", user.id);
+
+    if (wError) return { data: null, error: wError.message };
+
+    const list = (workouts ?? []).slice().sort((a, b) => {
+      const da = String(a.date).localeCompare(String(b.date));
+      if (da !== 0) return da;
+      return String(a.id).localeCompare(String(b.id));
+    });
+    const workoutCount = list.length;
+    const exerciseCount = new Set(list.map((w) => w.exercise_id as string)).size;
+
+    if (list.length === 0) {
+      return { data: { workoutCount: 0, exerciseCount: 0, setCount: 0, prCount: 0 } };
+    }
+
+    const workoutIds = list.map((w) => w.id as string);
+    const CHUNK = 200;
+    const allSets: { workout_id: string; reps: number }[] = [];
+
+    for (let i = 0; i < workoutIds.length; i += CHUNK) {
+      const chunk = workoutIds.slice(i, i + CHUNK);
+      const { data: sets, error: sError } = await supabase
+        .from("sets")
+        .select("workout_id, reps")
+        .in("workout_id", chunk);
+
+      if (sError) return { data: null, error: sError.message };
+      for (const s of sets ?? []) {
+        allSets.push({ workout_id: s.workout_id as string, reps: Number(s.reps) });
+      }
+    }
+
+    const setsByWorkout = new Map<string, number[]>();
+    for (const s of allSets) {
+      const arr = setsByWorkout.get(s.workout_id) ?? [];
+      arr.push(s.reps);
+      setsByWorkout.set(s.workout_id, arr);
+    }
+
+    const setCount = allSets.length;
+
+    let prCount = 0;
+    const bestByExercise = new Map<string, number>();
+    for (const w of list) {
+      const wid = w.id as string;
+      const eid = w.exercise_id as string;
+      const repsList = setsByWorkout.get(wid) ?? [];
+      const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
+      const weight = Number(w.weight) || 0;
+      const est = epley1RM(weight, bestReps);
+      const prev = bestByExercise.get(eid) ?? 0;
+      if (est >= prev) {
+        prCount += 1;
+      }
+      bestByExercise.set(eid, Math.max(prev, est));
+    }
+
+    return { data: { workoutCount, exerciseCount, setCount, prCount } };
+  } catch (e) {
+    if (isConnectionError(e)) {
+      return { data: null, error: "Can't connect to Supabase. Check your .env.local." };
+    }
+    return {
+      data: null,
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
   }
 }
 

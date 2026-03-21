@@ -2,7 +2,6 @@
 
 import { useMemo } from "react";
 import { RankBadge } from "@/app/components/RankBadge";
-import { getRank } from "@/lib/rankBadges";
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
@@ -25,19 +24,19 @@ type Props = {
 
 export function WeakestMuscleCard({ data }: Props) {
   const weakest = useMemo(() => {
-    let minPct = 101;
+    let minScore = Number.POSITIVE_INFINITY;
     let minMuscle: StrengthRankMuscle | null = null;
     for (const m of ["chest", "back", "legs", "shoulders", "biceps", "triceps"] as const) {
-      const pct = data.musclePercentiles[m];
-      if (pct < minPct) {
-        minPct = pct;
+      const s = data.muscleScores[m] ?? 0;
+      if (s < minScore) {
+        minScore = s;
         minMuscle = m;
       }
     }
     if (minMuscle == null) return null;
     const rankInfo = data.muscleRanks[minMuscle];
-    const rank = (rankInfo.rankSlug ?? getRank(minPct).rank) as RankSlug;
-    const tier = rankInfo.tier ?? getRank(minPct).tier;
+    const rank = rankInfo.rankSlug as RankSlug;
+    const tier = rankInfo.tier;
     return {
       muscle: minMuscle,
       label: MUSCLE_LABELS[minMuscle],

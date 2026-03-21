@@ -1,6 +1,7 @@
 "use client";
 
-import { calculateBMI, getBMICategory, getBMIPosition, BMI_BAR_SEGMENTS } from "@/lib/bmi";
+import { calculateBMI, getBMICategory } from "@/lib/bmi";
+import { BMISlider } from "@/app/components/BMISlider";
 
 type Props = {
   /** Latest logged weight in kg (from bodyweight_logs). */
@@ -30,8 +31,6 @@ export function BMICard({ weightKg, heightCm }: Props) {
     );
   }
 
-  const position = getBMIPosition(bmi);
-
   return (
     <section className="pb-8">
       <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
@@ -45,36 +44,7 @@ export function BMICard({ weightKg, heightCm }: Props) {
           </span>
         </div>
 
-        {/* Scale markers (BMI thresholds) */}
-        <div className="mb-1 flex justify-between text-xs text-zinc-500">
-          <span>18.5</span>
-          <span>25</span>
-          <span>30</span>
-        </div>
-
-        {/* Segmented bar with fixed proportions */}
-        <div className="relative flex h-3 w-full overflow-hidden rounded-full">
-          {BMI_BAR_SEGMENTS.map((seg) => (
-            <div
-              key={seg.label}
-              className="h-full flex-shrink-0"
-              style={{ width: `${seg.widthPercent}%`, backgroundColor: seg.color }}
-              title={seg.label}
-            />
-          ))}
-          <div
-            className="absolute -top-1 h-4 w-4 rounded-full border-2 border-zinc-900 bg-white shadow"
-            style={{ left: `${position}%`, transform: "translateX(-50%)" }}
-            title={`Your BMI: ${bmi}`}
-          />
-        </div>
-
-        <div className="mt-1.5 flex justify-between text-[10px] text-zinc-500">
-          <span>Underweight</span>
-          <span>Normal</span>
-          <span>Overweight</span>
-          <span>Obese</span>
-        </div>
+        <BMISlider bmi={bmi} />
       </div>
     </section>
   );

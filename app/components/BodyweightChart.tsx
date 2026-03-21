@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import {
   LineChart,
   Line,
@@ -16,9 +17,24 @@ type Point = { date: string; weight: number };
 
 type Props = { data: Point[] };
 
+function yAxisDomain(points: Point[]): [number, number] {
+  if (points.length === 0) return [0, 100];
+  const weights = points.map((p) => p.weight);
+  const lo = Math.min(...weights);
+  const hi = Math.max(...weights);
+  if (lo === hi) {
+    const pad = Math.max(lo * 0.04, 1);
+    return [Math.max(0, lo - pad), hi + pad];
+  }
+  const pad = Math.max((hi - lo) * 0.12, 0.5);
+  return [Math.max(0, lo - pad), hi + pad];
+}
+
 export function BodyweightChart({ data }: Props) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
+  const domain = useMemo(() => yAxisDomain(data), [data]);
+  const singlePoint = data.length === 1;
   return (
     <div className="h-56 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3" style={{ minHeight: 224 }}>
       <ResponsiveContainer width="100%" height={224}>
@@ -33,7 +49,7 @@ export function BodyweightChart({ data }: Props) {
           />
           <YAxis
             tick={{ fill: "#71717a", fontSize: 11 }}
-            domain={["auto", "auto"]}
+            domain={domain}
             tickFormatter={(v) => `${formatWeight(Number(v), { units })} ${weightLabel}`}
           />
           <Tooltip
@@ -51,8 +67,9 @@ export function BodyweightChart({ data }: Props) {
             dataKey="weight"
             stroke="#f59e0b"
             strokeWidth={2}
-            dot={{ fill: "#f59e0b", r: 3 }}
-            activeDot={{ r: 4 }}
+            dot={{ fill: "#f59e0b", r: singlePoint ? 5 : 3 }}
+            activeDot={{ r: singlePoint ? 6 : 4 }}
+            isAnimationActive={false}
           />
         </LineChart>
       </ResponsiveContainer>

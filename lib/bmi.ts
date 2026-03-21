@@ -21,26 +21,61 @@ export type BMICategory = {
   color: string; // hex e.g. #34D399
 };
 
-/** BMI categories: Underweight < 18.5, Normal < 25, Overweight < 30, Obese 30+ */
+/** Slider / bar map BMI linearly from min to max (WHO-style category boundaries on the bar). */
+export const BMI_SLIDER_MIN = 15;
+export const BMI_SLIDER_MAX = 35;
+
+/** Standard adult BMI categories: under 18.5, 18.5–25, 25–30, 30+. */
 export function getBMICategory(bmi: number): BMICategory {
-  if (bmi < 18.5) return { label: "Underweight", color: "#9CA3AF" };
-  if (bmi < 25) return { label: "Normal weight", color: "#34D399" };
-  if (bmi < 30) return { label: "Overweight", color: "#F59E0B" };
-  return { label: "Obese", color: "#EF4444" };
+  let label: string;
+  let color: string;
+  if (bmi < 18.5) {
+    label = "Underweight";
+    color = "#9CA3AF";
+  } else if (bmi < 25) {
+    label = "Normal weight";
+    color = "#34D399";
+  } else if (bmi < 30) {
+    label = "Overweight";
+    color = "#F59E0B";
+  } else {
+    label = "Obese";
+    color = "#EF4444";
+  }
+  return { label, color };
 }
 
-/** Map BMI to bar position (0–100%). Clamps BMI between 10 and 40 so the dot is never cramped at the start. */
+/**
+ * Indicator position 0–100% along the bar from the continuous BMI value only
+ * (not category thresholds). Clamped to BMI_SLIDER_MIN–MAX.
+ */
 export function getBMIPosition(bmi: number): number {
-  const min = 10;
-  const max = 40;
-  const clamped = Math.max(min, Math.min(bmi, max));
-  return ((clamped - min) / (max - min)) * 100;
+  const clampedBMI = Math.max(BMI_SLIDER_MIN, Math.min(bmi, BMI_SLIDER_MAX));
+  return ((clampedBMI - BMI_SLIDER_MIN) / (BMI_SLIDER_MAX - BMI_SLIDER_MIN)) * 100;
 }
 
-/** Fixed segment widths for the BMI bar: Underweight 35%, Normal 25%, Overweight 20%, Obese 20% */
+const span = BMI_SLIDER_MAX - BMI_SLIDER_MIN;
+
+/** Bar segments: 15–18.5 under, 18.5–25 normal, 25–30 overweight, 30–35 obese (linear on slider range). */
 export const BMI_BAR_SEGMENTS = [
-  { label: "Underweight", widthPercent: 35, color: "#9CA3AF" },
-  { label: "Normal", widthPercent: 25, color: "#34D399" },
-  { label: "Overweight", widthPercent: 20, color: "#F59E0B" },
-  { label: "Obese", widthPercent: 20, color: "#EF4444" },
+  {
+    label: "Underweight",
+    widthPercent: ((18.5 - BMI_SLIDER_MIN) / span) * 100,
+    color: "#9CA3AF",
+  },
+  {
+    label: "Normal weight",
+    widthPercent: ((25 - 18.5) / span) * 100,
+    color: "#34D399",
+  },
+  {
+    label: "Overweight",
+    widthPercent: ((30 - 25) / span) * 100,
+    color: "#F59E0B",
+  },
+  {
+    label: "Obese",
+    widthPercent: ((BMI_SLIDER_MAX - 30) / span) * 100,
+    color: "#EF4444",
+  },
 ] as const;

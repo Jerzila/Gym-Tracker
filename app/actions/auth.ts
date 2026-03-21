@@ -52,6 +52,32 @@ export async function getUser() {
   return user;
 }
 
+/** Send password reset email using the signed-in user’s address (never shown in the UI). */
+export async function sendPasswordResetForSessionUser(): Promise<{
+  error?: string;
+  success?: boolean;
+}> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) {
+    return { error: "Unable to send reset link." };
+  }
+
+  const headersList = await headers();
+  const host = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
+  const protocol = headersList.get("x-forwarded-proto") ?? "https";
+  const origin = host ? `${protocol}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
+
+  const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+    redirectTo: origin ? `${origin}/reset-password` : undefined,
+  });
+
+  if (error) return { error: error.message };
+  return { success: true };
+}
+
 export async function requestPasswordReset(formData: FormData) {
   const email = (formData.get("email") as string)?.trim();
   if (!email) {

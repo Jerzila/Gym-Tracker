@@ -2,28 +2,27 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { RANK_LADDER, getRank, getProgressToNextTier } from "@/lib/rankBadges";
-import { formatTopPercentDisplay } from "@/lib/formatPercentile";
+import { RANK_LADDER } from "@/lib/rankBadges";
+import type { OverallRankDisplaySnapshot } from "@/lib/strengthRanking";
 import type { RankSlug } from "@/lib/rankBadges";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  overallPercentile: number;
+  display: OverallRankDisplaySnapshot;
 };
 
 /** Bottom-sheet style panel showing full rank ladder and user position. */
-export function RankLadderPanel({ isOpen, onClose, overallPercentile }: Props) {
+export function RankLadderPanel({ isOpen, onClose, display }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
 
-  const { rankLabel, rank } = (() => {
-    const r = getRank(overallPercentile);
-    return { rankLabel: r.rankLabel, rank: r.rank as RankSlug };
-  })();
-  const progress = getProgressToNextTier(overallPercentile);
-  const nextRankTopLabel = formatTopPercentDisplay(progress.tierEnd);
-  const topLabel = formatTopPercentDisplay(overallPercentile);
+  const rankLabel = display.rankLabel;
+  const rank = display.rankSlug as RankSlug;
+  const topPercentileLabel = display.topPercentileLabel;
+  const nextRankLabel = display.nextRankLabel;
+  const nextTopPercentileLabel = display.nextTopPercentileLabel;
+  const progressPct = display.progressPct;
 
   const handleOverlayClick = useCallback(
     (e: React.MouseEvent) => {
@@ -125,19 +124,19 @@ export function RankLadderPanel({ isOpen, onClose, overallPercentile }: Props) {
                         {isCurrent ? rankLabel : r.displayName}
                       </p>
                       <p className="text-xs text-zinc-500">
-                        {isCurrent ? topLabel : r.topPctLabel}
+                        {isCurrent ? `${topPercentileLabel} of lifters` : `${r.topPctLabel} of lifters`}
                       </p>
                     </div>
                   </div>
-                  {isCurrent && (
+                  {isCurrent && nextRankLabel && nextTopPercentileLabel && (
                     <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-800/50 px-3 py-2.5">
                       <p className="text-xs font-medium text-zinc-400">
-                        Next Rank: {progress.nextLabel} ({nextRankTopLabel})
+                        Next rank: {nextRankLabel} ({nextTopPercentileLabel} of lifters)
                       </p>
                       <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-700">
                         <div
                           className="h-full rounded-full bg-amber-500 transition-all duration-300"
-                          style={{ width: `${progress.progressPct}%` }}
+                          style={{ width: `${progressPct}%` }}
                         />
                       </div>
                     </div>

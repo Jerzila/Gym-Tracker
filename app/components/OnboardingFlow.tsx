@@ -8,6 +8,7 @@ import { haptic } from "@/lib/haptic";
 import { getAgeFromBirthday } from "@/lib/age";
 import { cmToFtIn, ftInToCm, kgToLbs, lbsToKg } from "@/lib/units";
 import type { Profile } from "@/lib/types";
+import { localCalendarDateYYYYMMDD } from "@/lib/localCalendarDate";
 
 const TOTAL_STEPS = 4; // name+DOB+gender, units, height&weight, country (welcome is step 0)
 const STEP_TITLES = [
@@ -373,6 +374,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         units: data.units,
         gender: data.gender,
         country: data.country || null,
+        logDate: localCalendarDateYYYYMMDD(),
       });
       if (result?.error) {
         setError(result.error);

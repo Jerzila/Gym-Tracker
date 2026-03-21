@@ -7,11 +7,10 @@ import {
   computeStrengthRanking,
   categoryToStrengthMuscles,
   epleyEstimated1RM,
-  isUnilateralExercise,
-  UNILATERAL_WEIGHT_FACTOR,
   getNextRankThreshold,
   getWeightIncreaseSuggestions,
   getTopExercisesByMuscleForSuggestions,
+  muscleScoreFromExerciseRatios,
   type StrengthRankingOutput,
   type StrengthRankMuscle,
   type ExerciseDataPoint,
@@ -59,12 +58,12 @@ export type GetStrengthRankingResult = {
 const emptyMuscleRank = {
   strengthScore: 0,
   rank: "Newbie",
-  tier: "III" as const,
-  rankLabel: "Newbie III",
+  tier: "I" as const,
+  rankLabel: "Newbie I",
   rankSlug: "newbie" as const,
   progressToNextPct: 0,
-  nextRankLabel: "Starter I",
-  topPercentile: 90,
+  nextRankLabel: "Newbie II" as string | null,
+  topPercentileLabel: "Top 96.6%",
 };
 
 /** Default ranking when user has no workouts, no 1RM data, or no bodyweight: Newbie I. */
@@ -116,9 +115,13 @@ function defaultStrengthRankingWithExercises(): StrengthRankingWithExercises {
     overallRank: "Newbie",
     overallRankLabel: "Newbie I",
     overallRankSlug: "newbie",
+    overallTier: "I" as const,
     overallProgressToNextPct: 0,
-    overallNextRankLabel: "Starter I",
-    overallNextRankSlug: "starter",
+    overallNextRankLabel: "Newbie II",
+    overallNextRankSlug: "newbie" as const,
+    overallNextRankTier: "II" as const,
+    overallTopPercentileLabel: "Top 96.6%",
+    overallNextTopPercentileLabel: "Top 93.3%",
     overallPercentile: 0,
     bestExerciseByMuscle,
     topExercisesByMuscle,
@@ -214,39 +217,62 @@ function coreScoreFromBestPerformance(args: {
   bestWeightKg: number;
   bodyweightKg: number;
 }): number {
+  if (args.type === "plank") {
+    return Math.max(0, args.bestRepsOrSeconds) / 110;
+  }
   const bw = args.bodyweightKg > 0 ? args.bodyweightKg : 0;
-  if (args.type === "plank") return Math.max(0, args.bestRepsOrSeconds) / 60;
-  if (args.type === "situps") return Math.max(0, args.bestRepsOrSeconds) / 40;
-  if (args.type === "hanging_leg_raise") return Math.max(0, args.bestRepsOrSeconds) / 20;
-  // weighted
-  if (bw <= 0) return 0;
-  return Math.max(0, args.bestWeightKg) / bw;
+  if (bw <= 0 || args.bestWeightKg <= 0) return 0;
+  const reps = Math.max(0, args.bestRepsOrSeconds);
+  const oneRm = epleyEstimated1RM(args.bestWeightKg, reps);
+  return oneRm / bw;
 }
 
-function formatCoreImprovement(type: CoreExerciseType, current: number, requiredScore: number, bodyweightKg: number): string {
+function formatCoreImprovement(
+  type: CoreExerciseType,
+  bestRepsOrSeconds: number,
+  bestWeightKg: number,
+  requiredScore: number,
+  bodyweightKg: number
+): string {
   if (type === "plank") {
-    const requiredSeconds = requiredScore * 60;
-    const add = Math.max(0, requiredSeconds - current);
+    const requiredSeconds = requiredScore * 110;
+    const add = Math.max(0, requiredSeconds - bestRepsOrSeconds);
     const rounded = Math.max(5, Math.round(add / 5) * 5);
     return `+${rounded} seconds`;
   }
-  if (type === "situps") {
-    const requiredReps = requiredScore * 40;
-    const add = Math.max(0, requiredReps - current);
-    const rounded = Math.max(1, Math.round(add));
-    return `+${rounded} reps`;
-  }
-  if (type === "hanging_leg_raise") {
-    const requiredReps = requiredScore * 20;
-    const add = Math.max(0, requiredReps - current);
-    const rounded = Math.max(1, Math.round(add));
-    return `+${rounded} reps`;
-  }
   const bw = bodyweightKg > 0 ? bodyweightKg : 0;
-  const requiredWeight = bw > 0 ? requiredScore * bw : 0;
-  const add = Math.max(0, requiredWeight - current);
+  if (bw <= 0) return "+0 kg";
+  const required1RM = requiredScore * bw;
+  const reps = Math.max(0, bestRepsOrSeconds);
+  const current1RM = epleyEstimated1RM(bestWeightKg, reps);
+  const add = Math.max(0, required1RM - current1RM);
   const rounded = Math.max(1, Math.round(add));
   return `+${rounded} kg`;
+}
+
+/** strength_ratio and 1RM for a single set; farmer carry doubles weight only when attributed to forearms. */
+function ratioAnd1RmForSet(
+  weightKg: number,
+  reps: number,
+  bodyweightKg: number,
+  exerciseName: string,
+  targetMuscle: StrengthRankMuscle
+): { ratio: number; estimated1RM: number } | null {
+  const bw = bodyweightKg > 0 ? bodyweightKg : 0;
+  if (bw <= 0) return null;
+  const n = exerciseName.trim().toLowerCase();
+  const useFarmerRule = targetMuscle === "forearms" && n.includes("farmer");
+  if (useFarmerRule) {
+    const effective = weightKg * 2;
+    if (reps <= 0) {
+      return { ratio: effective / bw, estimated1RM: Math.round(effective * 10) / 10 };
+    }
+    const oneRm = epleyEstimated1RM(effective, reps);
+    return { ratio: oneRm / bw, estimated1RM: Math.round(oneRm * 10) / 10 };
+  }
+  const oneRm = epleyEstimated1RM(weightKg, reps);
+  if (oneRm <= 0) return null;
+  return { ratio: oneRm / bw, estimated1RM: Math.round(oneRm * 10) / 10 };
 }
 
 /**
@@ -316,23 +342,30 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
     }
 
     const exerciseNameById = new Map((allExercises ?? []).map((e) => [e.id, e.name]));
-    const referenceDate = new Date().toISOString().slice(0, 10);
 
     const exerciseDataPoints: ExerciseDataPoint[] = [];
+    const bwForRatio = bodyweightKg > 0 ? bodyweightKg : 0;
     for (const w of workouts ?? []) {
       const name = exerciseNameById.get(w.exercise_id) ?? "";
       const categoryName = categoryByExercise[w.exercise_id] ?? "";
+      const muscles = getEffectiveMusclesForExercise(categoryName, name);
+      if (muscles.includes("core")) continue;
+
       const weightKg = Number(w.weight) || 0;
-      const adjustedWeight = isUnilateralExercise(name) ? weightKg * UNILATERAL_WEIGHT_FACTOR : weightKg;
       const repsList = setsByWorkout.get(w.id) ?? [];
       for (const reps of repsList) {
-        const estimated1RM = Math.round(epleyEstimated1RM(adjustedWeight, reps) * 10) / 10;
-        if (estimated1RM > 0) {
+        if (bwForRatio <= 0) continue;
+        for (const m of muscles) {
+          if (m === "core") continue;
+          const pair = ratioAnd1RmForSet(weightKg, reps, bwForRatio, name, m);
+          if (!pair) continue;
           exerciseDataPoints.push({
             exerciseId: w.exercise_id,
             exerciseName: name,
             categoryName,
-            estimated1RM,
+            forMuscle: m,
+            estimated1RM: pair.estimated1RM,
+            strengthRatio: pair.ratio,
             date: w.date,
           });
         }
@@ -424,12 +457,7 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
         return { ...v, score: Math.round(score * 100) / 100 };
       });
 
-      const top3 = scored
-        .map((x) => x.score)
-        .filter((s) => s > 0)
-        .sort((a, b) => b - a)
-        .slice(0, 3);
-      coreScore = top3.length > 0 ? Math.round((top3.reduce((a, b) => a + b, 0) / top3.length) * 100) / 100 : 0;
+      coreScore = muscleScoreFromExerciseRatios(scored.map((x) => x.score));
 
       // Improvement suggestions: next rank threshold from lib (same score thresholds as other muscles).
       const nextRankScore = getNextRankThreshold(coreScore ?? 0, "core");
@@ -441,12 +469,16 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
         .slice(0, 3);
 
       for (const ex of topExercises) {
-        const currentMetric =
-          ex.type === "weighted" ? ex.bestWeightKg : ex.bestRepsOrSeconds;
         coreImprovementSuggestions.push({
           name: ex.name,
           type: ex.type,
-          improvementLabel: formatCoreImprovement(ex.type, currentMetric, requiredScore, bodyweightKg),
+          improvementLabel: formatCoreImprovement(
+            ex.type,
+            ex.bestRepsOrSeconds,
+            ex.bestWeightKg,
+            requiredScore,
+            bodyweightKg
+          ),
         });
       }
     }
@@ -460,15 +492,10 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
     const output = computeStrengthRanking({
       exerciseDataPoints,
       bodyweightKg: bodyweightKg > 0 ? bodyweightKg : 1,
-      referenceDate,
       coreScore,
     });
 
-    const topExercisesData = getTopExercisesByMuscleForSuggestions(
-      exerciseDataPoints,
-      bodyweightKg > 0 ? bodyweightKg : 1,
-      referenceDate
-    );
+    const topExercisesData = getTopExercisesByMuscleForSuggestions(exerciseDataPoints);
 
     const bestExerciseByMuscle: Record<StrengthRankMuscle, BestExerciseByMuscle | null> = {
       chest: null,
@@ -508,11 +535,10 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
               bodyweightKg > 0 ? bodyweightKg : 1,
               output.muscleScores[muscle],
               nextScore,
-              list.map(({ exerciseId, name, estimated1RM, multiplier }) => ({
+              list.map(({ exerciseId, name, estimated1RM }) => ({
                 exerciseId,
                 name,
                 estimated1RM,
-                multiplier,
               }))
             );
             improvementSuggestionsByMuscle[muscle] = suggestions;

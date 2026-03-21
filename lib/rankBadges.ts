@@ -42,9 +42,7 @@ export function getRankColor(rank: RankSlug): string {
 }
 
 /**
- * Global percentile bands: "Top X%" (higher = stronger).
- * Newbie = Top 100–90%, Starter = Top 90–80%, … GOAT = Top 1%.
- * III = bottom third of band, II = middle, I = top third.
+ * Legacy coordinate bands for getRank() only. Strength UI uses fixed per-tier "Top X%" labels.
  */
 const BANDS: { min: number; max: number; rank: RankSlug }[] = [
   { min: 90, max: 100, rank: "newbie" },
@@ -92,17 +90,19 @@ const RANK_DISPLAY: Record<RankSlug, string> = {
   goat: "GOAT",
 };
 
-/** "Top X%" label per rank for ladder UI (threshold to reach that rank). */
+/**
+ * Exact "Top X%" label per base rank for ladder rows (Tier I of each band; fixed table, not ranges).
+ */
 export const RANK_TOP_PCT_LABELS: Record<RankSlug, string> = {
-  newbie: "Top 100%",
-  starter: "Top 90%",
-  apprentice: "Top 82%",
-  lifter: "Top 70%",
-  "semi-pro": "Top 50%",
-  pro: "Top 35%",
-  elite: "Top 25%",
-  master: "Top 15%",
-  grandmaster: "Top 10%",
+  newbie: "Top 96.6%",
+  starter: "Top 87.3%",
+  apprentice: "Top 78%",
+  lifter: "Top 63.3%",
+  "semi-pro": "Top 45%",
+  pro: "Top 31.6%",
+  elite: "Top 21.6%",
+  master: "Top 12.3%",
+  grandmaster: "Top 6.3%",
   titan: "Top 4%",
   goat: "Top 1%",
 };

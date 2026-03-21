@@ -2,9 +2,7 @@
 
 import { useMemo } from "react";
 import Image from "next/image";
-import { getRank } from "@/lib/rankBadges";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
-import { formatTopPercentDisplay } from "@/lib/formatPercentile";
 import { useUnits } from "@/app/components/UnitsContext";
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
@@ -32,9 +30,8 @@ export function MuscleRankList({ data }: Props) {
   const weightLabel = weightUnitLabel(units);
 
   const { rows, nextLabel, isGoat } = useMemo(() => {
-    const nextLabel = data.overallNextRankLabel ?? "Starter I";
-    const currentRank = getRank(data.overallPercentile);
-    const goat = currentRank.rank === "goat";
+    const nextLabel = data.overallNextRankLabel ?? "";
+    const goat = data.overallRankSlug === "goat";
     const suggestionsByMuscle = data.improvementSuggestionsByMuscle ?? {};
     const visible = (data.visibleMuscles?.length
       ? data.visibleMuscles
@@ -44,10 +41,8 @@ export function MuscleRankList({ data }: Props) {
     const rows = visible.map((muscle) => {
       const exerciseCount = data.exerciseCountByMuscle?.[muscle] ?? 0;
       const isEmpty = (muscle === "core" || muscle === "forearms") && exerciseCount === 0;
-      const pct = data.musclePercentiles[muscle];
       const rankInfo = data.muscleRanks[muscle];
-      const r = getRank(pct);
-      const topLabel = formatTopPercentDisplay(pct);
+      const topLabel = `${rankInfo.topPercentileLabel} of lifters`;
       const isCore = muscle === "core";
       const weightSuggestions = isCore ? [] : (suggestionsByMuscle[muscle] ?? []);
       const coreSuggestions = isCore ? (data.coreImprovementSuggestions ?? []) : [];
@@ -58,8 +53,8 @@ export function MuscleRankList({ data }: Props) {
         muscle,
         label: MUSCLE_LABELS[muscle],
         isEmpty,
-        rank: r.rank as RankSlug,
-        tier: r.tier,
+        rank: rankInfo.rankSlug as RankSlug,
+        tier: rankInfo.tier,
         rankLabel: rankInfo.rankLabel,
         progressToNextPct: rankInfo.progressToNextPct ?? 0,
         nextRankLabel: rankInfo.nextRankLabel ?? null,

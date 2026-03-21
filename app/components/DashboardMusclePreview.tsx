@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import Body, { type ExtendedBodyPart } from "react-muscle-highlighter";
-import { getRank, getRankColor } from "@/lib/rankBadges";
+import { getRankColor } from "@/lib/rankBadges";
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
@@ -32,21 +32,18 @@ type Props = {
 
 export function DashboardMusclePreview({ data, gender = "male" }: Props) {
   const bodyData = useMemo(() => {
-    if (!data?.musclePercentiles) return [];
-    const musclePercentiles = data.musclePercentiles;
+    if (!data?.muscleRanks) return [];
     const out: ExtendedBodyPart[] = [];
     for (const [slug, muscle] of Object.entries(SLUG_TO_STRENGTH_MUSCLE)) {
-      const pct = musclePercentiles[muscle];
-      const rank = getRank(pct).rank;
-      // Newbie (no data) uses lowest rank color (gray) so diagram shows full neutral body
-      const fill = getRankColor(rank as RankSlug);
+      const rankSlug = data.muscleRanks[muscle].rankSlug as RankSlug;
+      const fill = getRankColor(rankSlug);
       out.push({
         slug: slug as ExtendedBodyPart["slug"],
         color: fill,
       });
     }
     return out;
-  }, [data?.musclePercentiles]);
+  }, [data?.muscleRanks]);
 
   const hasData = bodyData.length > 0;
 

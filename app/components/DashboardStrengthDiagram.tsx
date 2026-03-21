@@ -3,12 +3,11 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import Body, { type ExtendedBodyPart } from "react-muscle-highlighter";
 import { RankBadge } from "@/app/components/RankBadge";
-import { getRank, getProgressToNextTier, getRankColor, RANK_COLORS } from "@/lib/rankBadges";
+import { getRankColor, RANK_COLORS } from "@/lib/rankBadges";
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
 import { formatWeight } from "@/lib/formatWeight";
-import { formatTopPercentDisplay } from "@/lib/formatPercentile";
 import { useUnits } from "@/app/components/UnitsContext";
 
 const MOBILE_BREAKPOINT = 768;
@@ -92,7 +91,6 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
   const [view, setView] = useState<"front" | "back">("front");
 
   const { bodyDataFront, bodyDataBack, strengthMuscleBySlug } = useMemo(() => {
-    const musclePercentiles = data.musclePercentiles;
     const slugToMuscle = { ...SLUG_TO_STRENGTH_MUSCLE };
     const allParts: ExtendedBodyPart[] = [];
     for (const [slug, muscle] of Object.entries(slugToMuscle)) {
@@ -100,9 +98,8 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
       const isEmpty = (muscle === "core" || muscle === "forearms") && exerciseCount === 0;
       // For core/forearms with no exercises, do not apply a rank color; use default fill.
       if (isEmpty) continue;
-      const pct = musclePercentiles[muscle];
-      const rank = getRank(pct).rank;
-      const fill = getRankColor(rank as RankSlug);
+      const rankSlug = data.muscleRanks[muscle].rankSlug as RankSlug;
+      const fill = getRankColor(rankSlug);
       allParts.push({
         slug: slug as ExtendedBodyPart["slug"],
         color: fill,
@@ -114,7 +111,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
       (p) => p.slug && !CORE_DIAGRAM_SLUGS.includes(p.slug as (typeof CORE_DIAGRAM_SLUGS)[number])
     );
     return { bodyDataFront, bodyDataBack, strengthMuscleBySlug: slugToMuscle };
-  }, [data.musclePercentiles, data.exerciseCountByMuscle]);
+  }, [data.muscleRanks, data.exerciseCountByMuscle]);
 
   const handleBodyPartPress = useCallback((part: ExtendedBodyPart) => {
     setSelectedSlug(part.slug ?? null);
@@ -125,23 +122,20 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
     if (!selectedMuscle) return null;
     const exerciseCount = data.exerciseCountByMuscle?.[selectedMuscle] ?? 0;
     const isEmpty = (selectedMuscle === "core" || selectedMuscle === "forearms") && exerciseCount === 0;
-    const pct = data.musclePercentiles[selectedMuscle];
     const rankInfo = data.muscleRanks[selectedMuscle];
-    const r = getRank(pct);
-    const progress = getProgressToNextTier(pct);
     const bestEx = data.bestExerciseByMuscle[selectedMuscle];
-    const topLabel = formatTopPercentDisplay(pct);
+    const topLabel = `${rankInfo.topPercentileLabel} of lifters`;
     return {
       muscle: selectedMuscle,
       label: STRENGTH_MUSCLE_LABEL[selectedMuscle],
       isEmpty,
-      rank: r.rank as RankSlug,
-      tier: r.tier,
+      rank: rankInfo.rankSlug as RankSlug,
+      tier: rankInfo.tier,
       rankLabel: rankInfo.rankLabel,
       topLabel,
       bestExercise: bestEx,
-      nextLabel: progress.nextLabel,
-      progressPct: progress.progressPct,
+      nextLabel: rankInfo.nextRankLabel ?? "Peak rank",
+      progressPct: rankInfo.progressToNextPct,
     };
   }, [selectedMuscle, data]);
 
