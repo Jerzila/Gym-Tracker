@@ -28,6 +28,13 @@ export default function AccountSettingsPage() {
         title="Security"
         subtitle="Reset password"
       />
+      <section className="pt-4">
+        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Legal</p>
+        <div className="space-y-3">
+          <SettingsMenuRow href="/privacy" title="Privacy Policy" subtitle="How Liftly handles your data" />
+          <SettingsMenuRow href="/terms" title="Terms of Service" subtitle="Rules and conditions for using Liftly" />
+        </div>
+      </section>
       <SettingsMenuRow href="/account/settings/other" title="Other" subtitle="Sign out" />
     </div>
   );

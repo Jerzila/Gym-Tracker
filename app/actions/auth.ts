@@ -7,9 +7,13 @@ import { redirect } from "next/navigation";
 export async function signUp(formData: FormData) {
   const email = (formData.get("email") as string)?.trim();
   const password = formData.get("password") as string;
+  const legalAgreement = formData.get("legalAgreement");
 
   if (!email || !password) {
     return { error: "Email and password are required." };
+  }
+  if (legalAgreement !== "on") {
+    return { error: "You must agree to the Terms of Service and Privacy Policy to continue." };
   }
   if (password.length < 6) {
     return { error: "Password must be at least 6 characters." };

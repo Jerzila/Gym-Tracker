@@ -6,23 +6,23 @@ import { InstallBanner } from "@/app/components/InstallBanner";
 
 export default function SignupPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-4 py-5">
       <div className="w-full max-w-sm flex flex-col items-center">
         <AppPreview />
-        <div className="w-full space-y-8">
+        <div className="w-full space-y-5">
           <div className="text-center">
             <p className="text-sm font-semibold tracking-wide text-amber-500/90 uppercase">Liftly</p>
-            <p className="mt-1 text-zinc-400 text-sm text-center max-w-sm mx-auto">
+            <p className="mt-1 text-zinc-400 text-xs text-center max-w-sm mx-auto">
               Track strength. Analyze progress. Lift smarter.
             </p>
-            <p className="mt-1 text-zinc-400 text-sm text-center max-w-sm mx-auto">
+            <p className="mt-1 text-zinc-400 text-xs text-center max-w-sm mx-auto">
               For <span className="text-amber-500">FREE</span>.
             </p>
-            <h1 className="mt-3 text-2xl font-semibold tracking-tight">Create account</h1>
-            <p className="mt-2 text-sm text-zinc-500">Create your account</p>
+            <h1 className="mt-2 text-xl font-semibold tracking-tight">Create account</h1>
+            <p className="mt-1 text-xs text-zinc-500">Create your account</p>
           </div>
 
-          <AuthForm action={signUp} submitLabel="Sign up" />
+          <AuthForm action={signUp} submitLabel="Create account" requireLegalAgreement />
 
           <p className="text-center text-sm text-zinc-500">
             Already have an account?{" "}
