@@ -9,6 +9,10 @@ function logServerError(context: string, err: unknown) {
   console.error(`[auth] ${context}`, err);
 }
 
+function buildFallbackUsername(): string {
+  return `user${Math.floor(Math.random() * 100000)}`;
+}
+
 export async function signUp(formData: FormData) {
   const email = (formData.get("email") as string)?.trim();
   const password = formData.get("password") as string;
@@ -26,14 +30,34 @@ export async function signUp(formData: FormData) {
 
   try {
     const supabase = await createServerClient();
-    const { error } = await supabase.auth.signUp({ email, password });
+    const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) throw error;
+
+    const user = data.user;
+    if (user) {
+      const emailPrefix = email.split("@")[0]?.trim() ?? "";
+      const usernameSeed = emailPrefix.replace(/[^a-zA-Z0-9_]/g, "").toLowerCase();
+      const username = usernameSeed.length >= 3 ? usernameSeed.slice(0, 20) : buildFallbackUsername();
+
+      try {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .upsert({ id: user.id, username }, { onConflict: "id" });
+        if (profileError) {
+          console.error("[auth] profile creation failed after signup", profileError);
+        }
+      } catch (profileInsertErr) {
+        console.error("[auth] profile creation threw after signup", profileInsertErr);
+      }
+    } else {
+      console.error("[auth] onboarding initialization failed: signup returned no user");
+    }
   } catch (err) {
     logServerError("signUp failed", err);
     return { error: "Unable to create account. Please try again." };
   }
 
-  redirect("/");
+  redirect("/profile-setup");
 }
 
 export async function signIn(formData: FormData) {

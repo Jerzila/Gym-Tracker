@@ -8,7 +8,7 @@ export default function AccountSettingsPage() {
       <SettingsMenuRow
         href="/account/edit-profile"
         title="Profile"
-        subtitle="Change username · Change profile picture"
+        subtitle="Change username"
       />
       <SettingsMenuRow
         href="/account/settings/body-metrics"

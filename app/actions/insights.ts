@@ -1740,61 +1740,78 @@ export type InsightsInitialData = {
 
 /** Fetches all data needed for the initial insights view in one server round-trip. Includes precomputed 1RM for all exercises. */
 export async function getInsightsInitialData(): Promise<InsightsInitialData> {
-  const [
-    weeklyRes,
-    monthRes,
-    plateauRes,
-    categoryRes,
-    muscleRes,
-    gainsRes,
-    balanceRes,
-    oneRMRes,
-  ] = await Promise.all([
-    getWeeklyComparison(),
-    getMonthlySummary(),
-    getPlateauExercises(),
-    getCategoryDistribution("this_week"),
-    getMuscleDistribution("this_week"),
-    getTopStrengthImprovements("this_week"),
-    getTrainingBalance("this_week"),
-    getAll1RMProgression(),
-  ]);
+  try {
+    const [
+      weeklyRes,
+      monthRes,
+      plateauRes,
+      categoryRes,
+      muscleRes,
+      gainsRes,
+      balanceRes,
+      oneRMRes,
+    ] = await Promise.all([
+      getWeeklyComparison(),
+      getMonthlySummary(),
+      getPlateauExercises(),
+      getCategoryDistribution("this_week"),
+      getMuscleDistribution("this_week"),
+      getTopStrengthImprovements("this_week"),
+      getTrainingBalance("this_week"),
+      getAll1RMProgression(),
+    ]);
 
-  const estimated1RMByExercise = oneRMRes.data ?? {};
-  const gainsAllTimeRes = await getTopStrengthGainsAllTime(estimated1RMByExercise);
+    const estimated1RMByExercise = oneRMRes.data ?? {};
+    const gainsAllTimeRes = await getTopStrengthGainsAllTime(estimated1RMByExercise);
 
-  const weekly = weeklyRes.error ? null : weeklyRes.data;
-  const monthly = monthRes.data ?? null;
-  const plateauExercises = plateauRes ?? [];
-  const categoryDistribution = categoryRes.data ?? null;
-  const muscleDistribution = muscleRes.data ?? null;
-  const topStrengthGains = gainsRes.data ?? [];
-  const topStrengthGainsAllTime = gainsAllTimeRes.data ?? [];
-  const trainingBalance = balanceRes.data ?? null;
+    const weekly = weeklyRes.error ? null : weeklyRes.data;
+    const monthly = monthRes.data ?? null;
+    const plateauExercises = plateauRes ?? [];
+    const categoryDistribution = categoryRes.data ?? null;
+    const muscleDistribution = muscleRes.data ?? null;
+    const topStrengthGains = gainsRes.data ?? [];
+    const topStrengthGainsAllTime = gainsAllTimeRes.data ?? [];
+    const trainingBalance = balanceRes.data ?? null;
 
-  const insightResult = await getInsightsText(
-    weekly ?? null,
-    muscleDistribution ?? null,
-    "this_week",
-    monthly ?? null,
-    plateauExercises,
-    topStrengthGains,
-    trainingBalance
-  );
+    const insightResult = await getInsightsText(
+      weekly ?? null,
+      muscleDistribution ?? null,
+      "this_week",
+      monthly ?? null,
+      plateauExercises,
+      topStrengthGains,
+      trainingBalance
+    );
 
-  return {
-    weekly,
-    weeklyError: weeklyRes.error,
-    monthly,
-    plateauExercises,
-    categoryDistribution,
-    muscleDistribution,
-    topStrengthGains,
-    topStrengthGainsAllTime,
-    trainingBalance,
-    insightItems: insightResult.items,
-    estimated1RMByExercise,
-  };
+    return {
+      weekly,
+      weeklyError: weeklyRes.error,
+      monthly,
+      plateauExercises,
+      categoryDistribution,
+      muscleDistribution,
+      topStrengthGains,
+      topStrengthGainsAllTime,
+      trainingBalance,
+      insightItems: insightResult.items,
+      estimated1RMByExercise,
+    };
+  } catch (error) {
+    console.error("[insights] dashboard data loading failed", error);
+    return {
+      weekly: null,
+      weeklyError: "Unable to load dashboard data right now.",
+      monthly: null,
+      plateauExercises: [],
+      categoryDistribution: null,
+      muscleDistribution: null,
+      topStrengthGains: [],
+      topStrengthGainsAllTime: [],
+      trainingBalance: null,
+      insightItems: [],
+      estimated1RMByExercise: {},
+    };
+  }
 }
 
 /** Deferred payload: monthly summary, plateau exercises, all-time strength gains. Merge with critical data for full InsightsInitialData. */

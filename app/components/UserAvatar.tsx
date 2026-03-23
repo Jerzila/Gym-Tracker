@@ -2,11 +2,11 @@
 
 import type { Profile } from "@/lib/types";
 
-type AvatarProfile = Pick<Profile, "avatar_url" | "username"> | null;
+type AvatarProfile = Pick<Profile, "username"> | null;
 
 export function UserAvatar({
   profile,
-  size = 80,
+  size = 96,
   className = "",
 }: {
   profile: AvatarProfile;
@@ -15,42 +15,26 @@ export function UserAvatar({
 }) {
   const style = { width: size, height: size };
 
-  if (!profile) {
-    return (
-      <div
-        className={`profile-avatar flex shrink-0 items-center justify-center bg-zinc-800 text-zinc-500 ${className}`}
-        style={style}
-        aria-hidden
-      >
-        <span className="text-2xl font-semibold">…</span>
-      </div>
-    );
-  }
-
-  if (profile.avatar_url) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element -- remote Supabase URL
-      <img
-        src={profile.avatar_url}
-        alt=""
-        width={size}
-        height={size}
-        className={`profile-avatar shrink-0 ${className}`}
-        style={style}
-      />
-    );
-  }
-
-  const letter = (profile.username?.charAt(0) ?? "?").toUpperCase();
-  const fontSize = size >= 72 ? "text-3xl" : size >= 48 ? "text-2xl" : "text-xl";
-
   return (
     <div
-      className={`profile-avatar flex shrink-0 items-center justify-center bg-zinc-700 text-zinc-200 ring-2 ring-zinc-500/40 ${className}`}
+      className={`profile-avatar flex shrink-0 items-center justify-center bg-zinc-800 text-zinc-300 ring-2 ring-zinc-700/70 ${className}`}
       style={style}
-      aria-hidden
+      role="img"
+      aria-label={`${profile?.username ?? "User"} default avatar`}
     >
-      <span className={`font-semibold ${fontSize}`}>{letter}</span>
+      <svg
+        viewBox="0 0 24 24"
+        aria-hidden
+        className={size >= 96 ? "h-12 w-12" : size >= 72 ? "h-10 w-10" : "h-8 w-8"}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="12" cy="8" r="3.5" />
+        <path d="M5 19c1.6-3 4.2-4.5 7-4.5s5.4 1.5 7 4.5" />
+      </svg>
     </div>
   );
 }

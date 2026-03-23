@@ -27,6 +27,10 @@ export type ProfileFormState = {
   fieldErrors?: Record<string, string>;
 };
 
+function buildFallbackUsername(): string {
+  return `user${Math.floor(Math.random() * 100000)}`;
+}
+
 function parseNumber(value: unknown): number | null {
   if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
@@ -51,20 +55,28 @@ function validateBirthdayAge(birthday: string | null): string | undefined {
 }
 
 export async function getProfile(): Promise<Profile | null> {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single();
 
-  if (error || !data) return null;
-  return data as Profile;
+    if (error || !data) {
+      console.error("[profile] onboarding initialization failed: unable to load profile", error);
+      return null;
+    }
+    return data as Profile;
+  } catch (error) {
+    console.error("[profile] onboarding initialization failed: unexpected error", error);
+    return null;
+  }
 }
 
 /**
@@ -88,8 +100,6 @@ export async function ensureUsernameBackfill(profile: Profile | null): Promise<P
       .maybeSingle();
 
     if (updated) {
-      revalidatePath("/", "layout");
-      revalidatePath("/account");
       return updated as Profile;
     }
 
@@ -127,7 +137,8 @@ async function upsertProfileWithUsername(
     return {};
   }
 
-  const base = baseUsernameFromName(nameForUsername);
+  const trimmedName = nameForUsername?.trim() ?? "";
+  const base = trimmedName ? baseUsernameFromName(trimmedName) : buildFallbackUsername();
   for (let i = 0; i < 200; i++) {
     const username = candidateUsername(base, i);
     const { error } = await supabase.from("profiles").upsert(
@@ -415,15 +426,26 @@ export async function completeProfileSetup(formData: FormData): Promise<ProfileF
     updated_at: updatedAt,
   };
 
-  const { error: upError } = await upsertProfileWithUsername(supabase, payload, name, user.id);
-  if (upError) return { error: upError.message };
+  try {
+    const { error: upError } = await upsertProfileWithUsername(supabase, payload, name, user.id);
+    if (upError) {
+      console.error("[profile] setup save failed: profile upsert failed", upError);
+      return { error: upError.message };
+    }
 
-  if (bodyWeight !== null && bodyWeight > 0) {
-    const logResult = await ensureFirstBodyweightLog(bodyWeight, {
-      source: "setup",
-      date: setupLogDate,
-    });
-    if (logResult.error) return { error: logResult.error };
+    if (bodyWeight !== null && bodyWeight > 0) {
+      const logResult = await ensureFirstBodyweightLog(bodyWeight, {
+        source: "setup",
+        date: setupLogDate,
+      });
+      if (logResult.error) {
+        console.error("[profile] setup save failed: onboarding initialization failed", logResult.error);
+        return { error: logResult.error };
+      }
+    }
+  } catch (error) {
+    console.error("[profile] setup save failed: unexpected error", error);
+    return { error: "Setup failed. Please try again." };
   }
 
   revalidatePath("/", "layout");
@@ -447,54 +469,69 @@ export type CompleteOnboardingInput = {
 export async function completeOnboarding(
   input: CompleteOnboardingInput
 ): Promise<{ error?: string }> {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" };
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
 
-  const birthdayErr = validateBirthdayAge(input.birthday);
-  if (birthdayErr) return { error: birthdayErr };
-  if (
-    input.height < HEIGHT_MIN ||
-    input.height > HEIGHT_MAX ||
-    input.weight < BODY_WEIGHT_MIN ||
-    input.weight > BODY_WEIGHT_MAX
-  ) {
-    return { error: "Invalid height or weight." };
+    const birthdayErr = validateBirthdayAge(input.birthday);
+    if (birthdayErr) return { error: birthdayErr };
+
+    const height = Number(input.height);
+    const weight = Number(input.weight);
+    if (
+      !Number.isFinite(height) ||
+      !Number.isFinite(weight) ||
+      height < HEIGHT_MIN ||
+      height > HEIGHT_MAX ||
+      weight < BODY_WEIGHT_MIN ||
+      weight > BODY_WEIGHT_MAX
+    ) {
+      return { error: "Invalid height or weight." };
+    }
+    if (input.units !== "metric" && input.units !== "imperial") {
+      return { error: "Invalid units." };
+    }
+
+    const logRaw = input.logDate?.trim() ?? "";
+    const setupLogDate = /^\d{4}-\d{2}-\d{2}$/.test(logRaw) ? logRaw : new Date().toISOString().slice(0, 10);
+
+    const updatedAt = new Date().toISOString();
+    const payload = {
+      id: user.id,
+      name: input.name || null,
+      birthday: input.birthday,
+      height,
+      body_weight: weight,
+      units: input.units,
+      gender: input.gender || null,
+      country: input.country || null,
+      profile_completed: true,
+      updated_at: updatedAt,
+    };
+
+    const { error: upError } = await upsertProfileWithUsername(supabase, payload, input.name, user.id);
+    if (upError) {
+      console.error("[profile] setup save failed: profile upsert failed", upError);
+      return { error: upError.message };
+    }
+
+    const logResult = await ensureFirstBodyweightLog(weight, {
+      source: "setup",
+      date: setupLogDate,
+    });
+    if (logResult.error) {
+      console.error("[profile] setup save failed: onboarding initialization failed", logResult.error);
+    }
+
+    revalidatePath("/", "layout");
+    revalidatePath("/account");
+    revalidatePath("/bodyweight");
+    return {};
+  } catch (error) {
+    console.error("[profile] setup save failed: unexpected error", error);
+    return { error: "Setup failed. Please try again." };
   }
-  if (input.units !== "metric" && input.units !== "imperial") {
-    return { error: "Invalid units." };
-  }
-
-  const logRaw = input.logDate?.trim() ?? "";
-  const setupLogDate = /^\d{4}-\d{2}-\d{2}$/.test(logRaw) ? logRaw : new Date().toISOString().slice(0, 10);
-
-  const updatedAt = new Date().toISOString();
-  const payload = {
-    id: user.id,
-    name: input.name || null,
-    birthday: input.birthday,
-    height: input.height,
-    body_weight: input.weight,
-    units: input.units,
-    gender: input.gender || null,
-    country: input.country || null,
-    profile_completed: true,
-    updated_at: updatedAt,
-  };
-
-  const { error: upError } = await upsertProfileWithUsername(supabase, payload, input.name, user.id);
-  if (upError) return { error: upError.message };
-
-  const logResult = await ensureFirstBodyweightLog(input.weight, {
-    source: "setup",
-    date: setupLogDate,
-  });
-  if (logResult.error) return { error: logResult.error };
-
-  revalidatePath("/", "layout");
-  revalidatePath("/account");
-  revalidatePath("/bodyweight");
-  return {};
 }

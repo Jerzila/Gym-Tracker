@@ -14,7 +14,7 @@ export function AccountHeroSection({ profile }: { profile: Profile | null }) {
 
   return (
     <section className="flex flex-col items-center px-2 pt-2">
-      <UserAvatar profile={profile} size={80} />
+      <UserAvatar profile={profile} size={96} />
       <p className="mt-4 text-center text-lg font-medium tracking-tight text-zinc-100">
         {handle ? (
           <>
@@ -23,6 +23,9 @@ export function AccountHeroSection({ profile }: { profile: Profile | null }) {
         ) : (
           <span className="text-zinc-500">Setting up profile…</span>
         )}
+      </p>
+      <p className="mt-2 text-center text-xs text-zinc-500">
+        Social features are coming soon. Stay tuned.
       </p>
       <Link href="/account/edit-profile" className={editProfileButtonClass}>
         Edit Profile
