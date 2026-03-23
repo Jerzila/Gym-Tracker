@@ -133,7 +133,6 @@ export function ExerciseListByCategoryAccordion({
                       <ExerciseCard
                         key={ex.id}
                         exercise={ex}
-                        categories={categories}
                       />
                     ))}
                   </ul>

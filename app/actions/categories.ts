@@ -132,8 +132,8 @@ export async function deleteCategory(id: string): Promise<{ error?: string }> {
   try {
     const supabase = await createServerClient();
     const { data: exercises } = await supabase
-      .from("exercises")
-      .select("id")
+      .from("exercise_categories")
+      .select("exercise_id")
       .eq("category_id", id)
       .limit(1);
 

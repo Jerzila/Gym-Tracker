@@ -111,7 +111,7 @@ export const RANK_TOP_PCT_LABELS: Record<RankSlug, string> = {
 export const RANK_LADDER: { min: number; max: number; rank: RankSlug; displayName: string; topPctLabel: string }[] =
   BANDS.map((b) => ({
     ...b,
-    displayName: b.rank === "goat" ? "GOAT 🐐" : RANK_DISPLAY[b.rank],
+    displayName: b.rank === "goat" ? "GOAT" : RANK_DISPLAY[b.rank],
     topPctLabel: RANK_TOP_PCT_LABELS[b.rank],
   }));
 
@@ -125,7 +125,7 @@ export function getRank(percentile: number): GetRankResult {
     const inBand = clamped >= band.min && (band.rank === "goat" ? clamped <= band.max : clamped < band.max);
     if (inBand) {
       const tier = getTier(clamped, band.min, band.max);
-      const display = band.rank === "goat" ? "GOAT 🐐" : `${RANK_DISPLAY[band.rank]} ${tier}`;
+      const display = band.rank === "goat" ? "GOAT" : `${RANK_DISPLAY[band.rank]} ${tier}`;
       return {
         rank: band.rank,
         tier,
@@ -167,7 +167,7 @@ export function getProgressToNextTier(percentile: number): ProgressToNextResult 
   if (clamped <= 2) {
     return {
       progressPct: 100,
-      nextLabel: "GOAT 🐐",
+      nextLabel: "GOAT",
       nextRank: "goat",
       nextTier: "I",
       tierStart: 0,
@@ -194,11 +194,11 @@ export function getProgressToNextTier(percentile: number): ProgressToNextResult 
         if (nextBand) {
           nextRank = nextBand.rank;
           nextTier = "I";
-          nextLabel = nextRank === "goat" ? "GOAT 🐐" : `${RANK_DISPLAY[nextRank]} I`;
+          nextLabel = nextRank === "goat" ? "GOAT" : `${RANK_DISPLAY[nextRank]} I`;
         } else {
           nextRank = "goat";
           nextTier = "I";
-          nextLabel = "GOAT 🐐";
+          nextLabel = "GOAT";
         }
       } else {
         nextRank = band.rank;

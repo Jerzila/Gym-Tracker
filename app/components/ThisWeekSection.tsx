@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getWeeklyStats, type WeeklyStats } from "@/app/actions/weeklyStats";
+import { BoltIcon } from "@/components/icons";
 
 function formatVolume(volume: number): string {
   return Math.round(volume).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -34,8 +35,11 @@ export function ThisWeekSection() {
             {stats.setCount !== 1 ? "s" : ""} • {formatVolume(stats.volume)}kg volume
           </p>
           {stats.prCount > 0 && (
-            <p className="text-sm text-amber-400/90">
-              {stats.prCount} PR{stats.prCount !== 1 ? "s" : ""} hit 🔥
+            <p className="flex items-center gap-1.5 text-sm text-amber-400/90">
+              <BoltIcon size={16} aria-hidden className="shrink-0" />
+              <span>
+                {stats.prCount} PR{stats.prCount !== 1 ? "s" : ""} hit
+              </span>
             </p>
           )}
         </>

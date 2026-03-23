@@ -1701,7 +1701,7 @@ export async function getInsightsText(
     const { thisWeek } = weeklyComparison;
     candidates.push({
       priority: 4,
-      icon: "🔥",
+      icon: "fire",
       text: `You trained ${thisWeek.workouts} day${thisWeek.workouts !== 1 ? "s" : ""} ${periodLabel}.`,
     });
   }

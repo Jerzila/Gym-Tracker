@@ -4,13 +4,13 @@ import { useState, memo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteExercise } from "@/app/actions/exercises";
-import type { Exercise, Category } from "@/lib/types";
+import type { Exercise } from "@/lib/types";
 import { EditExerciseModal } from "@/app/components/EditExerciseModal";
 import { buttonClass } from "@/app/components/Button";
 
 const EXERCISES_SCROLL_KEY = "gym-exercises-scroll";
 
-function ExerciseCardInner({ exercise, categories }: { exercise: Exercise; categories: Category[] }) {
+function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
   const router = useRouter();
   const [showEdit, setShowEdit] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -93,7 +93,6 @@ function ExerciseCardInner({ exercise, categories }: { exercise: Exercise; categ
       {showEdit && (
         <EditExerciseModal
           exercise={exercise}
-          categories={categories}
           onClose={() => setShowEdit(false)}
           onSuccess={handleEditSuccess}
         />

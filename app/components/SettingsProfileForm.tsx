@@ -174,31 +174,39 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
     }
 
     startTransition(async () => {
-      if (avatarDirty && pendingFile) {
-        const fd = new FormData();
-        fd.set("avatar", pendingFile);
-        const up = await uploadAvatar(fd);
-        if (up.error) {
-          setFormError(up.error);
-          return;
+      try {
+        if (avatarDirty && pendingFile) {
+          const fd = new FormData();
+          fd.set("avatar", pendingFile);
+          const up = await uploadAvatar(fd);
+          if (up.error) {
+            setFormError(up.error);
+            showToast(up.error, { variant: "error" });
+            return;
+          }
+          if (up.avatar_url) setCommittedAvatarUrl(up.avatar_url);
+          clearPendingAvatar();
         }
-        if (up.avatar_url) setCommittedAvatarUrl(up.avatar_url);
-        clearPendingAvatar();
-      }
 
-      if (usernameDirty) {
-        const res = await updateUsername(usernameDraft);
-        if (res.error) {
-          setFormError(res.error);
-          showToast(res.error, { variant: "error" });
-          return;
+        if (usernameDirty) {
+          const res = await updateUsername(usernameDraft);
+          if (res.error) {
+            setFormError(res.error);
+            showToast(res.error, { variant: "error" });
+            return;
+          }
+          const next = normalizeUsernameInput(usernameDraft);
+          usernameDisplay?.setUsername(next);
+          showToast("Username changed successfully.");
         }
-        const next = normalizeUsernameInput(usernameDraft);
-        usernameDisplay?.setUsername(next);
-        showToast("Username changed successfully.");
-      }
 
-      router.refresh();
+        router.refresh();
+      } catch (error) {
+        console.error("Avatar upload failed:", error);
+        const message = "Failed to save profile photo";
+        setFormError(message);
+        showToast(message, { variant: "error" });
+      }
     });
   }, [
     avatarDirty,

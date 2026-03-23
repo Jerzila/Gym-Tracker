@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import type { RankSlug } from "@/lib/rankBadges";
+import { GoatIcon } from "@/components/icons";
 
 type Props = {
   rank: RankSlug;
@@ -27,7 +28,7 @@ const RANK_LABELS: Record<RankSlug, string> = {
 };
 
 export function RankBadge({ rank, tier, size = 72, showTierLabel = false, className = "" }: Props) {
-  const tierLabel = rank === "goat" ? "GOAT 🐐" : `${RANK_LABELS[rank]} ${tier}`;
+  const tierLabel = rank === "goat" ? "GOAT" : `${RANK_LABELS[rank]} ${tier}`;
   return (
     <div className={`flex flex-col items-center gap-1 ${className}`}>
       <Image
@@ -40,7 +41,10 @@ export function RankBadge({ rank, tier, size = 72, showTierLabel = false, classN
         unoptimized
       />
       {showTierLabel && (
-        <span className="text-center text-xs font-medium text-zinc-300">{tierLabel}</span>
+        <span className="flex items-center gap-1 text-center text-xs font-medium text-zinc-300">
+          {rank === "goat" && <GoatIcon size={14} aria-hidden className="shrink-0" />}
+          <span>{tierLabel}</span>
+        </span>
       )}
     </div>
   );

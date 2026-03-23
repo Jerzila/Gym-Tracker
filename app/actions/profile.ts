@@ -209,52 +209,73 @@ const AVATAR_TYPES: Record<string, string> = {
 export async function uploadAvatar(
   formData: FormData
 ): Promise<{ error?: string; avatar_url?: string }> {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" };
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
 
-  const file = formData.get("avatar");
-  if (!file || !(file instanceof Blob) || file.size === 0) {
-    return { error: "Choose an image file." };
+    const file = formData.get("avatar");
+    if (!file || !(file instanceof Blob) || file.size === 0) {
+      return { error: "Choose an image file." };
+    }
+    if (file.size > AVATAR_MAX_BYTES) {
+      return { error: "Image must be 5 MB or smaller." };
+    }
+
+    const mime = file.type;
+    const ext = AVATAR_TYPES[mime];
+    if (!ext) return { error: "Use JPEG, PNG, WebP, or GIF." };
+
+    // 1) Convert/capture bytes from the cropped file.
+    const buf = Buffer.from(await file.arrayBuffer());
+
+    // 2) Upload to avatars bucket using per-user folder key (policy-friendly).
+    const path = `${user.id}/avatar.jpg`;
+    const { error: upErr } = await supabase.storage.from("avatars").upload(path, buf, {
+      contentType: "image/jpeg",
+      upsert: true,
+    });
+    if (upErr) {
+      console.error("[profile] Avatar upload failed:", upErr);
+      const msg = upErr.message.toLowerCase();
+      if (msg.includes("bucket") || msg.includes("not found")) {
+        return { error: "Avatar storage is not configured. Please try again later." };
+      }
+      if (msg.includes("row-level security") || msg.includes("policy")) {
+        return { error: "Avatar upload is not allowed by storage policy." };
+      }
+      return { error: "Failed to upload profile picture." };
+    }
+
+    // 3) Resolve public URL.
+    const {
+      data: { publicUrl },
+    } = supabase.storage.from("avatars").getPublicUrl(path);
+
+    // 4) Persist URL to profile row.
+    const { error: dbErr } = await supabase
+      .from("profiles")
+      .update({
+        avatar_url: publicUrl,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+    if (dbErr) {
+      console.error("[profile] Avatar URL update failed:", dbErr);
+      return { error: "Failed to save profile photo." };
+    }
+
+    revalidatePath("/", "layout");
+    revalidatePath("/account");
+    revalidatePath("/account/settings");
+    revalidatePath("/account/edit-profile");
+    return { avatar_url: publicUrl };
+  } catch (error) {
+    console.error("[profile] Avatar upload crashed:", error);
+    return { error: "Failed to upload profile picture." };
   }
-  if (file.size > AVATAR_MAX_BYTES) {
-    return { error: "Image must be 5 MB or smaller." };
-  }
-
-  const mime = file.type;
-  const ext = AVATAR_TYPES[mime];
-  if (!ext) return { error: "Use JPEG, PNG, WebP, or GIF." };
-
-  const buf = Buffer.from(await file.arrayBuffer());
-  const path = `${user.id}/${Date.now()}.${ext}`;
-  const { error: upErr } = await supabase.storage.from("avatars").upload(path, buf, {
-    contentType: mime,
-    upsert: false,
-  });
-
-  if (upErr) return { error: upErr.message };
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("avatars").getPublicUrl(path);
-
-  const { error: dbErr } = await supabase
-    .from("profiles")
-    .update({
-      avatar_url: publicUrl,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", user.id);
-
-  if (dbErr) return { error: dbErr.message };
-
-  revalidatePath("/", "layout");
-  revalidatePath("/account");
-  revalidatePath("/account/settings");
-  revalidatePath("/account/edit-profile");
-  return { avatar_url: publicUrl };
 }
 
 export async function removeAvatar(): Promise<{ error?: string }> {

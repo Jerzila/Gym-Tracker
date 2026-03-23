@@ -12,12 +12,44 @@ function isConnectionError(e: unknown): boolean {
 export async function getExercises(): Promise<Exercise[]> {
   try {
     const supabase = await createServerClient();
-    const { data, error } = await supabase
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
+    const { data: exercises, error } = await supabase
       .from("exercises")
       .select("*")
+      .eq("user_id", user.id)
       .order("name");
     if (error) throw new Error(error.message);
-    return (data ?? []) as Exercise[];
+
+    const exerciseList = (exercises ?? []) as Exercise[];
+    if (exerciseList.length === 0) return [];
+
+    const { data: mappings, error: mappingsError } = await supabase
+      .from("exercise_categories")
+      .select("exercise_id, category_id")
+      .in("exercise_id", exerciseList.map((e) => e.id));
+    if (mappingsError) throw new Error(mappingsError.message);
+
+    const byExerciseId = new Map(exerciseList.map((e) => [e.id, e]));
+    const expanded: Exercise[] = [];
+    for (const mapping of mappings ?? []) {
+      const ex = byExerciseId.get(mapping.exercise_id);
+      if (!ex) continue;
+      expanded.push({
+        ...ex,
+        category_id: mapping.category_id,
+      });
+    }
+
+    // Fallback for any exercise rows without mapping.
+    const mappedIds = new Set(expanded.map((e) => e.id));
+    for (const ex of exerciseList) {
+      if (!mappedIds.has(ex.id)) expanded.push(ex);
+    }
+
+    expanded.sort((a, b) => a.name.localeCompare(b.name));
+    return expanded;
   } catch (e) {
     if (isConnectionError(e)) {
       throw new Error("Can't connect to Supabase. Check NEXT_PUBLIC_SUPABASE_URL and your API key in .env.local.");
@@ -44,11 +76,49 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: "You must be signed in to create an exercise." };
 
-    const { error } = await supabase
+    const { data: existingRows, error: existingError } = await supabase
       .from("exercises")
-      .insert({ user_id: user.id, category_id: categoryId, name, rep_min: repMin, rep_max: repMax } as Record<string, unknown>);
+      .select("id, name")
+      .eq("user_id", user.id)
+      .ilike("name", name);
+    if (existingError) return { error: existingError.message };
 
-    if (error) return { error: error.message };
+    const existing = (existingRows ?? []).find(
+      (row) => row.name.trim().toLowerCase() === name.toLowerCase()
+    );
+
+    if (existing) {
+      const { error: mapError } = await supabase
+        .from("exercise_categories")
+        .upsert(
+          [{ exercise_id: existing.id, category_id: categoryId }] as Record<string, unknown>[],
+          { onConflict: "exercise_id,category_id", ignoreDuplicates: true }
+        );
+      if (mapError) return { error: mapError.message };
+    } else {
+      const { data: created, error: createError } = await supabase
+        .from("exercises")
+        .insert({
+          user_id: user.id,
+          category_id: categoryId,
+          name,
+          rep_min: repMin,
+          rep_max: repMax,
+        } as Record<string, unknown>)
+        .select("id")
+        .single();
+
+      if (createError) return { error: createError.message };
+
+      const { error: mapError } = await supabase
+        .from("exercise_categories")
+        .upsert(
+          [{ exercise_id: created.id, category_id: categoryId }] as Record<string, unknown>[],
+          { onConflict: "exercise_id,category_id", ignoreDuplicates: true }
+        );
+      if (mapError) return { error: mapError.message };
+    }
+
     revalidatePath("/");
     return {};
   } catch (e) {
@@ -66,10 +136,8 @@ export async function updateExercise(
   const name = (formData.get("name") as string)?.trim();
   const repMin = Number(formData.get("rep_min"));
   const repMax = Number(formData.get("rep_max"));
-  const categoryId = (formData.get("category_id") as string)?.trim();
 
   if (!name || name.length === 0) return { error: "Name is required" };
-  if (!categoryId) return { error: "Please select a category." };
   if (Number.isNaN(repMin) || Number.isNaN(repMax) || repMin < 1 || repMax < 1) {
     return { error: "Rep min and rep max must be positive numbers" };
   }
@@ -79,7 +147,7 @@ export async function updateExercise(
     const supabase = await createServerClient();
     const { error } = await supabase
       .from("exercises")
-      .update({ name, category_id: categoryId, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
+      .update({ name, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
       .eq("id", id);
 
     if (error) return { error: error.message };

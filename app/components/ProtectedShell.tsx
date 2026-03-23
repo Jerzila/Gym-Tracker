@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { AppHeader } from "@/app/components/AppHeader";
 import { BottomNav } from "@/app/components/BottomNav";
+import { SettingsIcon } from "@/components/icons";
 
 function getPageTitle(pathname: string): string {
   if (pathname === "/profile-setup") return "Complete Your Profile";
@@ -75,10 +76,10 @@ function AccountSettingsLink() {
   return (
     <Link
       href="/account/settings"
-      className="rounded-lg p-2 text-lg leading-none text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+      className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
       aria-label="Settings"
     >
-      ⚙️
+      <SettingsIcon size={20} aria-hidden />
     </Link>
   );
 }

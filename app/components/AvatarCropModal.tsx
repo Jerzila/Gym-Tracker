@@ -51,13 +51,13 @@ async function createCroppedAvatar(imageUrl: string, areaPixels: Area): Promise<
   );
 
   const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, "image/png", 0.95)
+    canvas.toBlob(resolve, "image/jpeg", 0.92)
   );
   if (!blob) {
     throw new Error("Could not export cropped image.");
   }
 
-  return new File([blob], `avatar-${Date.now()}.png`, { type: "image/png" });
+  return new File([blob], `avatar-${Date.now()}.jpg`, { type: "image/jpeg" });
 }
 
 export function AvatarCropModal({ imageUrl, open, onCancel, onConfirm }: AvatarCropModalProps) {

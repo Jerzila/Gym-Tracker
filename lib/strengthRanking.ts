@@ -106,7 +106,7 @@ export type RankStep = {
   threshold: number;
   baseRank: (typeof RANK_ORDER)[number];
   tier: "I" | "II" | "III";
-  /** Full label e.g. "Pro II" or "GOAT 🐐" */
+  /** Full label e.g. "Pro II" or "GOAT" */
   fullLabel: string;
 };
 
@@ -115,7 +115,7 @@ function step(
   baseRank: (typeof RANK_ORDER)[number],
   tier: "I" | "II" | "III"
 ): RankStep {
-  const fullLabel = baseRank === "GOAT" ? "GOAT 🐐" : `${baseRank} ${tier}`;
+  const fullLabel = baseRank === "GOAT" ? "GOAT" : `${baseRank} ${tier}`;
   return { threshold, baseRank, tier, fullLabel };
 }
 

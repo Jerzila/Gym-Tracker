@@ -11,6 +11,7 @@ import {
   Legend,
 } from "recharts";
 import type { CategoryDistributionPoint } from "@/app/actions/insights";
+import { ChartIcon } from "@/components/icons";
 
 type BalanceRange = "this_week" | "last_week" | "this_month" | "last_month";
 
@@ -167,8 +168,8 @@ function MuscleRadarChartInner({ range, current, previous, tooltipData }: Props)
         className="flex h-72 w-full flex-col items-center justify-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500"
         style={{ minHeight: 288 }}
       >
-        <span className="text-2xl" aria-hidden>
-          📊
+        <span className="flex items-center justify-center text-zinc-400" aria-hidden>
+          <ChartIcon size={24} />
         </span>
         <p className="font-medium text-zinc-400">
           No workouts logged for this period.
