@@ -84,7 +84,7 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
         className="grid expand-collapse"
         style={{ gridTemplateRows: expanded ? "1fr" : "0fr" }}
       >
-        <div className="min-h-0 overflow-hidden">
+        <div className={`min-h-0 ${expanded ? "overflow-visible" : "overflow-hidden"}`}>
           <div
             className="transition-opacity duration-[220ms] ease-in-out"
             style={{ opacity: expanded ? 1 : 0 }}

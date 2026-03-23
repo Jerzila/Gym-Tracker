@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition, type ChangeEvent } from "react";
-import { updateUsername, uploadAvatar } from "@/app/actions/profile";
+import { removeAvatar, updateUsername, uploadAvatar } from "@/app/actions/profile";
 import { UserAvatar } from "@/app/components/UserAvatar";
+import { AvatarCropModal } from "@/app/components/AvatarCropModal";
 import { Button, buttonClass } from "@/app/components/Button";
 import { useToast } from "@/app/components/Toast";
 import { useUsernameDisplay } from "@/app/components/UsernameDisplayContext";
@@ -26,6 +27,9 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
   const previewRevokeRef = useRef<string | null>(null);
 
   const [usernameDraft, setUsernameDraft] = useState(profile?.username ?? "");
+  const [sourceImageUrl, setSourceImageUrl] = useState<string | null>(null);
+  const [cropModalOpen, setCropModalOpen] = useState(false);
+  const [photoOptionsOpen, setPhotoOptionsOpen] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [committedAvatarUrl, setCommittedAvatarUrl] = useState(profile?.avatar_url ?? null);
@@ -34,14 +38,20 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
-    setUsernameDraft(profile?.username ?? "");
-    setCommittedAvatarUrl(profile?.avatar_url ?? null);
-    setPendingFile(null);
-    if (previewRevokeRef.current) {
-      URL.revokeObjectURL(previewRevokeRef.current);
-      previewRevokeRef.current = null;
-    }
-    setPreviewUrl(null);
+    const raf = requestAnimationFrame(() => {
+      setUsernameDraft(profile?.username ?? "");
+      setCommittedAvatarUrl(profile?.avatar_url ?? null);
+      setPendingFile(null);
+      if (previewRevokeRef.current) {
+        URL.revokeObjectURL(previewRevokeRef.current);
+        previewRevokeRef.current = null;
+      }
+      setSourceImageUrl(null);
+      setCropModalOpen(false);
+      setPhotoOptionsOpen(false);
+      setPreviewUrl(null);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [profile?.id, profile?.username, profile?.avatar_url, profile?.username_last_changed_at, profile?.updated_at]);
 
   useEffect(() => {
@@ -49,8 +59,11 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
       if (previewRevokeRef.current) {
         URL.revokeObjectURL(previewRevokeRef.current);
       }
+      if (sourceImageUrl) {
+        URL.revokeObjectURL(sourceImageUrl);
+      }
     };
-  }, []);
+  }, [sourceImageUrl]);
 
   const displayAvatarUrl = previewUrl ?? committedAvatarUrl;
   const displayProfile: Pick<Profile, "avatar_url" | "username"> | null = profile
@@ -80,13 +93,9 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
     e.target.value = "";
     if (!file) return;
     setFormError(null);
-    if (previewRevokeRef.current) {
-      URL.revokeObjectURL(previewRevokeRef.current);
-    }
-    const url = URL.createObjectURL(file);
-    previewRevokeRef.current = url;
-    setPreviewUrl(url);
-    setPendingFile(file);
+    const src = URL.createObjectURL(file);
+    setSourceImageUrl(src);
+    setCropModalOpen(true);
   }, []);
 
   const clearPendingAvatar = useCallback(() => {
@@ -97,6 +106,54 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
     }
     setPreviewUrl(null);
   }, []);
+
+  const onCropCancel = useCallback(() => {
+    if (sourceImageUrl) URL.revokeObjectURL(sourceImageUrl);
+    setSourceImageUrl(null);
+    setCropModalOpen(false);
+  }, [sourceImageUrl]);
+
+  const onCropConfirm = useCallback((file: File) => {
+    if (previewRevokeRef.current) {
+      URL.revokeObjectURL(previewRevokeRef.current);
+    }
+    const url = URL.createObjectURL(file);
+    previewRevokeRef.current = url;
+    setPreviewUrl(url);
+    setPendingFile(file);
+    if (sourceImageUrl) URL.revokeObjectURL(sourceImageUrl);
+    setSourceImageUrl(null);
+    setCropModalOpen(false);
+  }, [sourceImageUrl]);
+
+  const openPhotoOptions = useCallback(() => {
+    setPhotoOptionsOpen(true);
+  }, []);
+
+  const closePhotoOptions = useCallback(() => {
+    setPhotoOptionsOpen(false);
+  }, []);
+
+  const removeCurrentAvatar = useCallback(() => {
+    setFormError(null);
+    setPhotoOptionsOpen(false);
+    if (avatarDirty) {
+      clearPendingAvatar();
+      return;
+    }
+    startTransition(async () => {
+      const res = await removeAvatar();
+      if (res.error) {
+        setFormError(res.error);
+        showToast(res.error, { variant: "error" });
+        return;
+      }
+      setCommittedAvatarUrl(null);
+      clearPendingAvatar();
+      router.refresh();
+      showToast("Profile photo removed.");
+    });
+  }, [avatarDirty, clearPendingAvatar, router, showToast]);
 
   const save = useCallback(() => {
     if (!profile || !dirty) return;
@@ -177,9 +234,9 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
             variant="ghost"
             className="mt-4 text-amber-500/90 hover:bg-amber-500/10 hover:text-amber-400"
             disabled={pending}
-            onClick={onPickFile}
+            onClick={openPhotoOptions}
           >
-            Change profile picture
+            Edit profile picture
           </Button>
           {avatarDirty && (
             <button
@@ -235,6 +292,47 @@ export function SettingsProfileForm({ profile }: { profile: Profile | null }) {
           {pending ? "Saving…" : "Save Changes"}
         </button>
       </div>
+
+      {photoOptionsOpen && (
+        <div className="fixed inset-0 z-40 flex items-end bg-black/70 sm:items-center sm:justify-center">
+          <div className="w-full rounded-t-2xl border border-zinc-800 bg-zinc-950 p-4 pb-5 sm:max-w-sm sm:rounded-2xl">
+            <p className="text-sm font-semibold text-zinc-100">Profile photo</p>
+            <div className="mt-4 flex flex-col gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full justify-center"
+                onClick={() => {
+                  closePhotoOptions();
+                  onPickFile();
+                }}
+                disabled={pending}
+              >
+                Upload Photo
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-full justify-center text-red-300 hover:text-red-200"
+                onClick={removeCurrentAvatar}
+                disabled={pending || (!committedAvatarUrl && !avatarDirty)}
+              >
+                Remove Photo
+              </Button>
+              <Button type="button" variant="ghost" className="w-full justify-center" onClick={closePhotoOptions}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <AvatarCropModal
+        open={cropModalOpen && !!sourceImageUrl}
+        imageUrl={sourceImageUrl ?? ""}
+        onCancel={onCropCancel}
+        onConfirm={onCropConfirm}
+      />
     </div>
   );
 }

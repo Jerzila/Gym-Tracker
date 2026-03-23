@@ -22,6 +22,13 @@ body {
   -ms-overflow-style: none; /* IE/Edge */
 }
 
+.profile-avatar {
+  width: var(--avatar-size, 96px);
+  height: var(--avatar-size, 96px);
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 /* iOS Safari / WKWebView scrollbar hiding */
 ::-webkit-scrollbar {
   display: none;

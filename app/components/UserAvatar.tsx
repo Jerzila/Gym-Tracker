@@ -18,7 +18,7 @@ export function UserAvatar({
   if (!profile) {
     return (
       <div
-        className={`flex shrink-0 items-center justify-center rounded-full bg-zinc-800 text-zinc-500 ${className}`}
+        className={`profile-avatar flex shrink-0 items-center justify-center bg-zinc-800 text-zinc-500 ${className}`}
         style={style}
         aria-hidden
       >
@@ -35,7 +35,8 @@ export function UserAvatar({
         alt=""
         width={size}
         height={size}
-        className={`shrink-0 rounded-full object-cover ${className}`}
+        className={`profile-avatar shrink-0 ${className}`}
+        style={style}
       />
     );
   }
@@ -45,7 +46,7 @@ export function UserAvatar({
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-amber-400 ring-2 ring-amber-500/30 ${className}`}
+      className={`profile-avatar flex shrink-0 items-center justify-center bg-zinc-700 text-zinc-200 ring-2 ring-zinc-500/40 ${className}`}
       style={style}
       aria-hidden
     >

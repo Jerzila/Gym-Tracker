@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, type CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { DayPicker } from "react-day-picker";
 import "react-day-picker/style.css";
 
@@ -57,6 +58,12 @@ export function DatePicker({
   id,
   className = "",
 }: DatePickerProps) {
+  const VIEWPORT_PADDING = 8;
+  const TRIGGER_GAP = 8;
+  const FALLBACK_CALENDAR_HEIGHT = 360;
+  const MIN_CALENDAR_HEIGHT = 220;
+  const MAX_CALENDAR_WIDTH = 340;
+
   const today = new Date();
   const initialDate = defaultValue
     ? parseISODate(defaultValue)
@@ -64,7 +71,11 @@ export function DatePicker({
 
   const [selected, setSelected] = useState<Date>(initialDate);
   const [open, setOpen] = useState(false);
+  const [placement, setPlacement] = useState<"top" | "bottom">("bottom");
+  const [dialogStyle, setDialogStyle] = useState<CSSProperties>({});
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   const isoValue = toLocalISODateString(selected);
 
@@ -73,23 +84,82 @@ export function DatePicker({
       setSelected(date);
       setOpen(false);
     }
-  }, []);
+  }, [setOpen, setSelected]);
+
+  const positionCalendar = useCallback(() => {
+    if (!open || !triggerRef.current || typeof window === "undefined") return;
+
+    const triggerRect = triggerRef.current.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const width = Math.min(MAX_CALENDAR_WIDTH, viewportWidth - VIEWPORT_PADDING * 2);
+
+    let left = triggerRect.left;
+    if (left + width > viewportWidth - VIEWPORT_PADDING) {
+      left = viewportWidth - VIEWPORT_PADDING - width;
+    }
+    left = Math.max(VIEWPORT_PADDING, left);
+
+    const measuredHeight = dialogRef.current?.offsetHeight ?? FALLBACK_CALENDAR_HEIGHT;
+    const spaceBelow = viewportHeight - triggerRect.bottom - TRIGGER_GAP;
+    const spaceAbove = triggerRect.top - TRIGGER_GAP;
+    const shouldOpenUpward =
+      spaceBelow < measuredHeight + VIEWPORT_PADDING && spaceAbove > spaceBelow;
+    const availableHeight =
+      (shouldOpenUpward ? spaceAbove : spaceBelow) - VIEWPORT_PADDING;
+    const maxHeight = Math.max(MIN_CALENDAR_HEIGHT, availableHeight);
+
+    setPlacement(shouldOpenUpward ? "top" : "bottom");
+    setDialogStyle({
+      position: "fixed",
+      left,
+      top: shouldOpenUpward
+        ? Math.max(VIEWPORT_PADDING, triggerRect.top - TRIGGER_GAP - Math.min(measuredHeight, maxHeight))
+        : Math.min(
+            viewportHeight - VIEWPORT_PADDING - MIN_CALENDAR_HEIGHT,
+            triggerRect.bottom + TRIGGER_GAP,
+          ),
+      width,
+      maxHeight,
+      overflowY: "auto",
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       const target = e.target as Node;
-      if (containerRef.current && !containerRef.current.contains(target)) {
+      const clickedTrigger =
+        !!containerRef.current && containerRef.current.contains(target);
+      const clickedCalendar = !!dialogRef.current && dialogRef.current.contains(target);
+      if (!clickedTrigger && !clickedCalendar) {
         setOpen(false);
       }
     };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const handleViewportChange = () => positionCalendar();
+
+    const raf = requestAnimationFrame(positionCalendar);
+
     document.addEventListener("mousedown", handleClickOutside);
     document.addEventListener("touchstart", handleClickOutside, { passive: true });
+    document.addEventListener("keydown", handleEscape);
+    window.addEventListener("resize", handleViewportChange);
+    window.addEventListener("orientationchange", handleViewportChange);
+    window.addEventListener("scroll", handleViewportChange, true);
+
     return () => {
+      cancelAnimationFrame(raf);
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("touchstart", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+      window.removeEventListener("resize", handleViewportChange);
+      window.removeEventListener("orientationchange", handleViewportChange);
+      window.removeEventListener("scroll", handleViewportChange, true);
     };
-  }, [open]);
+  }, [open, positionCalendar]);
 
   const startOfToday = getStartOfToday();
   const disabledMatcher = disableFuture ? { after: startOfToday } : undefined;
@@ -97,10 +167,68 @@ export function DatePicker({
   const fromYear = today.getFullYear() - 10;
   const toYear = today.getFullYear() + 1;
 
+  const calendar = (
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-label="Calendar"
+      data-placement={placement}
+      className="z-[70] origin-top rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl transition-[opacity,transform] duration-200 ease-out"
+      style={{
+        ...dialogStyle,
+        opacity: open ? 1 : 0,
+        transform: open ? "scale(1)" : "scale(0.95)",
+        pointerEvents: open ? "auto" : "none",
+        visibility: open ? "visible" : "hidden",
+      }}
+    >
+      <DayPicker
+        mode="single"
+        selected={selected}
+        onSelect={handleSelect}
+        defaultMonth={selected}
+        disabled={disabledMatcher}
+        captionLayout="dropdown"
+        fromYear={fromYear}
+        toYear={toYear}
+        required={required}
+        numberOfMonths={1}
+        hideNavigation
+        classNames={{
+          root: "rdp-root",
+          months: "rdp-months",
+          month: "rdp-month",
+          month_caption: "rdp-month_caption rdp-caption-single",
+          dropdowns: "rdp-dropdowns rdp-dropdowns-single",
+          dropdown_root: "rdp-dropdown_root",
+          dropdown: "rdp-dropdown",
+          caption_label: "rdp-caption_label",
+          months_dropdown: "rdp-months_dropdown",
+          years_dropdown: "rdp-years_dropdown",
+          nav: "rdp-nav",
+          button_previous: "rdp-button_previous",
+          button_next: "rdp-button_next",
+          month_grid: "rdp-month_grid",
+          weekdays: "rdp-weekdays",
+          weekday: "text-xs text-zinc-500",
+          week: "rdp-week",
+          day: "rdp-day",
+          day_button:
+            "w-9 h-9 rounded-lg text-sm text-zinc-100 hover:bg-zinc-700 focus:bg-amber-500/20 focus:outline-none focus:ring-1 focus:ring-amber-500",
+          selected: "!bg-amber-600 !text-zinc-950 hover:!bg-amber-500",
+          today: "font-semibold text-amber-400",
+          disabled: "opacity-40 cursor-not-allowed",
+          outside: "text-zinc-600",
+        }}
+      />
+    </div>
+  );
+
   return (
-    <div ref={containerRef} className={`relative ${className}`}>
+    <div ref={containerRef} className={`relative overflow-visible ${className}`}>
       <input type="hidden" name={name} value={isoValue} required={required} />
       <button
+        ref={triggerRef}
         type="button"
         id={id}
         onClick={() => setOpen((o) => !o)}
@@ -121,56 +249,7 @@ export function DatePicker({
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      <div
-        role="dialog"
-        aria-label="Calendar"
-        className="absolute left-0 top-full z-50 mt-1 origin-top rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl transition-[opacity,transform] duration-200 ease-out"
-        style={{
-          opacity: open ? 1 : 0,
-          transform: open ? "scale(1)" : "scale(0.95)",
-          pointerEvents: open ? "auto" : "none",
-          visibility: open ? "visible" : "hidden",
-        }}
-      >
-        <DayPicker
-          mode="single"
-          selected={selected}
-          onSelect={handleSelect}
-          defaultMonth={selected}
-          disabled={disabledMatcher}
-          captionLayout="dropdown"
-          fromYear={fromYear}
-          toYear={toYear}
-          required={required}
-          numberOfMonths={1}
-          hideNavigation
-          classNames={{
-            root: "rdp-root",
-            months: "rdp-months",
-            month: "rdp-month",
-            month_caption: "rdp-month_caption rdp-caption-single",
-            dropdowns: "rdp-dropdowns rdp-dropdowns-single",
-            dropdown_root: "rdp-dropdown_root",
-            dropdown: "rdp-dropdown",
-            caption_label: "rdp-caption_label",
-            months_dropdown: "rdp-months_dropdown",
-            years_dropdown: "rdp-years_dropdown",
-            nav: "rdp-nav",
-            button_previous: "rdp-button_previous",
-            button_next: "rdp-button_next",
-            month_grid: "rdp-month_grid",
-            weekdays: "rdp-weekdays",
-            weekday: "text-xs text-zinc-500",
-            week: "rdp-week",
-            day: "rdp-day",
-            day_button: "w-9 h-9 rounded-lg text-sm text-zinc-100 hover:bg-zinc-700 focus:bg-amber-500/20 focus:outline-none focus:ring-1 focus:ring-amber-500",
-            selected: "!bg-amber-600 !text-zinc-950 hover:!bg-amber-500",
-            today: "font-semibold text-amber-400",
-            disabled: "opacity-40 cursor-not-allowed",
-            outside: "text-zinc-600",
-          }}
-        />
-      </div>
+      {typeof document !== "undefined" ? createPortal(calendar, document.body) : null}
     </div>
   );
 }

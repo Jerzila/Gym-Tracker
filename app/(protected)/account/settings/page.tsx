@@ -1,4 +1,6 @@
 import { SettingsMenuRow } from "@/app/components/SettingsMenuRow";
+import { DeleteAccountSection } from "@/app/components/DeleteAccountSection";
+import { RestorePurchasesRow } from "@/app/components/RestorePurchasesRow";
 
 export default function AccountSettingsPage() {
   return (
@@ -28,6 +30,7 @@ export default function AccountSettingsPage() {
         title="Security"
         subtitle="Reset password"
       />
+      <RestorePurchasesRow />
       <section className="pt-4">
         <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">Legal</p>
         <div className="space-y-3">
@@ -36,6 +39,7 @@ export default function AccountSettingsPage() {
         </div>
       </section>
       <SettingsMenuRow href="/account/settings/other" title="Other" subtitle="Sign out" />
+      <DeleteAccountSection />
     </div>
   );
 }

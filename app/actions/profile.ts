@@ -257,6 +257,30 @@ export async function uploadAvatar(
   return { avatar_url: publicUrl };
 }
 
+export async function removeAvatar(): Promise<{ error?: string }> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      avatar_url: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id);
+
+  if (error) return { error: error.message };
+
+  revalidatePath("/", "layout");
+  revalidatePath("/account");
+  revalidatePath("/account/settings");
+  revalidatePath("/account/edit-profile");
+  return {};
+}
+
 export async function updateProfileField(
   field: keyof Pick<Profile, "name" | "birthday" | "gender" | "country" | "body_weight" | "height" | "units">,
   value: string | number | null
