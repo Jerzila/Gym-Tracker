@@ -88,6 +88,7 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
   const isProfileSetup = pathname === "/profile-setup";
+  const isExerciseDetail = pathname.startsWith("/exercise/");
 
   let leftSlot: ReactNode = null;
   let rightSlot: ReactNode = null;
@@ -105,9 +106,19 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+    <div className={`${isExerciseDetail ? "h-dvh overflow-hidden" : "min-h-dvh"} bg-zinc-950 text-zinc-100`}>
       {!isProfileSetup && <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />}
-      <main className={isProfileSetup ? "" : "pb-20 md:pb-20"}>{children}</main>
+      <main
+        className={
+          isProfileSetup
+            ? ""
+            : isExerciseDetail
+              ? "h-[calc(100dvh-3.5rem-4.5rem)] overflow-y-auto overscroll-y-none pb-0"
+              : "pb-20 md:pb-20"
+        }
+      >
+        {children}
+      </main>
       {!isProfileSetup && <BottomNav />}
     </div>
   );

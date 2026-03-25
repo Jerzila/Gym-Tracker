@@ -28,7 +28,7 @@ export function WorkoutHistory({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  const visible = workouts.slice(0, 10).filter((w) => !removedIds.has(w.id));
+  const visible = workouts.filter((w) => !removedIds.has(w.id));
 
   async function handleDelete(workoutId: string) {
     setRemovedIds((prev) => new Set(prev).add(workoutId));

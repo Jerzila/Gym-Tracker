@@ -43,7 +43,7 @@ export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
   const hasNotes = savedNote.length > 0;
 
   return (
-    <section className="rounded-xl border border-zinc-700/60 bg-zinc-900/30 px-4 py-3">
+    <section className="h-full rounded-xl border border-zinc-700/60 bg-zinc-900/30 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
           Notes
@@ -52,20 +52,20 @@ export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
           <button
             type="button"
             onClick={startEditing}
-            className={`text-xs ${buttonClass.ghost} py-1 px-2 text-zinc-500 hover:text-zinc-300`}
+            className={`text-xs ${buttonClass.ghost} px-2 py-1 text-zinc-500 hover:text-zinc-300`}
           >
-            Edit Notes
+            Edit
           </button>
         )}
       </div>
 
       {editing ? (
-        <div className="mt-3 space-y-3">
+        <div className="mt-2 space-y-2">
           <textarea
             value={editBuffer}
             onChange={(e) => setEditBuffer(e.target.value)}
             placeholder="e.g. Seat height 4th tier, Bench at 45°, Wide grip"
-            rows={4}
+            rows={3}
             className="w-full resize-y rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
             autoFocus
           />
@@ -88,8 +88,8 @@ export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
           </div>
         </div>
       ) : (
-        <p className="mt-2 text-sm text-zinc-300 whitespace-pre-wrap">
-          {hasNotes ? savedNote : "No notes added."}
+        <p className="mt-1 max-h-10 overflow-hidden whitespace-pre-wrap text-sm text-zinc-300">
+          {hasNotes ? savedNote : "No notes"}
         </p>
       )}
     </section>

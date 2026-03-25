@@ -24,11 +24,12 @@ type Props = {
   exerciseId: string;
   repMin: number;
   repMax: number;
+  onExpandedChange?: (expanded: boolean) => void;
 };
 
 const initialSetValues = { weight: "", reps: ["", "", "", "", ""] as string[] };
 
-export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
+export function LogWorkoutForm({ exerciseId, repMin, repMax, onExpandedChange }: Props) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const [state, action] = useActionState(formAction, undefined);
@@ -60,6 +61,10 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax }: Props) {
       }
     }
   }, [state?.message, state?.error, toast]);
+
+  useEffect(() => {
+    onExpandedChange?.(expanded);
+  }, [expanded, onExpandedChange]);
 
   function handleSubmit() {
     lastShownMessageRef.current = null; // allow next result to show toast

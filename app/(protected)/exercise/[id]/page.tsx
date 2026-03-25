@@ -3,12 +3,13 @@ import Link from "next/link";
 import { getExerciseById } from "@/app/actions/exercises";
 import { getHeaviestWeight, getBestEstimated1RM, getMaxRepsAtWeight } from "@/lib/pr";
 import { epley1RM } from "@/lib/progression";
-import { LogWorkoutForm } from "@/app/components/LogWorkoutForm";
-import { ExerciseNotesSection } from "@/app/components/ExerciseNotesSection";
 import { ExercisePRs } from "@/app/components/ExercisePRs";
+import { StrengthRecommendationCard } from "@/app/components/StrengthRecommendationCard";
 import { WeightChart } from "@/app/components/WeightChart";
 import { Estimated1RMChart } from "@/app/components/Estimated1RMChart";
 import { WorkoutHistory } from "@/app/components/WorkoutHistory";
+import { getStrengthRecommendation } from "@/lib/strengthRecommendation";
+import { ExerciseLogAndNotes } from "@/app/components/ExerciseLogAndNotes";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -23,6 +24,12 @@ export default async function ExercisePage({ params }: Props) {
   const best1RM = getBestEstimated1RM(workouts);
   const maxRepsAtHeaviest =
     heaviest != null ? getMaxRepsAtWeight(workouts, heaviest) : null;
+  const repMin = Number.isFinite(exercise.rep_min) && exercise.rep_min > 0 ? exercise.rep_min : 6;
+  const repMax = Number.isFinite(exercise.rep_max) && exercise.rep_max >= repMin ? exercise.rep_max : Math.max(10, repMin);
+  const strengthRecommendation = getStrengthRecommendation(workouts, {
+    minRep: repMin,
+    maxRep: repMax,
+  });
 
   const chartData = workouts
     .slice()
@@ -60,24 +67,24 @@ export default async function ExercisePage({ params }: Props) {
         </p>
       </div>
 
-      <main className="mx-auto max-w-xl px-4 py-8 sm:px-6">
+      <main className="mx-auto max-w-xl px-4 pt-6 sm:px-6">
         <section className="pb-6">
-          <ExerciseNotesSection exerciseId={id} initialNotes={exercise.notes ?? null} />
-        </section>
-        <section className="pb-8">
           <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
             Log set
           </h2>
-          <LogWorkoutForm
+          <ExerciseLogAndNotes
             exerciseId={id}
             repMin={exercise.rep_min}
             repMax={exercise.rep_max}
+            initialNotes={exercise.notes ?? null}
           />
         </section>
 
+        <div className="border-t border-zinc-800/60 pt-6" aria-hidden />
+        <StrengthRecommendationCard recommendation={strengthRecommendation} />
+
         {(heaviest != null || best1RM != null) && (
           <>
-            <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
             <ExercisePRs
               heaviest={heaviest}
               best1RM={best1RM}
@@ -86,36 +93,38 @@ export default async function ExercisePage({ params }: Props) {
           </>
         )}
 
-        {chartData.length > 0 && (
+        {(chartData.length > 0 || workouts.length > 0) && (
           <>
             <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
-            <section className="pb-8">
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-                Weight over time
-              </h2>
-              <WeightChart data={chartData} />
-            </section>
-            <section className="pb-8">
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-                Estimated 1RM over time{" "}
-                <span className="normal-case font-normal text-zinc-600">
-                  (max weight for 1 rep)
-                </span>
-              </h2>
-              <Estimated1RMChart data={chartData} />
-            </section>
-          </>
-        )}
-
-        {workouts.length > 0 && (
-          <>
-            <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
-            <section>
-              <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-                History
-              </h2>
-              <WorkoutHistory workouts={workouts} exerciseId={id} />
-            </section>
+            <div className="flex flex-col gap-6">
+              {chartData.length > 0 && (
+                <>
+                  <section>
+                    <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Weight over time
+                    </h2>
+                    <WeightChart data={chartData} />
+                  </section>
+                  <section>
+                    <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                      Estimated 1RM over time{" "}
+                      <span className="normal-case font-normal text-zinc-600">
+                        (max weight for 1 rep)
+                      </span>
+                    </h2>
+                    <Estimated1RMChart data={chartData} />
+                  </section>
+                </>
+              )}
+              {workouts.length > 0 && (
+                <section>
+                  <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                    History
+                  </h2>
+                  <WorkoutHistory workouts={workouts} exerciseId={id} />
+                </section>
+              )}
+            </div>
           </>
         )}
       </main>
