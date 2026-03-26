@@ -42,7 +42,7 @@ function SignupScreenshots() {
 
 export default function SignupPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center px-4 py-4">
+    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-zinc-950 px-4 py-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-zinc-100">
       <div className="w-full max-w-sm flex flex-col items-center">
         <SignupScreenshots />
         <div className="w-full space-y-4 mt-4">

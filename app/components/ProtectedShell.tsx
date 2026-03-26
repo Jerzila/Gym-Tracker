@@ -88,7 +88,6 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
   const isProfileSetup = pathname === "/profile-setup";
-  const isExerciseDetail = pathname.startsWith("/exercise/");
 
   let leftSlot: ReactNode = null;
   let rightSlot: ReactNode = null;
@@ -106,9 +105,9 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100">
+    <div className="flex min-h-[100dvh] flex-col bg-zinc-950 pb-[env(safe-area-inset-bottom)] text-zinc-100">
       {!isProfileSetup && (
-        <div className="sticky top-0 z-50 bg-zinc-950 pt-[env(safe-area-inset-top)]">
+        <div className="fixed inset-x-0 top-0 z-[100] h-14 bg-zinc-950">
           <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
         </div>
       )}
@@ -116,9 +115,7 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
         className={
           isProfileSetup
             ? ""
-            : isExerciseDetail
-              ? "min-h-0 flex-1 overflow-y-auto pb-20 md:pb-20 [-webkit-overflow-scrolling:touch]"
-              : "min-h-0 flex-1 overflow-y-auto pb-20 md:pb-20 [-webkit-overflow-scrolling:touch]"
+            : "min-h-0 flex-1 pb-20 pt-14 md:pb-20"
         }
       >
         {children}

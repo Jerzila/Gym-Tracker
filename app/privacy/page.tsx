@@ -2,7 +2,7 @@ import { LegalBackButton } from "@/app/components/LegalBackButton";
 
 export default function PrivacyPage() {
   return (
-    <main className="min-h-screen overflow-y-auto bg-zinc-950 px-4 py-6 text-zinc-100">
+    <main className="min-h-[100dvh] bg-zinc-950 px-4 py-6 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-zinc-100">
       <div className="mx-auto w-full max-w-2xl space-y-6">
         <LegalBackButton />
 
