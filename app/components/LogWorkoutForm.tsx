@@ -66,7 +66,19 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, onExpandedChange }:
     onExpandedChange?.(expanded);
   }, [expanded, onExpandedChange]);
 
+  function closeKeyboardAndRefreshLayout() {
+    if (typeof document !== "undefined") {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        window.scrollTo(window.scrollX, window.scrollY);
+      }, 50);
+    }
+  }
+
   function handleSubmit() {
+    closeKeyboardAndRefreshLayout();
     lastShownMessageRef.current = null; // allow next result to show toast
     setShowSpinner(false);
     if (spinnerTimerRef.current) clearTimeout(spinnerTimerRef.current);
@@ -138,11 +150,16 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, onExpandedChange }:
                   id="weight"
                   name={units === "metric" ? "weight" : undefined}
                   type="number"
+                  inputMode="decimal"
+                  enterKeyHint="done"
                   min="0"
                   step={units === "metric" ? "0.5" : "1"}
                   placeholder="0"
                   value={setValues.weight}
                   onChange={(e) => setSetValues((prev) => ({ ...prev, weight: e.target.value }))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") closeKeyboardAndRefreshLayout();
+                  }}
                     className="mt-1 w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
@@ -155,6 +172,8 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, onExpandedChange }:
                       id={`reps_${i}`}
                       name={`reps_${i}`}
                       type="number"
+                      inputMode="numeric"
+                      enterKeyHint="done"
                       min="0"
                       placeholder="—"
                       value={setValues.reps[i - 1]}
@@ -164,6 +183,9 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, onExpandedChange }:
                           reps: prev.reps.map((r, j) => (j === i - 1 ? e.target.value : r)),
                         }))
                       }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") closeKeyboardAndRefreshLayout();
+                      }}
                       className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                     />
                   </div>

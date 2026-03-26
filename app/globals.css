@@ -300,3 +300,14 @@ html {
   animation: radar-widget-fade 150ms ease;
 }
 
+/* Pro upgrade paywall: gold-framed trial headline */
+.trial-highlight {
+  border: 2px solid rgba(255, 170, 0, 0.9);
+  border-radius: 18px;
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  box-shadow:
+    0 0 18px rgba(255, 170, 0, 0.35),
+    0 0 30px rgba(255, 170, 0, 0.15);
+}
+

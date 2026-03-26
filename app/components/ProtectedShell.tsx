@@ -106,14 +106,14 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className={`${isExerciseDetail ? "h-dvh overflow-hidden" : "min-h-dvh"} bg-zinc-950 text-zinc-100`}>
+    <div className="bg-zinc-950 text-zinc-100">
       {!isProfileSetup && <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />}
       <main
         className={
           isProfileSetup
             ? ""
             : isExerciseDetail
-              ? "h-[calc(100dvh-3.5rem-4.5rem)] overflow-y-auto overscroll-y-none pb-0"
+              ? "h-auto min-h-auto overflow-y-auto [-webkit-overflow-scrolling:touch]"
               : "pb-20 md:pb-20"
         }
       >

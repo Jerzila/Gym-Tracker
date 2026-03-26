@@ -24,14 +24,21 @@ function SubmitButton({
 }) {
   const { pending } = useFormStatus();
   const { isOnline } = useNetworkStatus();
-  const isSignUp = /sign up|create account/i.test(submitLabel);
+  const isSignUp = /sign up|create(?:\s+\w+)?\s+account/i.test(submitLabel);
+  const isSignIn = /sign in|log in|login/i.test(submitLabel);
   const loadingLabel = isSignUp ? "Creating account…" : "Signing in…";
   return (
     <button
       type="submit"
       disabled={pending || disabled || !isOnline}
       aria-busy={pending}
-      className={`${buttonClass.primary} w-full disabled:opacity-70 disabled:pointer-events-none`}
+      className={`${buttonClass.primary} w-full disabled:opacity-70 disabled:pointer-events-none ${
+        isSignUp
+          ? "shadow-[0_0_20px_rgba(255,170,0,0.35),0_10px_25px_rgba(0,0,0,0.45)] transition-all duration-200 hover:brightness-105 hover:shadow-[0_0_24px_rgba(255,170,0,0.4),0_12px_28px_rgba(0,0,0,0.5)]"
+          : isSignIn
+            ? "shadow-[0_0_20px_rgba(255,170,0,0.35),0_10px_25px_rgba(0,0,0,0.45)] transition-all duration-200 hover:brightness-105 hover:shadow-[0_0_24px_rgba(255,170,0,0.4),0_12px_28px_rgba(0,0,0,0.5)]"
+          : ""
+      }`}
     >
       {pending ? loadingLabel : !isOnline ? "Offline" : submitLabel}
     </button>
@@ -53,7 +60,7 @@ function RetryButton({ onRetry, isOnline }: { onRetry: () => void; isOnline: boo
 }
 
 export function AuthForm({ action, submitLabel, redirectTo, requireLegalAgreement }: AuthFormProps) {
-  const isSignUp = /sign up|create account/i.test(submitLabel);
+  const isSignUp = /sign up|create(?:\s+\w+)?\s+account/i.test(submitLabel);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [state, formAction] = useActionState(
     async (_: unknown, formData: FormData) => {
@@ -96,7 +103,7 @@ export function AuthForm({ action, submitLabel, redirectTo, requireLegalAgreemen
           autoComplete="email"
           required
           disabled={!isOnline}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+          className="w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-[rgba(255,170,0,0.6)] focus:outline-none focus:ring-0"
           placeholder="you@example.com"
         />
       </div>
@@ -108,11 +115,11 @@ export function AuthForm({ action, submitLabel, redirectTo, requireLegalAgreemen
           id="password"
           name="password"
           type="password"
-          autoComplete={submitLabel === "Sign up" ? "new-password" : "current-password"}
+          autoComplete={isSignUp ? "new-password" : "current-password"}
           required
           minLength={6}
           disabled={!isOnline}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+          className="w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-[rgba(255,170,0,0.6)] focus:outline-none focus:ring-0"
           placeholder="••••••••"
         />
         {isSignUp && (
@@ -137,13 +144,13 @@ export function AuthForm({ action, submitLabel, redirectTo, requireLegalAgreemen
               }}
               className="mt-0.5 h-4 w-4 rounded border-zinc-600 bg-zinc-900 accent-amber-500"
             />
-            <span className="text-xs leading-relaxed text-zinc-400">
+            <span className="text-[11px] leading-relaxed text-[rgba(255,255,255,0.6)]">
               By creating an account you agree to Liftly&apos;s{" "}
-              <Link href="/terms" className="font-medium text-amber-500/90 hover:text-amber-400 underline">
+              <Link href="/terms" className="font-medium text-amber-500 hover:text-amber-400 underline">
                 Terms of Service
               </Link>{" "}
               and{" "}
-              <Link href="/privacy" className="font-medium text-amber-500/90 hover:text-amber-400 underline">
+              <Link href="/privacy" className="font-medium text-amber-500 hover:text-amber-400 underline">
                 Privacy Policy
               </Link>
               .
