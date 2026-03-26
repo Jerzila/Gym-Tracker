@@ -106,15 +106,19 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="bg-zinc-950 text-zinc-100">
-      {!isProfileSetup && <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />}
+    <div className="flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100">
+      {!isProfileSetup && (
+        <div className="sticky top-0 z-50 bg-zinc-950 pt-[env(safe-area-inset-top)]">
+          <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
+        </div>
+      )}
       <main
         className={
           isProfileSetup
             ? ""
             : isExerciseDetail
-              ? "h-auto min-h-auto overflow-y-auto [-webkit-overflow-scrolling:touch]"
-              : "pb-20 md:pb-20"
+              ? "min-h-0 flex-1 overflow-y-auto pb-20 md:pb-20 [-webkit-overflow-scrolling:touch]"
+              : "min-h-0 flex-1 overflow-y-auto pb-20 md:pb-20 [-webkit-overflow-scrolling:touch]"
         }
       >
         {children}
