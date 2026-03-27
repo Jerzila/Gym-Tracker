@@ -50,6 +50,45 @@ export function CalendarIcon({ size, ...props }: IconProps) {
   );
 }
 
+export function HomeIcon({ size, ...props }: IconProps) {
+  return (
+    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3.5 11.5 12 4.75l8.5 6.75" />
+      <path d="M6 10.5V20a1.75 1.75 0 0 0 1.75 1.75h8.5A1.75 1.75 0 0 0 18 20v-9.5" />
+      <path d="M10 21.75V15.5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v6.25" />
+    </svg>
+  );
+}
+
+export function UserIcon({ size, ...props }: IconProps) {
+  return (
+    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" />
+      <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+    </svg>
+  );
+}
+
+export function SearchIcon({ size, ...props }: IconProps) {
+  return (
+    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4.5 4.5" />
+    </svg>
+  );
+}
+
+export function UserPlusIcon({ size, ...props }: IconProps) {
+  return (
+    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" />
+      <path d="M4.5 20a7.5 7.5 0 0 1 11.7-6" />
+      <path d="M19 14v6" />
+      <path d="M16 17h6" />
+    </svg>
+  );
+}
+
 export function StrengthIcon({ size, ...props }: IconProps) {
   return (
     <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">

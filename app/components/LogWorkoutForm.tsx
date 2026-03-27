@@ -24,14 +24,16 @@ type Props = {
   exerciseId: string;
   repMin: number;
   repMax: number;
+  loadType?: "bilateral" | "unilateral";
   onExpandedChange?: (expanded: boolean) => void;
 };
 
 const initialSetValues = { weight: "", reps: ["", "", "", "", ""] as string[] };
 
-export function LogWorkoutForm({ exerciseId, repMin, repMax, onExpandedChange }: Props) {
+export function LogWorkoutForm({ exerciseId, repMin, repMax, loadType = "bilateral", onExpandedChange }: Props) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
+  const isUnilateral = loadType === "unilateral";
   const [state, action] = useActionState(formAction, undefined);
   const [expanded, setExpanded] = useState(false);
   const [setValues, setSetValues] = useState(initialSetValues);
@@ -162,6 +164,9 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, onExpandedChange }:
                   }}
                     className="mt-1 w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
+                  {isUnilateral && (
+                    <p className="mt-1 text-[11px] text-zinc-500">One arm weight</p>
+                  )}
                 </div>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <div key={i} className="w-14">

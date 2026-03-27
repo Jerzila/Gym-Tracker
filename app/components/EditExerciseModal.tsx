@@ -85,6 +85,20 @@ export function EditExerciseModal({
               />
             </div>
           </div>
+          <div className="space-y-1">
+            <label htmlFor="edit-load_type" className="block text-xs text-zinc-500">
+              Load Type
+            </label>
+            <select
+              id="edit-load_type"
+              name="load_type"
+              defaultValue={exercise.load_type ?? "bilateral"}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            >
+              <option value="bilateral">Both arms / total weight</option>
+              <option value="unilateral">One arm / per side</option>
+            </select>
+          </div>
           {state?.error && (
             <p className="text-sm text-red-400">{state.error}</p>
           )}

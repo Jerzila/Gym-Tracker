@@ -2,8 +2,23 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import { epley1RM } from "@/lib/progression";
+import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
 import { getWeekBounds, getMonthBounds, getMonthBoundsFor, getWeekProgress } from "@/lib/insightsDates";
 import { MUSCLE_GROUPS, categoryToMuscle, categoryToMuscleGroups, type MuscleGroup } from "@/lib/muscleMapping";
+
+async function getLoadTypeByExerciseId(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  exerciseIds: string[]
+): Promise<Map<string, "bilateral" | "unilateral">> {
+  if (exerciseIds.length === 0) return new Map();
+  const { data: exercises } = await supabase
+    .from("exercises")
+    .select("id, load_type")
+    .in("id", exerciseIds);
+  return new Map(
+    (exercises ?? []).map((e) => [e.id, normalizeLoadType((e as { load_type?: unknown }).load_type)])
+  );
+}
 
 export type WeekStats = {
   volume: number;
@@ -86,6 +101,7 @@ async function getBest1RMByExerciseInRange(
     .gte("date", start)
     .lte("date", end);
   if (!workouts?.length) return result;
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, exerciseIds);
 
   const workoutIds = workouts.map((w) => w.id);
   const { data: sets } = await supabase
@@ -100,8 +116,9 @@ async function getBest1RMByExerciseInRange(
   }
   for (const w of workouts) {
     let best = result[w.exercise_id] ?? 0;
+    const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(w.exercise_id));
     for (const r of setsByWorkout.get(w.id) ?? []) {
-      best = Math.max(best, epley1RM(Number(w.weight), r));
+      best = Math.max(best, epley1RM(effectiveWeight, r));
     }
     result[w.exercise_id] = best;
   }
@@ -444,14 +461,16 @@ async function getWeekStats(
   let volume = 0;
   let setCount = 0;
   const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, exerciseIds);
   const sessionCount = new Set(workouts.map((w) => w.date)).size;
   const exerciseEntryCount = workouts.length;
 
   for (const w of workouts) {
     const repsList = setsByWorkout.get(w.id) ?? [];
     setCount += repsList.length;
+    const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(w.exercise_id));
     for (const r of repsList) {
-      volume += Number(w.weight) * r;
+      volume += effectiveWeight * r;
     }
   }
 
@@ -485,6 +504,7 @@ async function countPRsInRange(
     .order("date", { ascending: true });
 
   if (!history?.length) return workoutsInRange.length;
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, exerciseIds);
 
   const histIds = history.map((h) => h.id);
   const { data: histSets } = await supabase
@@ -506,8 +526,9 @@ async function countPRsInRange(
     const inRange = workoutsInRange.some((w) => w.id === h.id);
     const repsList = histSetsByWorkout.get(h.id) ?? [];
     let best1RM = 0;
+    const effectiveWeight = getEffectiveWeight(Number(h.weight), loadTypeByExerciseId.get(h.exercise_id));
     for (const r of repsList) {
-      best1RM = Math.max(best1RM, epley1RM(Number(h.weight), r));
+      best1RM = Math.max(best1RM, epley1RM(effectiveWeight, r));
     }
     const prev = exerciseBestBefore.get(h.exercise_id) ?? 0;
     if (inRange && best1RM > prev) prCount++;
@@ -828,6 +849,7 @@ async function getMuscleVolumeInRange(
   if (wError || !workouts?.length) return vol;
 
   const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, exerciseIds);
   const { data: exercises } = await supabase
     .from("exercises")
     .select("id, category_id")
@@ -865,8 +887,9 @@ async function getMuscleVolumeInRange(
     const muscle = exerciseToMuscle.get(w.exercise_id);
     if (!muscle) continue;
     const repsList = setsByWorkout.get(w.id) ?? [];
+    const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(w.exercise_id));
     for (const r of repsList) {
-      vol[muscle] += Number(w.weight) * r;
+      vol[muscle] += effectiveWeight * r;
     }
   }
 
@@ -901,7 +924,7 @@ async function getMuscleSetsAndExercisesInRange(
 
   const { data: workouts, error: wError } = await supabase
     .from("workouts")
-    .select("id, exercise_id")
+    .select("id, exercise_id, weight")
     .eq("user_id", userId)
     .gte("date", start)
     .lte("date", end);
@@ -913,6 +936,7 @@ async function getMuscleSetsAndExercisesInRange(
   }
 
   const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, exerciseIds);
   const { data: exercises } = await supabase
     .from("exercises")
     .select("id, name, category_id")
@@ -935,22 +959,26 @@ async function getMuscleSetsAndExercisesInRange(
   const workoutIds = workouts.map((w) => w.id);
   const { data: sets } = await supabase
     .from("sets")
-    .select("workout_id")
+    .select("workout_id, reps")
     .in("workout_id", workoutIds);
 
-  const setCountByWorkout = new Map<string, number>();
+  const stimulusByWorkout = new Map<string, number>();
   for (const s of sets ?? []) {
-    setCountByWorkout.set(s.workout_id, (setCountByWorkout.get(s.workout_id) ?? 0) + 1);
+    stimulusByWorkout.set(
+      s.workout_id,
+      (stimulusByWorkout.get(s.workout_id) ?? 0) + (Number(s.reps) || 0)
+    );
   }
 
   for (const w of workouts) {
     const categoryName = exerciseToCategoryName.get(w.exercise_id);
     if (categoryName == null) continue;
-    const count = setCountByWorkout.get(w.id) ?? 0;
-    if (count === 0) continue;
+    const totalReps = stimulusByWorkout.get(w.id) ?? 0;
+    if (totalReps === 0) continue;
     const muscles = categoryToMuscleGroups(categoryName);
     if (muscles.length === 0) continue;
-    const share = count / muscles.length;
+    const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(w.exercise_id));
+    const share = (effectiveWeight * totalReps) / muscles.length;
     const exerciseName = exerciseNameById.get(w.exercise_id) ?? "Unknown";
     for (const m of muscles) {
       setsPerMuscle[m] = (setsPerMuscle[m] ?? 0) + share;
@@ -1043,6 +1071,10 @@ export async function getAll1RMProgression(): Promise<{
       .in("workout_id", workoutIds);
 
     if (sError) return { data: {}, error: sError.message };
+    const loadTypeByExerciseId = await getLoadTypeByExerciseId(
+      supabase,
+      [...new Set(workouts.map((w) => w.exercise_id))]
+    );
     const setsByWorkout = new Map<string, number[]>();
     for (const s of sets ?? []) {
       const list = setsByWorkout.get(s.workout_id) ?? [];
@@ -1054,8 +1086,9 @@ export async function getAll1RMProgression(): Promise<{
     for (const w of workouts) {
       const repsList = setsByWorkout.get(w.id) ?? [];
       let best = 0;
+      const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(w.exercise_id));
       for (const r of repsList) {
-        best = Math.max(best, epley1RM(Number(w.weight), r));
+        best = Math.max(best, epley1RM(effectiveWeight, r));
       }
       if (best > 0) {
         const points = byExercise[w.exercise_id] ?? [];
@@ -1112,6 +1145,7 @@ export async function get1RMProgression(
       .in("workout_id", workoutIds);
 
     if (sError) return { data: [], error: sError.message };
+    const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, [exerciseId]);
     const setsByWorkout = new Map<string, number[]>();
     for (const s of sets ?? []) {
       const list = setsByWorkout.get(s.workout_id) ?? [];
@@ -1123,8 +1157,9 @@ export async function get1RMProgression(
     for (const w of workouts) {
       const repsList = setsByWorkout.get(w.id) ?? [];
       let best = 0;
+      const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(exerciseId));
       for (const r of repsList) {
-        best = Math.max(best, epley1RM(Number(w.weight), r));
+        best = Math.max(best, epley1RM(effectiveWeight, r));
       }
       if (best > 0) points.push({ date: w.date, estimated1RM: Math.round(best * 10) / 10 });
     }
@@ -1216,11 +1251,13 @@ async function getTotalVolumeInRange(
 ): Promise<number> {
   const { data: workouts } = await supabase
     .from("workouts")
-    .select("id, weight")
+    .select("id, weight, exercise_id")
     .eq("user_id", userId)
     .gte("date", start)
     .lte("date", end);
   if (!workouts?.length) return 0;
+  const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, exerciseIds);
   const ids = workouts.map((w) => w.id);
   const { data: sets } = await supabase
     .from("sets")
@@ -1234,8 +1271,9 @@ async function getTotalVolumeInRange(
   }
   let v = 0;
   for (const w of workouts) {
+    const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(w.exercise_id));
     for (const r of byW.get(w.id) ?? []) {
-      v += Number(w.weight) * r;
+      v += effectiveWeight * r;
     }
   }
   return v;
@@ -1529,6 +1567,7 @@ async function get1RMProgressionBulk90(
     .gte("date", startStr)
     .order("date", { ascending: true });
   if (!workouts?.length) return result;
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, exerciseIds);
 
   const workoutIds = workouts.map((w) => w.id);
   const { data: sets } = await supabase
@@ -1544,8 +1583,9 @@ async function get1RMProgressionBulk90(
   for (const w of workouts) {
     const repsList = setsByWorkout.get(w.id) ?? [];
     let best = 0;
+    const effectiveWeight = getEffectiveWeight(Number(w.weight), loadTypeByExerciseId.get(w.exercise_id));
     for (const r of repsList) {
-      best = Math.max(best, epley1RM(Number(w.weight), r));
+      best = Math.max(best, epley1RM(effectiveWeight, r));
     }
     if (best > 0) {
       const points = result[w.exercise_id] ?? [];

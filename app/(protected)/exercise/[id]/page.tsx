@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import Link from "next/link";
 import { getExerciseById } from "@/app/actions/exercises";
 import { getHeaviestWeight, getBestEstimated1RM, getMaxRepsAtWeight } from "@/lib/pr";
 import { epley1RM } from "@/lib/progression";
@@ -10,6 +9,7 @@ import { Estimated1RMChart } from "@/app/components/Estimated1RMChart";
 import { WorkoutHistory } from "@/app/components/WorkoutHistory";
 import { getStrengthRecommendation } from "@/lib/strengthRecommendation";
 import { ExerciseLogAndNotes } from "@/app/components/ExerciseLogAndNotes";
+import { CalendarWorkoutDetailHeader } from "@/app/components/CalendarWorkoutDetailHeader";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -29,7 +29,7 @@ export default async function ExercisePage({ params }: Props) {
   const strengthRecommendation = getStrengthRecommendation(workouts, {
     minRep: repMin,
     maxRep: repMax,
-  });
+  }, exercise.load_type);
 
   const chartData = workouts
     .slice()
@@ -49,25 +49,16 @@ export default async function ExercisePage({ params }: Props) {
 
   return (
     <>
-      <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/exercises"
-            prefetch={true}
-            scroll={false}
-            className="text-zinc-500 transition hover:text-zinc-300"
-            aria-label="Back to exercises"
-          >
-            ←
-          </Link>
-          <h2 className="text-lg font-semibold tracking-tight">{exercise.name}</h2>
-        </div>
+      <CalendarWorkoutDetailHeader />
+
+      <div className="px-4 pt-4 sm:px-6">
+        <h2 className="text-lg font-semibold tracking-tight">{exercise.name}</h2>
         <p className="mt-1 text-sm text-zinc-500">
           Target: {exercise.rep_min}–{exercise.rep_max} reps
         </p>
       </div>
 
-      <main className="mx-auto max-w-xl px-4 pt-6 sm:px-6">
+      <main className="mx-auto max-w-xl px-4 pt-5 sm:px-6">
         <section className="pb-6">
           <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
             Log set
@@ -76,6 +67,7 @@ export default async function ExercisePage({ params }: Props) {
             exerciseId={id}
             repMin={exercise.rep_min}
             repMax={exercise.rep_max}
+            loadType={exercise.load_type}
             initialNotes={exercise.notes ?? null}
           />
         </section>

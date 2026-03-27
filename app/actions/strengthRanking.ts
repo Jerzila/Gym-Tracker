@@ -3,6 +3,7 @@
 import { getBodyweightStats } from "@/app/actions/bodyweight";
 import { getProfile } from "@/app/actions/profile";
 import { createServerClient } from "@/lib/supabase/server";
+import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
 import {
   computeStrengthRanking,
   categoryToStrengthMuscles,
@@ -256,7 +257,8 @@ function ratioAnd1RmForSet(
   reps: number,
   bodyweightKg: number,
   exerciseName: string,
-  targetMuscle: StrengthRankMuscle
+  targetMuscle: StrengthRankMuscle,
+  loadType: unknown
 ): { ratio: number; estimated1RM: number } | null {
   const bw = bodyweightKg > 0 ? bodyweightKg : 0;
   if (bw <= 0) return null;
@@ -270,7 +272,8 @@ function ratioAnd1RmForSet(
     const oneRm = epleyEstimated1RM(effective, reps);
     return { ratio: oneRm / bw, estimated1RM: Math.round(oneRm * 10) / 10 };
   }
-  const oneRm = epleyEstimated1RM(weightKg, reps);
+  const effective = getEffectiveWeight(weightKg, loadType);
+  const oneRm = epleyEstimated1RM(effective, reps);
   if (oneRm <= 0) return null;
   return { ratio: oneRm / bw, estimated1RM: Math.round(oneRm * 10) / 10 };
 }
@@ -300,7 +303,7 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
 
     const { data: allExercises } = await supabase
       .from("exercises")
-      .select("id, name, category_id")
+      .select("id, name, category_id, load_type")
       .eq("user_id", user.id);
 
     if (!allExercises?.length && bodyweightKg <= 0) {
@@ -316,9 +319,11 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
 
     const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
     const categoryByExercise: Record<string, string> = {};
+    const loadTypeByExercise: Record<string, "bilateral" | "unilateral"> = {};
     for (const e of allExercises ?? []) {
       const name = categoryNameById.get(e.category_id);
       if (name != null) categoryByExercise[e.id] = name;
+      loadTypeByExercise[e.id] = normalizeLoadType((e as { load_type?: unknown }).load_type);
     }
 
     // Fetch all workouts and sets to build exercise data points (with date for recency)
@@ -353,11 +358,12 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
 
       const weightKg = Number(w.weight) || 0;
       const repsList = setsByWorkout.get(w.id) ?? [];
+      const loadType = loadTypeByExercise[w.exercise_id] ?? "bilateral";
       for (const reps of repsList) {
         if (bwForRatio <= 0) continue;
         for (const m of muscles) {
           if (m === "core") continue;
-          const pair = ratioAnd1RmForSet(weightKg, reps, bwForRatio, name, m);
+          const pair = ratioAnd1RmForSet(weightKg, reps, bwForRatio, name, m, loadType);
           if (!pair) continue;
           exerciseDataPoints.push({
             exerciseId: w.exercise_id,
@@ -443,8 +449,10 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
         const repsList = setsByWorkout.get(w.id) ?? [];
         const bestSet = repsList.length ? Math.max(...repsList) : 0;
         const weightKg = Number(w.weight) || 0;
+        const loadType = loadTypeByExercise[w.exercise_id] ?? "bilateral";
+        const effectiveWeightKg = getEffectiveWeight(weightKg, loadType);
         current.bestRepsOrSeconds = Math.max(current.bestRepsOrSeconds, bestSet);
-        current.bestWeightKg = Math.max(current.bestWeightKg, weightKg);
+        current.bestWeightKg = Math.max(current.bestWeightKg, effectiveWeightKg);
       }
 
       const scored = [...bestByExercise.values()].map((v) => {

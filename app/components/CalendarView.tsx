@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   getWorkoutsByMonth,
   getWorkoutCountsByPeriod,
@@ -9,6 +9,7 @@ import {
   type CalendarWorkout,
 } from "@/app/actions/workouts";
 import { epley1RM } from "@/lib/progression";
+import { getEffectiveWeight } from "@/lib/loadType";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { SkeletonCalendarGrid } from "@/app/components/Skeleton";
@@ -43,6 +44,9 @@ function isFuture(d: Date): boolean {
 }
 
 export function CalendarView() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const now = new Date();
@@ -73,8 +77,12 @@ export function CalendarView() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    // Avoid setting state synchronously inside the effect body.
+    Promise.resolve().then(() => {
+      if (cancelled) return;
+      setLoading(true);
+      setError(null);
+    });
     getWorkoutsByMonth(year, month).then(({ data, error: err }) => {
       if (!cancelled) {
         setWorkouts(data ?? []);
@@ -105,6 +113,7 @@ export function CalendarView() {
   const handleDayClick = (dateKey: string) => {
     setSelectedDate(dateKey);
     setPanelOpen(true);
+    router.replace(`${pathname}?date=${dateKey}`, { scroll: false });
     const dayWorkouts = workoutsByDate.get(dateKey) ?? [];
     if (dayWorkouts.length === 0) {
       setPrIds(new Set());
@@ -114,7 +123,7 @@ export function CalendarView() {
       const bestReps = Math.max(...w.sets.map((s) => s.reps), 0);
       return {
         exercise_id: w.exercise_id,
-        estimated1RM: epley1RM(w.weight, bestReps),
+        estimated1RM: epley1RM(getEffectiveWeight(w.weight, w.load_type), bestReps),
       };
     });
     getPRsForDate(dateKey, sessions).then(({ prExerciseIds }) => {
@@ -125,7 +134,22 @@ export function CalendarView() {
   const handleClosePanel = () => {
     setPanelOpen(false);
     setSelectedDate(null);
+    router.replace(pathname, { scroll: false });
   };
+
+  useEffect(() => {
+    const dateFromQuery = searchParams.get("date");
+    // Avoid setting state synchronously inside the effect body.
+    Promise.resolve().then(() => {
+      if (dateFromQuery) {
+        setSelectedDate(dateFromQuery);
+        setPanelOpen(true);
+      } else {
+        setPanelOpen(false);
+        setSelectedDate(null);
+      }
+    });
+  }, [searchParams]);
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -163,17 +187,7 @@ export function CalendarView() {
   return (
     <div className="w-full max-w-[100vw] overflow-x-hidden">
       <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            prefetch={true}
-            className="text-zinc-500 transition hover:text-zinc-300"
-            aria-label="Back to dashboard"
-          >
-            ←
-          </Link>
-          <h2 className="text-lg font-semibold tracking-tight">Calendar</h2>
-        </div>
+        <h2 className="text-lg font-semibold tracking-tight">Calendar</h2>
       </div>
 
       <main className="mx-auto w-full min-w-0 max-w-2xl px-4 py-6 sm:px-6">
@@ -308,7 +322,7 @@ export function CalendarView() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="calendar-day-title"
-        className="fixed inset-0 z-50 flex justify-end"
+        className="fixed inset-0 z-[120] flex justify-end"
         style={{
           pointerEvents: panelOpen ? "auto" : "none",
         }}
@@ -370,23 +384,29 @@ function CalendarDayPanel({
 
   return (
     <>
-      <div className="border-b border-zinc-800 px-4 py-3">
-        <div className="flex items-center justify-between">
-          <h2 id="calendar-day-title" className="text-lg font-semibold text-zinc-100">
-            {dateHeader}
-          </h2>
+      <header
+        className="sticky top-0 z-50 border-b border-zinc-800 bg-[var(--background)]"
+        role="banner"
+      >
+        <div className="relative flex h-14 items-center px-4">
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
-            className="rounded-lg p-1.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300"
+            aria-label="Back to calendar"
+            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-xl text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
           >
-            ×
+            <span aria-hidden>←</span>
           </button>
+          <h2 className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base font-semibold tracking-tight text-zinc-100">
+            Calendar
+          </h2>
         </div>
-      </div>
+      </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
+        <h3 id="calendar-day-title" className="mb-4 text-lg font-semibold text-zinc-100">
+          {dateHeader}
+        </h3>
         {workouts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-sm font-medium text-zinc-400">

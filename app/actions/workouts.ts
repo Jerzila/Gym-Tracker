@@ -3,6 +3,7 @@
 import { createServerClient } from "@/lib/supabase/server";
 import { getProgressiveOverloadMessage } from "@/lib/progression";
 import { epley1RM } from "@/lib/progression";
+import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
 import { revalidatePath } from "next/cache";
 
 /** Workout for calendar: one row per workout with exercise name and sets */
@@ -10,6 +11,7 @@ export type CalendarWorkout = {
   id: string;
   date: string;
   weight: number;
+  load_type: "bilateral" | "unilateral";
   exercise_id: string;
   exercise_name: string;
   sets: { reps: number }[];
@@ -166,6 +168,15 @@ export async function getAccountLifetimeStats(): Promise<{
       return { data: { workoutCount: 0, exerciseCount: 0, setCount: 0, prCount: 0 } };
     }
 
+    const exerciseIds = [...new Set(list.map((w) => w.exercise_id as string))];
+    const { data: exercises } = await supabase
+      .from("exercises")
+      .select("id, load_type")
+      .in("id", exerciseIds);
+    const loadTypeByExerciseId = new Map(
+      (exercises ?? []).map((e) => [e.id as string, normalizeLoadType((e as { load_type?: unknown }).load_type)])
+    );
+
     const workoutIds = list.map((w) => w.id as string);
     const CHUNK = 200;
     const allSets: { workout_id: string; reps: number }[] = [];
@@ -200,7 +211,8 @@ export async function getAccountLifetimeStats(): Promise<{
       const repsList = setsByWorkout.get(wid) ?? [];
       const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
       const weight = Number(w.weight) || 0;
-      const est = epley1RM(weight, bestReps);
+      const effectiveWeight = getEffectiveWeight(weight, loadTypeByExerciseId.get(eid));
+      const est = epley1RM(effectiveWeight, bestReps);
       const prev = bestByExercise.get(eid) ?? 0;
       if (est >= prev) {
         prCount += 1;
@@ -314,11 +326,14 @@ export async function getWorkoutsByMonth(
     const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
     const { data: exercises, error: exError } = await supabase
       .from("exercises")
-      .select("id, name")
+      .select("id, name, load_type")
       .in("id", exerciseIds);
 
     if (exError) return { data: [], error: exError.message };
     const nameById = new Map((exercises ?? []).map((e) => [e.id, e.name]));
+    const loadTypeById = new Map(
+      (exercises ?? []).map((e) => [e.id, normalizeLoadType((e as { load_type?: unknown }).load_type)])
+    );
 
     const workoutIds = workouts.map((w) => w.id);
     const { data: sets, error: sError } = await supabase
@@ -338,6 +353,7 @@ export async function getWorkoutsByMonth(
       id: w.id,
       date: w.date,
       weight: w.weight,
+      load_type: loadTypeById.get(w.exercise_id) ?? "bilateral",
       exercise_id: w.exercise_id,
       exercise_name: nameById.get(w.exercise_id) ?? "Unknown",
       sets: setsByWorkout.get(w.id) ?? [],
@@ -403,8 +419,12 @@ export async function getLastWorkoutSummary(): Promise<{
     const exerciseIds = [...new Set(dayWorkouts.map((w) => w.exercise_id))];
     const { data: exercises, error: exError } = await supabase
       .from("exercises")
-      .select("id, name, category_id")
+      .select("id, name, category_id, load_type")
       .in("id", exerciseIds);
+    const loadTypeByExerciseId = new Map(
+      (exercises as { id: string; load_type?: unknown }[]).map((e) => [e.id, normalizeLoadType(e.load_type)])
+    );
+
 
     if (exError || !exercises?.length) {
       return {
@@ -456,7 +476,10 @@ export async function getLastWorkoutSummary(): Promise<{
       const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
       return {
         exercise_id: w.exercise_id,
-        estimated1RM: epley1RM(w.weight, bestReps),
+        estimated1RM: epley1RM(
+          getEffectiveWeight(w.weight, loadTypeByExerciseId.get(w.exercise_id)),
+          bestReps
+        ),
       };
     });
 
@@ -498,6 +521,15 @@ export async function getPRsForDate(
     if (!user) return { prExerciseIds: [], error: "Not authenticated" };
 
     const prExerciseIds: string[] = [];
+    const sessionExerciseIds = [...new Set(sessions.map((s) => s.exercise_id))];
+    const { data: exerciseRows } = await supabase
+      .from("exercises")
+      .select("id, load_type")
+      .in("id", sessionExerciseIds);
+    const loadTypeByExerciseId = new Map(
+      (exerciseRows ?? []).map((e) => [e.id, normalizeLoadType((e as { load_type?: unknown }).load_type)])
+    );
+
     for (const { exercise_id, estimated1RM } of sessions) {
       const { data: workouts, error } = await supabase
         .from("workouts")
@@ -530,7 +562,10 @@ export async function getPRsForDate(
       for (const w of workouts) {
         const repsList = setsByWorkout.get(w.id) ?? [];
         for (const reps of repsList) {
-          const rm = epley1RM(w.weight, reps);
+          const rm = epley1RM(
+            getEffectiveWeight(w.weight, loadTypeByExerciseId.get(exercise_id)),
+            reps
+          );
           if (rm > bestBefore) bestBefore = rm;
         }
       }

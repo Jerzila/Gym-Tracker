@@ -1,6 +1,6 @@
 import { epley1RM } from "@/lib/progression";
 
-export type WorkoutWithReps = { weight: number; sets: { reps: number }[] };
+export type WorkoutWithReps = { weight: number; load_type?: "bilateral" | "unilateral"; sets: { reps: number }[] };
 
 export function getHeaviestWeight(workouts: WorkoutWithReps[]): number | null {
   if (workouts.length === 0) return null;
@@ -25,9 +25,9 @@ export function getBestEstimated1RM(workouts: WorkoutWithReps[]): number | null 
   if (workouts.length === 0) return null;
   let best = 0;
   for (const w of workouts) {
-    const weight = Number(w.weight);
+    const loggedWeight = Number(w.weight);
     for (const s of w.sets) {
-      const rm = epley1RM(weight, s.reps);
+      const rm = epley1RM(loggedWeight, s.reps);
       if (rm > best) best = rm;
     }
   }

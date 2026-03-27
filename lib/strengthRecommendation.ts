@@ -1,5 +1,8 @@
+import { getEffectiveWeight } from "@/lib/loadType";
+
 type WorkoutHistoryEntry = {
   weight: number;
+  load_type?: "bilateral" | "unilateral";
   sets: { reps: number }[];
 };
 
@@ -30,7 +33,8 @@ function roundToTenth(value: number): number {
  */
 export function getStrengthRecommendation(
   exerciseHistory: WorkoutHistoryEntry[],
-  repRange: RepRange
+  repRange: RepRange,
+  loadType: WorkoutHistoryEntry["load_type"] | undefined = "bilateral"
 ): StrengthRecommendation {
   const fallbackMin = Number.isFinite(repRange.minRep) && repRange.minRep > 0 ? repRange.minRep : 6;
   const fallbackMax = Number.isFinite(repRange.maxRep) && repRange.maxRep >= fallbackMin ? repRange.maxRep : 10;
@@ -51,9 +55,11 @@ export function getStrengthRecommendation(
     };
   }
 
-  const weight = Number(latest.weight);
+  const loggedWeight = Number(latest.weight);
+  const factor = loadType === "unilateral" ? 2 : 1;
+  const effectiveWeight = getEffectiveWeight(loggedWeight, loadType);
   const reps = latest.sets.map((set) => Number(set.reps)).filter((rep) => Number.isFinite(rep) && rep > 0);
-  if (reps.length === 0 || !Number.isFinite(weight) || weight <= 0) {
+  if (reps.length === 0 || !Number.isFinite(loggedWeight) || loggedWeight <= 0) {
     return {
       action: "no_data",
       title: "Strength Recommendation",
@@ -75,11 +81,11 @@ export function getStrengthRecommendation(
       action: "increase",
       title: "Strength Recommendation",
       subtitle: "Next workout target",
-      nextWeightKg: roundToTenth(weight + 2.5),
-      currentWeightKg: roundToTenth(weight),
+      nextWeightKg: roundToTenth((effectiveWeight + 2.5) / factor),
+      currentWeightKg: roundToTenth(effectiveWeight / factor),
       targetRep: fallbackMin,
       bestRep,
-      primaryText: `Increase weight to ${roundToTenth(weight + 2.5)} kg`,
+      primaryText: `Increase weight to ${roundToTenth((effectiveWeight + 2.5) / factor)} kg`,
       secondaryText: "You reached the top rep range.",
       emptyStateText: "",
     };
@@ -89,11 +95,11 @@ export function getStrengthRecommendation(
     action: "keep",
     title: "Strength Recommendation",
     subtitle: "Next workout target",
-    nextWeightKg: roundToTenth(weight),
-    currentWeightKg: roundToTenth(weight),
+    nextWeightKg: roundToTenth(effectiveWeight / factor),
+    currentWeightKg: roundToTenth(effectiveWeight / factor),
     targetRep: bestRep + 1,
     bestRep,
-    primaryText: `Keep same weight of ${roundToTenth(weight)} kg`,
+    primaryText: `Keep same weight of ${roundToTenth(effectiveWeight / factor)} kg`,
     secondaryText: `Try to beat your last best set of ${bestRep} reps.`,
     emptyStateText: "",
   };

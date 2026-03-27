@@ -37,10 +37,12 @@ export function CreateExerciseForm({
       const categoryId = formRef.current?.querySelector<HTMLSelectElement>(
         '[name="category_id"]'
       )?.value;
-      setIsOpen(false);
-      formRef.current?.reset();
-      toast.show("Exercise added");
-      if (categoryId) router.push(`/exercises?expand=${categoryId}`);
+      Promise.resolve().then(() => {
+        setIsOpen(false);
+        formRef.current?.reset();
+        toast.show("Exercise added");
+        if (categoryId) router.push(`/exercises?expand=${categoryId}`);
+      });
     }
   }, [state, router, toast]);
 
@@ -137,6 +139,20 @@ export function CreateExerciseForm({
                     defaultValue={12}
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
+                </div>
+                <div className="w-full space-y-1 sm:w-44">
+                  <label htmlFor="load_type" className="block text-xs text-zinc-500">
+                    Load Type
+                  </label>
+                  <select
+                    id="load_type"
+                    name="load_type"
+                    defaultValue="bilateral"
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  >
+                    <option value="bilateral">Both arms / total weight</option>
+                    <option value="unilateral">One arm / per arm</option>
+                  </select>
                 </div>
                 <div className="flex gap-2 sm:items-end">
                   <button

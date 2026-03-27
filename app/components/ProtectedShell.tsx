@@ -2,10 +2,11 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { AppHeader } from "@/app/components/AppHeader";
 import { BottomNav } from "@/app/components/BottomNav";
-import { SettingsIcon } from "@/components/icons";
+import { CalendarIcon, SearchIcon, SettingsIcon, UserPlusIcon } from "@/components/icons";
+import { BackArrowButton } from "@/app/components/BackArrowButton";
 
 function getPageTitle(pathname: string): string {
   if (pathname === "/profile-setup") return "Complete Your Profile";
@@ -13,6 +14,7 @@ function getPageTitle(pathname: string): string {
   if (pathname === "/exercises") return "Exercises";
   if (pathname === "/calendar") return "Calendar";
   if (pathname === "/insights") return "Insights";
+  if (pathname === "/social") return "Social";
   if (pathname === "/bodyweight") return "Bodyweight";
   if (pathname === "/account") return "Account";
   if (pathname === "/account/settings") return "Settings";
@@ -24,52 +26,9 @@ function getPageTitle(pathname: string): string {
   if (pathname === "/account/settings/other") return "Other";
   if (pathname === "/categories") return "Categories";
   if (pathname.startsWith("/exercise/")) return "Exercise";
+  if (pathname === "/social/search") return "Search Friends";
+  if (pathname === "/social/requests") return "Friend Requests";
   return "Liftly";
-}
-
-function BackToAccountLink() {
-  return (
-    <Link
-      href="/account"
-      className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-      aria-label="Back to account"
-    >
-      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-      </svg>
-    </Link>
-  );
-}
-
-function BackToSettingsLink() {
-  return (
-    <Link
-      href="/account/settings"
-      className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-      aria-label="Back to settings"
-    >
-      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-      </svg>
-    </Link>
-  );
-}
-
-/** Uses history so Account → Edit Profile → back returns to Account; Settings → Edit Profile → back returns to Settings. */
-function EditProfileBackButton() {
-  const router = useRouter();
-  return (
-    <button
-      type="button"
-      className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-100"
-      aria-label="Back"
-      onClick={() => router.back()}
-    >
-      <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-      </svg>
-    </button>
-  );
 }
 
 function AccountSettingsLink() {
@@ -84,43 +43,80 @@ function AccountSettingsLink() {
   );
 }
 
+function DashboardCalendarLink() {
+  return (
+    <Link
+      href="/calendar"
+      className="flex h-11 w-11 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100 active:bg-zinc-800"
+      aria-label="Open calendar"
+    >
+      <CalendarIcon size={20} aria-hidden />
+    </Link>
+  );
+}
+
+function SocialHeaderActions() {
+  return (
+    <>
+      <Link
+        href="/social/search"
+        className="rounded-lg p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-100 tap-feedback"
+        aria-label="Search friends"
+      >
+        <SearchIcon size={20} aria-hidden />
+      </Link>
+      <Link
+        href="/social/requests"
+        className="rounded-lg p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-100 tap-feedback"
+        aria-label="Friend requests"
+      >
+        <UserPlusIcon size={20} aria-hidden />
+      </Link>
+    </>
+  );
+}
+
 export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
-  const isProfileSetup = pathname === "/profile-setup";
 
   let leftSlot: ReactNode = null;
   let rightSlot: ReactNode = null;
 
-  if (pathname === "/account") {
+  const isMainTab =
+    pathname === "/" ||
+    pathname === "/exercises" ||
+    pathname === "/calendar" ||
+    pathname === "/insights" ||
+    pathname === "/social" ||
+    pathname === "/bodyweight" ||
+    pathname === "/account";
+
+  if (!isMainTab) {
+    leftSlot = <BackArrowButton />;
+  }
+
+  if (pathname === "/") {
+    rightSlot = <DashboardCalendarLink />;
+  } else if (pathname === "/account") {
     rightSlot = <AccountSettingsLink />;
-  } else if (pathname === "/account/edit-profile") {
-    leftSlot = <EditProfileBackButton />;
-  } else if (pathname === "/account/settings") {
-    leftSlot = <BackToAccountLink />;
-  } else if (pathname.startsWith("/account/settings/")) {
-    leftSlot = <BackToSettingsLink />;
-  } else if (pathname.startsWith("/account/")) {
-    leftSlot = <BackToAccountLink />;
+  } else if (pathname === "/social") {
+    rightSlot = <SocialHeaderActions />;
   }
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-zinc-950 pb-[env(safe-area-inset-bottom)] text-zinc-100">
-      {!isProfileSetup && (
-        <div className="fixed inset-x-0 top-0 z-[100] h-14 bg-zinc-950">
-          <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
-        </div>
-      )}
+      <div className="fixed inset-x-0 top-0 z-[100] h-14 bg-zinc-950">
+        <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
+      </div>
       <main
         className={
-          isProfileSetup
-            ? ""
-            : "min-h-0 flex-1 pb-20 pt-14 md:pb-20"
+          "min-h-0 flex-1 pb-20 pt-14 md:pb-20"
         }
       >
         {children}
       </main>
-      {!isProfileSetup && <BottomNav />}
+      <BottomNav />
     </div>
   );
 }

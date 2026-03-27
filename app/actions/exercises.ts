@@ -2,6 +2,9 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import type { Exercise } from "@/lib/types";
+import { normalizeLoadType } from "@/lib/loadType";
+import { recalculateExerciseMetricsForLoadTypeChange } from "@/lib/recalculateExerciseMetrics";
+import { recalculateUserRankings } from "@/lib/recalculateUserRankings";
 import { revalidatePath } from "next/cache";
 
 function isConnectionError(e: unknown): boolean {
@@ -63,6 +66,7 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
   const repMin = Number(formData.get("rep_min"));
   const repMax = Number(formData.get("rep_max"));
   const categoryId = (formData.get("category_id") as string)?.trim();
+  const loadType = normalizeLoadType(formData.get("load_type"));
 
   if (!name || repMin < 1 || repMax < repMin) {
     return { error: "Invalid: name required, rep_min ≥ 1, rep_max ≥ rep_min" };
@@ -102,6 +106,7 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
           user_id: user.id,
           category_id: categoryId,
           name,
+          load_type: loadType,
           rep_min: repMin,
           rep_max: repMax,
         } as Record<string, unknown>)
@@ -136,6 +141,7 @@ export async function updateExercise(
   const name = (formData.get("name") as string)?.trim();
   const repMin = Number(formData.get("rep_min"));
   const repMax = Number(formData.get("rep_max"));
+  const loadType = normalizeLoadType(formData.get("load_type"));
 
   if (!name || name.length === 0) return { error: "Name is required" };
   if (Number.isNaN(repMin) || Number.isNaN(repMax) || repMin < 1 || repMax < 1) {
@@ -145,14 +151,37 @@ export async function updateExercise(
 
   try {
     const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+
+    const { data: existing, error: existingErr } = await supabase
+      .from("exercises")
+      .select("load_type")
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (existingErr) return { error: existingErr.message };
+    const previousLoadType = normalizeLoadType((existing as { load_type?: unknown } | null)?.load_type);
+
     const { error } = await supabase
       .from("exercises")
-      .update({ name, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
+      .update({ name, load_type: loadType, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
       .eq("id", id);
 
     if (error) return { error: error.message };
+
+    // Targeted recomputation: only when load_type changes.
+    if (previousLoadType !== loadType) {
+      await recalculateExerciseMetricsForLoadTypeChange(id, user.id, loadType);
+      await recalculateUserRankings(user.id);
+    }
+
     revalidatePath("/");
     revalidatePath(`/exercise/${id}`);
+    // Derived dashboards/insights depend on 1RM/PR computations.
+    revalidatePath("/account");
+    revalidatePath("/insights");
+    revalidatePath("/calendar");
     return {};
   } catch (e) {
     if (isConnectionError(e)) {
@@ -226,7 +255,11 @@ export async function updateExerciseNotes(
 }
 
 export async function getExerciseById(id: string): Promise<{
-  exercise: (Exercise & { workouts: { id: string; date: string; weight: number; sets: { reps: number }[] }[] }) | null;
+  exercise:
+    | (Exercise & {
+        workouts: { id: string; date: string; weight: number; load_type: Exercise["load_type"]; sets: { reps: number }[] }[];
+      })
+    | null;
   error?: string;
 }> {
   try {
@@ -254,7 +287,13 @@ export async function getExerciseById(id: string): Promise<{
     return {
       exercise: {
         ...(exercise as Exercise),
-        workouts: (workouts ?? []).map((w) => ({ ...w, date: w.date, sets: [] })),
+        workouts: (workouts ?? []).map((w) => ({
+          ...w,
+          date: w.date,
+          weight: w.weight,
+          load_type: (exercise as Exercise).load_type,
+          sets: [],
+        })),
       },
     };
   }
@@ -277,6 +316,7 @@ export async function getExerciseById(id: string): Promise<{
     id: w.id,
     date: w.date,
     weight: w.weight,
+    load_type: (exercise as Exercise).load_type,
     sets: setsByWorkout.get(w.id) ?? [],
   }));
 

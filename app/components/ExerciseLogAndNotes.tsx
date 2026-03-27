@@ -9,9 +9,10 @@ type Props = {
   repMin: number;
   repMax: number;
   initialNotes: string | null;
+  loadType?: "bilateral" | "unilateral";
 };
 
-export function ExerciseLogAndNotes({ exerciseId, repMin, repMax, initialNotes }: Props) {
+export function ExerciseLogAndNotes({ exerciseId, repMin, repMax, initialNotes, loadType }: Props) {
   const [isLoggingWorkout, setIsLoggingWorkout] = useState(false);
 
   return (
@@ -21,6 +22,7 @@ export function ExerciseLogAndNotes({ exerciseId, repMin, repMax, initialNotes }
           exerciseId={exerciseId}
           repMin={repMin}
           repMax={repMax}
+          loadType={loadType}
           onExpandedChange={setIsLoggingWorkout}
         />
       </div>
