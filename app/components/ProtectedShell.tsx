@@ -28,6 +28,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.startsWith("/exercise/")) return "Exercise";
   if (pathname === "/social/search") return "Search Friends";
   if (pathname === "/social/requests") return "Friend Requests";
+  if (pathname.startsWith("/friend/")) return "Profile";
   return "Liftly";
 }
 
@@ -80,6 +81,10 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
 
+  /** Friend profile renders its own fixed header (username + back); skip shell header to avoid double bars. */
+  const isFriendProfileRoute = pathname.startsWith("/friend/");
+  const showFixedHeader = !isFriendProfileRoute;
+
   let leftSlot: ReactNode = null;
   let rightSlot: ReactNode = null;
 
@@ -92,7 +97,7 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
     pathname === "/bodyweight" ||
     pathname === "/account";
 
-  if (!isMainTab) {
+  if (!isMainTab && showFixedHeader) {
     leftSlot = <BackArrowButton />;
   }
 
@@ -106,13 +111,13 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-zinc-950 pb-[env(safe-area-inset-bottom)] text-zinc-100">
-      <div className="fixed inset-x-0 top-0 z-[100] h-14 bg-zinc-950">
-        <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
-      </div>
+      {showFixedHeader ? (
+        <div className="fixed inset-x-0 top-0 z-[210] h-14 bg-zinc-950">
+          <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
+        </div>
+      ) : null}
       <main
-        className={
-          "min-h-0 flex-1 pb-20 pt-14 md:pb-20"
-        }
+        className={`min-h-0 flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-[calc(5rem+env(safe-area-inset-bottom))] ${showFixedHeader ? "pt-14" : "pt-0"}`}
       >
         {children}
       </main>

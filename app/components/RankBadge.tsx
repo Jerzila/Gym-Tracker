@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import type { RankSlug } from "@/lib/rankBadges";
+import { RANK_SLUGS, type RankSlug } from "@/lib/rankBadges";
 import { GoatIcon } from "@/components/icons";
 
 type Props = {
@@ -27,12 +27,17 @@ const RANK_LABELS: Record<RankSlug, string> = {
   goat: "GOAT",
 };
 
+function isRankSlug(s: string): s is RankSlug {
+  return (RANK_SLUGS as readonly string[]).includes(s);
+}
+
 export function RankBadge({ rank, tier, size = 72, showTierLabel = false, className = "" }: Props) {
-  const tierLabel = rank === "goat" ? "GOAT" : `${RANK_LABELS[rank]} ${tier}`;
+  const safeRank: RankSlug = isRankSlug(rank) ? rank : "newbie";
+  const tierLabel = safeRank === "goat" ? "GOAT" : `${RANK_LABELS[safeRank]} ${tier}`;
   return (
     <div className={`flex flex-col items-center gap-1 ${className}`}>
       <Image
-        src={`/${rank || "newbie"}.png`}
+        src={`/${safeRank}.png`}
         alt={tierLabel}
         width={size}
         height={size}
@@ -42,7 +47,7 @@ export function RankBadge({ rank, tier, size = 72, showTierLabel = false, classN
       />
       {showTierLabel && (
         <span className="flex items-center gap-1 text-center text-xs font-medium text-zinc-300">
-          {rank === "goat" && <GoatIcon size={14} aria-hidden className="shrink-0" />}
+          {safeRank === "goat" && <GoatIcon size={14} aria-hidden className="shrink-0" />}
           <span>{tierLabel}</span>
         </span>
       )}

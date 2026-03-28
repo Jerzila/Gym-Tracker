@@ -2,6 +2,7 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import type { Category } from "@/lib/types";
+import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
 import { revalidatePath } from "next/cache";
 
 const DEFAULT_CATEGORY_NAMES = [
@@ -106,15 +107,22 @@ export async function updateCategory(
 
   try {
     const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+
     const { error } = await supabase
       .from("categories")
       .update({ name })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", user.id);
 
     if (error) {
       if (error.code === "23505") return { error: "A category with this name already exists." };
       return { error: error.message };
     }
+    await refreshUserRankingsSafe(user.id);
     revalidatePath("/");
     revalidatePath("/categories");
     return {};

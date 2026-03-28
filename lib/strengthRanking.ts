@@ -715,6 +715,32 @@ function matchOverallStep(score: number): (typeof OVERALL_STEPS)[number] {
   return OVERALL_STEPS[OVERALL_STEPS.length - 1];
 }
 
+/**
+ * Canonical overall rank for a stored `rankings.overall_score` (same ladder as Insights / recalculate).
+ * Use for social leaderboard ordering and display so badge, label, and "Top X%" stay in sync.
+ */
+export function overallRankFromScore(overallScore: number): {
+  /** Lower = stronger (0 = best step: GOAT). */
+  ladderIndex: number;
+  rankLabel: string;
+  rankSlug: RankSlug;
+  tier: "I" | "II" | "III";
+  topPercentileLabel: string;
+} {
+  const matched = matchOverallStep(Math.max(0, overallScore));
+  const idx = OVERALL_STEPS.findIndex(
+    (s) => s.baseRank === matched.baseRank && s.tier === matched.tier
+  );
+  const ladderIndex = idx >= 0 ? idx : OVERALL_STEPS.length - 1;
+  return {
+    ladderIndex,
+    rankLabel: matched.fullLabel,
+    rankSlug: rankToSlug(matched.baseRank),
+    tier: matched.tier,
+    topPercentileLabel: matched.topPercentLabel,
+  };
+}
+
 function nextOverallStep(current: (typeof OVERALL_STEPS)[number]): (typeof OVERALL_STEPS)[number] | null {
   const idx = OVERALL_STEPS.findIndex(
     (s) =>

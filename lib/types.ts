@@ -14,6 +14,12 @@ export type Profile = {
   height: number | null;
   units: "metric" | "imperial" | null;
   profile_completed: boolean;
+  /** Full rank label for leaderboard (synced from rankings). */
+  overall_rank?: string | null;
+  /** Numeric Top X% for leaderboard sort; lower = stronger. */
+  overall_percentile?: number | null;
+  /** Badge slug e.g. newbie, elite (synced from rankings). */
+  rank_badge?: string | null;
   created_at: string;
   updated_at: string;
 };

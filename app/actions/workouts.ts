@@ -4,7 +4,14 @@ import { createServerClient } from "@/lib/supabase/server";
 import { getProgressiveOverloadMessage } from "@/lib/progression";
 import { epley1RM } from "@/lib/progression";
 import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
+import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
+import {
+  computeUserLifetimeWorkoutAggregatesForUser,
+  type UserLifetimeWorkoutAggregates,
+} from "@/lib/computeUserWorkoutAggregates";
 import { revalidatePath } from "next/cache";
+
+export type { UserLifetimeWorkoutAggregates };
 
 /** Workout for calendar: one row per workout with exercise name and sets */
 export type CalendarWorkout = {
@@ -128,6 +135,8 @@ export async function createWorkout(
 
     if (sError) return { error: sError.message };
 
+    await refreshUserRankingsSafe(user.id);
+
     const message = getProgressiveOverloadMessage(
       exercise.rep_min,
       exercise.rep_max,
@@ -154,6 +163,10 @@ export async function deleteWorkout(
   if (!workoutId || !exerciseId) return { error: "Missing workout or exercise id" };
   try {
     const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
 
     const { error: setsError } = await supabase
       .from("sets")
@@ -168,6 +181,8 @@ export async function deleteWorkout(
       .eq("id", workoutId);
 
     if (workoutError) return { error: workoutError.message };
+
+    await refreshUserRankingsSafe(user.id);
 
     revalidatePath("/");
     revalidatePath("/account");
@@ -188,90 +203,16 @@ export type AccountLifetimeStats = {
   prCount: number;
 };
 
-/** Lifetime totals for Account dashboard (workouts, distinct exercises, sets, PR events). */
-export async function getAccountLifetimeStats(): Promise<{
-  data: AccountLifetimeStats | null;
-  error?: string;
-}> {
+/**
+ * Lifetime workout aggregates for a user. RLS must allow the caller to read that user's workouts/sets
+ * (own user, or friend when `workouts` / `sets` friend policies exist).
+ */
+export async function getUserLifetimeWorkoutAggregatesForUserId(
+  userId: string
+): Promise<{ data: UserLifetimeWorkoutAggregates | null; error?: string }> {
   try {
     const supabase = await createServerClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { data: null, error: "Not authenticated" };
-
-    const { data: workouts, error: wError } = await supabase
-      .from("workouts")
-      .select("id, exercise_id, date, weight")
-      .eq("user_id", user.id);
-
-    if (wError) return { data: null, error: wError.message };
-
-    const list = (workouts ?? []).slice().sort((a, b) => {
-      const da = String(a.date).localeCompare(String(b.date));
-      if (da !== 0) return da;
-      return String(a.id).localeCompare(String(b.id));
-    });
-    const workoutCount = list.length;
-    const exerciseCount = new Set(list.map((w) => w.exercise_id as string)).size;
-
-    if (list.length === 0) {
-      return { data: { workoutCount: 0, exerciseCount: 0, setCount: 0, prCount: 0 } };
-    }
-
-    const exerciseIds = [...new Set(list.map((w) => w.exercise_id as string))];
-    const { data: exercises } = await supabase
-      .from("exercises")
-      .select("id, load_type")
-      .in("id", exerciseIds);
-    const loadTypeByExerciseId = new Map(
-      (exercises ?? []).map((e) => [e.id as string, normalizeLoadType((e as { load_type?: unknown }).load_type)])
-    );
-
-    const workoutIds = list.map((w) => w.id as string);
-    const CHUNK = 200;
-    const allSets: { workout_id: string; reps: number }[] = [];
-
-    for (let i = 0; i < workoutIds.length; i += CHUNK) {
-      const chunk = workoutIds.slice(i, i + CHUNK);
-      const { data: sets, error: sError } = await supabase
-        .from("sets")
-        .select("workout_id, reps")
-        .in("workout_id", chunk);
-
-      if (sError) return { data: null, error: sError.message };
-      for (const s of sets ?? []) {
-        allSets.push({ workout_id: s.workout_id as string, reps: Number(s.reps) });
-      }
-    }
-
-    const setsByWorkout = new Map<string, number[]>();
-    for (const s of allSets) {
-      const arr = setsByWorkout.get(s.workout_id) ?? [];
-      arr.push(s.reps);
-      setsByWorkout.set(s.workout_id, arr);
-    }
-
-    const setCount = allSets.length;
-
-    let prCount = 0;
-    const bestByExercise = new Map<string, number>();
-    for (const w of list) {
-      const wid = w.id as string;
-      const eid = w.exercise_id as string;
-      const repsList = setsByWorkout.get(wid) ?? [];
-      const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
-      const weight = Number(w.weight) || 0;
-      const effectiveWeight = getEffectiveWeight(weight, loadTypeByExerciseId.get(eid));
-      const est = epley1RM(effectiveWeight, bestReps);
-      const prev = bestByExercise.get(eid) ?? 0;
-      if (est >= prev) {
-        prCount += 1;
-      }
-      bestByExercise.set(eid, Math.max(prev, est));
-    }
-
-    return { data: { workoutCount, exerciseCount, setCount, prCount } };
+    return computeUserLifetimeWorkoutAggregatesForUser(supabase, userId);
   } catch (e) {
     if (isConnectionError(e)) {
       return { data: null, error: "Can't connect to Supabase. Check your .env.local." };
@@ -281,6 +222,24 @@ export async function getAccountLifetimeStats(): Promise<{
       error: e instanceof Error ? e.message : "Something went wrong.",
     };
   }
+}
+
+/** Lifetime totals for Account dashboard (workouts, distinct exercises, sets, PR events). */
+export async function getAccountLifetimeStats(): Promise<{
+  data: AccountLifetimeStats | null;
+  error?: string;
+}> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated" };
+
+  const { data: agg, error } = await getUserLifetimeWorkoutAggregatesForUserId(user.id);
+  if (error) return { data: null, error };
+  if (!agg) return { data: null };
+  const { totalVolumeKg: _v, ...rest } = agg;
+  return { data: rest };
 }
 
 /** Workout counts for calendar stats: distinct workout days in each period. */

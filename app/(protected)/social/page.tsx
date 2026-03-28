@@ -1,3 +1,4 @@
+import { FriendsLeaderboard } from "@/app/components/FriendsLeaderboard";
 import { SocialFriendsList } from "@/app/components/SocialFriendsList";
 
 export default function SocialPage() {
@@ -8,7 +9,8 @@ export default function SocialPage() {
           Find friends and manage your incoming requests.
         </p>
 
-        <div className="mt-6">
+        <div className="mt-6 space-y-6">
+          <FriendsLeaderboard />
           <SocialFriendsList />
         </div>
       </div>

@@ -27,8 +27,13 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-[100] border-t border-white/10 bg-zinc-950/90 backdrop-blur">
-      <div className="mx-auto grid h-20 max-w-3xl grid-cols-5 px-2 pb-[env(safe-area-inset-bottom)]">
+    <nav
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[100] flex justify-center px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2"
+      aria-label="Main navigation"
+    >
+      <div
+        className="pointer-events-auto flex h-[3.25rem] w-full max-w-md items-center justify-between gap-0.5 rounded-full bg-[#222222] px-2 shadow-[0_8px_32px_rgba(0,0,0,0.45)] ring-1 ring-white/[0.06]"
+      >
         {NAV.map(({ href, label, Icon }) => {
           const active = isActive(pathname, href);
           return (
@@ -36,13 +41,21 @@ export function BottomNav() {
               key={href}
               href={href}
               aria-label={label}
-              className={[
-                "tap-feedback flex h-20 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[11px] font-medium transition-colors",
-                active ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300",
-              ].join(" ")}
+              aria-current={active ? "page" : undefined}
+              className="tap-feedback relative flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center rounded-full py-1 transition-transform active:scale-[0.96]"
             >
-              <Icon size={22} aria-hidden className={active ? "text-zinc-100" : "text-zinc-500"} />
-              <span className="leading-none">{label}</span>
+              <span
+                className={[
+                  "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors duration-200",
+                  active ? "bg-amber-500" : "bg-transparent",
+                ].join(" ")}
+              >
+                <Icon
+                  size={20}
+                  aria-hidden
+                  className={active ? "text-zinc-950" : "text-zinc-500"}
+                />
+              </span>
             </Link>
           );
         })}

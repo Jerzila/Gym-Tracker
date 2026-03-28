@@ -1,6 +1,25 @@
 "use server";
 
 import { createServerClient } from "@/lib/supabase/server";
+import { RANK_SLUGS, type RankSlug } from "@/lib/rankBadges";
+import { computeStrengthRankingBundleForUser } from "@/lib/computeStrengthRankingForUser";
+import {
+  computeUserLifetimeWorkoutAggregatesForUser,
+  countWorkoutSessionsFromDate,
+  isoDateDaysAgoUTC,
+} from "@/lib/computeUserWorkoutAggregates";
+import {
+  computeStrengthRanking,
+  type StrengthRankingOutput,
+  type StrengthRankMuscle,
+} from "@/lib/strengthRanking";
+import { getUserLifetimeWorkoutAggregatesForUserId } from "@/app/actions/workouts";
+import {
+  FRIEND_LEADERBOARD_CATEGORIES,
+  FRIEND_LEADERBOARD_MUSCLE_TABS,
+  type FriendLeaderboardCategory,
+  type FriendLeaderboardMuscleTab,
+} from "@/lib/friendsLeaderboard";
 
 export type SocialUserSearchResult = {
   id: string;
@@ -19,6 +38,122 @@ export type FriendListItem = {
   friend_id: string;
   username: string;
 };
+
+export type FriendProfilePageData = {
+  username: string;
+  overall_rank: string;
+  overall_percentile: number;
+  rank_badge: RankSlug;
+  top_percentile_display: string;
+  workoutCount: number;
+  prCount: number;
+  totalVolumeKg: number;
+};
+
+export type FriendLeaderboardEntry = {
+  user_id: string;
+  /** True for the logged-in row (highlight in UI). */
+  is_current_user: boolean;
+  username: string;
+  /** Friends: `profiles.overall_rank`. Self: live Insights label (`computeStrengthRankingBundleForUser`). */
+  overall_rank: string;
+  /** Friends: `profiles.overall_percentile`. Self: parsed from live top label — lower = stronger; sort key. */
+  overall_percentile: number;
+  /** Friends: `profiles.rank_badge`. Self: live `overallRankSlug`. */
+  rank_badge: RankSlug;
+  /** Friends: formatted from stored percentile. Self: exact `overallTopPercentileLabel` from Insights. */
+  top_percentile_display: string;
+};
+
+function parseRankBadgeSlug(raw: string | null | undefined): RankSlug {
+  const s = String(raw ?? "").trim();
+  return (RANK_SLUGS as readonly string[]).includes(s) ? (s as RankSlug) : "newbie";
+}
+
+function formatTopPercentDisplay(percentile: number): string {
+  if (!Number.isFinite(percentile)) return "Top 100%";
+  const r = Math.round(percentile * 10) / 10;
+  return `Top ${r}%`;
+}
+
+/** Same numeric sort key as stored profile `overall_percentile` (from Top X% label). */
+function percentileNumFromTopLabel(label: string): number {
+  const m = String(label ?? "").trim().match(/Top\s*([\d.]+)\s*%/i);
+  if (m) return parseFloat(m[1]);
+  return 100;
+}
+
+function normalizeLeaderboardCategory(raw: string | undefined): FriendLeaderboardCategory {
+  const s = String(raw ?? "overall").toLowerCase();
+  return (FRIEND_LEADERBOARD_CATEGORIES as readonly string[]).includes(s)
+    ? (s as FriendLeaderboardCategory)
+    : "overall";
+}
+
+function normalizeMuscleTab(raw: string | undefined): FriendLeaderboardMuscleTab {
+  const s = String(raw ?? "chest").toLowerCase();
+  return (FRIEND_LEADERBOARD_MUSCLE_TABS as readonly string[]).includes(s)
+    ? (s as FriendLeaderboardMuscleTab)
+    : "chest";
+}
+
+function readOneMuscleJson(muscleJson: unknown, key: StrengthRankMuscle) {
+  const root = muscleJson as Record<string, unknown> | null | undefined;
+  const raw = root?.[key];
+  if (!raw || typeof raw !== "object") {
+    return {
+      rankLabel: "Newbie I",
+      rankSlug: parseRankBadgeSlug("newbie"),
+      topPercentileLabel: "Top 96.6%",
+    };
+  }
+  const o = raw as Record<string, unknown>;
+  return {
+    rankLabel: String(o.rankLabel ?? "Newbie I"),
+    rankSlug: parseRankBadgeSlug(String(o.rankSlug)),
+    topPercentileLabel: String(o.topPercentileLabel ?? "Top 96.6%"),
+  };
+}
+
+function muscleStatsFromRankingsJson(
+  muscleJson: unknown,
+  tab: FriendLeaderboardMuscleTab
+): { rankLabel: string; rankSlug: RankSlug; topPercentileDisplay: string; sortPercentile: number } {
+  const m = readOneMuscleJson(muscleJson, tab as StrengthRankMuscle);
+  const sortPct = percentileNumFromTopLabel(m.topPercentileLabel);
+  return {
+    rankLabel: m.rankLabel,
+    rankSlug: m.rankSlug,
+    topPercentileDisplay: formatTopPercentDisplay(sortPct),
+    sortPercentile: sortPct,
+  };
+}
+
+function muscleStatsFromLiveRanks(
+  muscleRanks: StrengthRankingOutput["muscleRanks"],
+  tab: FriendLeaderboardMuscleTab
+): { rankLabel: string; rankSlug: RankSlug; topPercentileDisplay: string; sortPercentile: number } {
+  const m = muscleRanks[tab as StrengthRankMuscle];
+  const sortPct = percentileNumFromTopLabel(m.topPercentileLabel);
+  return {
+    rankLabel: m.rankLabel,
+    rankSlug: parseRankBadgeSlug(m.rankSlug),
+    topPercentileDisplay: formatTopPercentDisplay(sortPct),
+    sortPercentile: sortPct,
+  };
+}
+
+function formatVolumeLeaderboardKg(kg: number): string {
+  return `${Math.round(kg).toLocaleString("en-US")} kg`;
+}
+
+function formatPrLeaderboardLine(n: number): string {
+  return `${n} PR${n === 1 ? "" : "s"}`;
+}
+
+function formatConsistencyLeaderboardLine(n: number): string {
+  return `${n} workout${n === 1 ? "" : "s"}`;
+}
 
 export async function searchUsersByUsername(
   rawQuery: string
@@ -207,5 +342,367 @@ export async function getFriendsList(): Promise<{ friends: FriendListItem[]; err
   }));
 
   return { friends: friends.filter((f) => f.username) };
+}
+
+/** Profile + lifetime workout stats for an accepted friend only. */
+export async function getFriendProfilePageData(
+  friendId: string
+): Promise<{ data: FriendProfilePageData | null; error?: string }> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated" };
+
+  const fid = String(friendId || "").trim();
+  if (!fid || fid === user.id) return { data: null, error: "not_friend" };
+
+  const { data: friendRow } = await supabase
+    .from("friends")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("friend_id", fid)
+    .maybeSingle();
+  if (!friendRow) return { data: null, error: "not_friend" };
+
+  const { data: profile, error: pErr } = await supabase
+    .from("profiles")
+    .select("username, overall_rank, overall_percentile, rank_badge")
+    .eq("id", fid)
+    .maybeSingle();
+
+  if (pErr) return { data: null, error: pErr.message };
+  if (!profile) return { data: null, error: "not_found" };
+
+  const { data: agg, error: aErr } = await getUserLifetimeWorkoutAggregatesForUserId(fid);
+  if (aErr) return { data: null, error: aErr };
+
+  const pctRaw = Number((profile as { overall_percentile?: unknown }).overall_percentile);
+  const overall_percentile = Number.isFinite(pctRaw) ? pctRaw : 100;
+
+  return {
+    data: {
+      username: String((profile as { username?: string | null }).username ?? ""),
+      overall_rank: String((profile as { overall_rank?: string | null }).overall_rank ?? "Newbie I"),
+      overall_percentile,
+      rank_badge: parseRankBadgeSlug((profile as { rank_badge?: string | null }).rank_badge),
+      top_percentile_display: formatTopPercentDisplay(overall_percentile),
+      workoutCount: agg?.workoutCount ?? 0,
+      prCount: agg?.prCount ?? 0,
+      totalVolumeKg: agg?.totalVolumeKg ?? 0,
+    },
+  };
+}
+
+export async function getFriendsLeaderboard(options?: {
+  category?: string;
+  muscle?: string;
+}): Promise<{
+  entries: FriendLeaderboardEntry[];
+  error?: string;
+}> {
+  try {
+    return await getFriendsLeaderboardInner(options);
+  } catch (e) {
+    return {
+      entries: [],
+      error: e instanceof Error ? e.message : "Could not load leaderboard.",
+    };
+  }
+}
+
+async function getFriendsLeaderboardInner(options?: {
+  category?: string;
+  muscle?: string;
+}): Promise<{
+  entries: FriendLeaderboardEntry[];
+  error?: string;
+}> {
+  const category = normalizeLeaderboardCategory(options?.category);
+  const muscleTab = normalizeMuscleTab(options?.muscle);
+
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { entries: [], error: "Not authenticated" };
+
+  const { data: friendRows, error: friendsErr } = await supabase
+    .from("friends")
+    .select("friend_id")
+    .eq("user_id", user.id);
+
+  if (friendsErr) return { entries: [], error: friendsErr.message };
+
+  const friendIds = [...new Set((friendRows ?? []).map((r: { friend_id: string }) => String(r.friend_id)))];
+  const leaderboardIds = [...new Set([user.id, ...friendIds])];
+
+  const since30 = isoDateDaysAgoUTC(30);
+  const needWorkoutStats =
+    category === "volume" || category === "prs" || category === "consistency";
+
+  const profileSelectFull =
+    "id, username, overall_rank, overall_percentile, rank_badge, total_volume, total_prs, workouts_last_30_days";
+  const profileSelectBase = "id, username, overall_rank, overall_percentile, rank_badge";
+
+  let profileRows: Record<string, unknown>[] | null = null;
+  const fullRes = await supabase.from("profiles").select(profileSelectFull).in("id", leaderboardIds);
+  if (fullRes.error) {
+    const baseRes = await supabase.from("profiles").select(profileSelectBase).in("id", leaderboardIds);
+    if (baseRes.error) return { entries: [], error: baseRes.error.message };
+    profileRows = (baseRes.data ?? []) as Record<string, unknown>[];
+  } else {
+    profileRows = (fullRes.data ?? []) as Record<string, unknown>[];
+  }
+
+  const [rankingRes, live] = await Promise.all([
+    supabase
+      .from("rankings")
+      .select(
+        "user_id, muscle_ranks, overall_rank_label, overall_rank_slug, overall_top_percentile_label"
+      )
+      .in("user_id", leaderboardIds),
+    computeStrengthRankingBundleForUser(supabase, user.id),
+  ]);
+
+  if (rankingRes.error) return { entries: [], error: rankingRes.error.message };
+
+  const rankingRows = (rankingRes.data ?? []) as {
+    user_id: string;
+    muscle_ranks: unknown;
+    overall_rank_label?: string | null;
+    overall_rank_slug?: string | null;
+    overall_top_percentile_label?: string | null;
+  }[];
+
+  type RankingLeaderboardCols = {
+    muscle_ranks: unknown;
+    overall_rank_label: string;
+    overall_rank_slug: string;
+    overall_top_percentile_label: string;
+  };
+
+  const rankingByUserId = new Map<string, RankingLeaderboardCols>();
+  for (const r of rankingRows) {
+    const uid = String(r.user_id);
+    rankingByUserId.set(uid, {
+      muscle_ranks: r.muscle_ranks,
+      overall_rank_label: String(r.overall_rank_label ?? "").trim(),
+      overall_rank_slug: String(r.overall_rank_slug ?? "").trim(),
+      overall_top_percentile_label: String(r.overall_top_percentile_label ?? "").trim(),
+    });
+  }
+
+  const liveOut = live.ok
+    ? live.bundle.output
+    : computeStrengthRanking({ exerciseDataPoints: [], bodyweightKg: 0 });
+
+  const aggByUser = new Map<string, { totalVolumeKg: number; prCount: number }>();
+  const w30ByUser = new Map<string, number>();
+  if (needWorkoutStats) {
+    const perUser = await Promise.all(
+      leaderboardIds.map(async (uid) => {
+        const [agg, w30] = await Promise.all([
+          computeUserLifetimeWorkoutAggregatesForUser(supabase, uid),
+          countWorkoutSessionsFromDate(supabase, uid, since30),
+        ]);
+        return {
+          uid,
+          totalVolumeKg: agg.data?.totalVolumeKg ?? 0,
+          prCount: agg.data?.prCount ?? 0,
+          w30: w30.count ?? 0,
+        };
+      })
+    );
+    for (const row of perUser) {
+      aggByUser.set(row.uid, { totalVolumeKg: row.totalVolumeKg, prCount: row.prCount });
+      w30ByUser.set(row.uid, row.w30);
+    }
+  }
+
+  type ProfileLeaderboardRow = {
+    username: string;
+    overall_rank: string;
+    overall_percentile: number;
+    rank_badge: RankSlug;
+    total_volume: number;
+    total_prs: number;
+    workouts_last_30_days: number;
+  };
+
+  const profileById = new Map<string, ProfileLeaderboardRow>(
+    profileRows.map((p: Record<string, unknown>) => {
+      const id = String(p.id);
+      const tv = Number(p.total_volume);
+      const tp = Number(p.total_prs);
+      const w30 = Number(p.workouts_last_30_days);
+      return [
+        id,
+        {
+          username: String(p.username ?? ""),
+          overall_rank: String(p.overall_rank ?? "Newbie I"),
+          overall_percentile: Number.isFinite(Number(p.overall_percentile))
+            ? Number(p.overall_percentile)
+            : 100,
+          rank_badge: parseRankBadgeSlug(p.rank_badge as string | null | undefined),
+          total_volume: Number.isFinite(tv) ? tv : 0,
+          total_prs: Number.isFinite(tp) ? Math.floor(tp) : 0,
+          workouts_last_30_days: Number.isFinite(w30) ? Math.floor(w30) : 0,
+        },
+      ];
+    })
+  );
+
+  function overallDisplayForFriend(uid: string, p: ProfileLeaderboardRow) {
+    const rk = rankingByUserId.get(uid);
+    if (rk && rk.overall_rank_label.length > 0) {
+      const topLabel =
+        rk.overall_top_percentile_label.length > 0 ? rk.overall_top_percentile_label : "Top 100%";
+      const sortPct = percentileNumFromTopLabel(topLabel);
+      return {
+        overall_rank: rk.overall_rank_label,
+        overall_percentile: sortPct,
+        rank_badge: parseRankBadgeSlug(rk.overall_rank_slug),
+        top_percentile_display: topLabel.match(/Top\s*[\d.]+\s*%/i)
+          ? topLabel
+          : formatTopPercentDisplay(sortPct),
+      };
+    }
+    return {
+      overall_rank: p.overall_rank,
+      overall_percentile: p.overall_percentile,
+      rank_badge: p.rank_badge,
+      top_percentile_display: formatTopPercentDisplay(p.overall_percentile),
+    };
+  }
+
+  function overallBadgeForUser(uid: string, p: ProfileLeaderboardRow): RankSlug {
+    const rk = rankingByUserId.get(uid);
+    if (rk && rk.overall_rank_slug.length > 0) return parseRankBadgeSlug(rk.overall_rank_slug);
+    return p.rank_badge;
+  }
+
+  type SortWork = { entry: FriendLeaderboardEntry; sortPrimary: number; sortSecondary: string };
+  const work: SortWork[] = [];
+
+  for (const uid of leaderboardIds) {
+    const p = profileById.get(uid);
+    if (!p || !p.username) continue;
+
+    const isMe = uid === user.id;
+    const muscleJson = rankingByUserId.get(uid)?.muscle_ranks;
+
+    if (category === "overall") {
+      if (isMe) {
+        work.push({
+          entry: {
+            user_id: user.id,
+            is_current_user: true,
+            username: p.username,
+            overall_rank: liveOut.overallRankLabel,
+            overall_percentile: percentileNumFromTopLabel(liveOut.overallTopPercentileLabel),
+            rank_badge: parseRankBadgeSlug(liveOut.overallRankSlug),
+            top_percentile_display: liveOut.overallTopPercentileLabel,
+          },
+          sortPrimary: percentileNumFromTopLabel(liveOut.overallTopPercentileLabel),
+          sortSecondary: p.username,
+        });
+      } else {
+        const o = overallDisplayForFriend(uid, p);
+        work.push({
+          entry: {
+            user_id: uid,
+            is_current_user: false,
+            username: p.username,
+            overall_rank: o.overall_rank,
+            overall_percentile: o.overall_percentile,
+            rank_badge: o.rank_badge,
+            top_percentile_display: o.top_percentile_display,
+          },
+          sortPrimary: o.overall_percentile,
+          sortSecondary: p.username,
+        });
+      }
+      continue;
+    }
+
+    if (category === "muscles") {
+      const ms = isMe
+        ? muscleStatsFromLiveRanks(liveOut.muscleRanks, muscleTab)
+        : muscleStatsFromRankingsJson(muscleJson, muscleTab);
+      work.push({
+        entry: {
+          user_id: uid,
+          is_current_user: isMe,
+          username: p.username,
+          overall_rank: ms.rankLabel,
+          overall_percentile: ms.sortPercentile,
+          rank_badge: ms.rankSlug,
+          top_percentile_display: ms.topPercentileDisplay,
+        },
+        sortPrimary: ms.sortPercentile,
+        sortSecondary: p.username,
+      });
+      continue;
+    }
+
+    if (category === "volume") {
+      const vol = aggByUser.get(uid)?.totalVolumeKg ?? 0;
+      work.push({
+        entry: {
+          user_id: uid,
+          is_current_user: isMe,
+          username: p.username,
+          overall_rank: formatVolumeLeaderboardKg(vol),
+          overall_percentile: 0,
+          rank_badge: isMe ? parseRankBadgeSlug(liveOut.overallRankSlug) : overallBadgeForUser(uid, p),
+          top_percentile_display: "",
+        },
+        sortPrimary: -vol,
+        sortSecondary: p.username,
+      });
+      continue;
+    }
+
+    if (category === "prs") {
+      const n = aggByUser.get(uid)?.prCount ?? 0;
+      work.push({
+        entry: {
+          user_id: uid,
+          is_current_user: isMe,
+          username: p.username,
+          overall_rank: formatPrLeaderboardLine(n),
+          overall_percentile: 0,
+          rank_badge: isMe ? parseRankBadgeSlug(liveOut.overallRankSlug) : overallBadgeForUser(uid, p),
+          top_percentile_display: "",
+        },
+        sortPrimary: -n,
+        sortSecondary: p.username,
+      });
+      continue;
+    }
+
+    const n = w30ByUser.get(uid) ?? 0;
+    work.push({
+      entry: {
+        user_id: uid,
+        is_current_user: isMe,
+        username: p.username,
+        overall_rank: formatConsistencyLeaderboardLine(n),
+        overall_percentile: 0,
+        rank_badge: isMe ? parseRankBadgeSlug(liveOut.overallRankSlug) : overallBadgeForUser(uid, p),
+        top_percentile_display: "",
+      },
+      sortPrimary: -n,
+      sortSecondary: p.username,
+    });
+  }
+
+  work.sort((a, b) => {
+    if (a.sortPrimary !== b.sortPrimary) return a.sortPrimary - b.sortPrimary;
+    return a.sortSecondary.localeCompare(b.sortSecondary);
+  });
+
+  return { entries: work.map((w) => w.entry) };
 }
 

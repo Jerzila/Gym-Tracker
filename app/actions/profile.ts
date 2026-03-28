@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { getAgeFromBirthday } from "@/lib/age";
 import type { Profile } from "@/lib/types";
 import { ensureFirstBodyweightLog } from "@/app/actions/bodyweight";
+import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
 import {
   baseUsernameFromName,
   candidateUsername,
@@ -366,6 +367,10 @@ export async function updateProfileField(
 
   if (updateError) return { error: updateError.message };
 
+  if (field === "body_weight") {
+    await refreshUserRankingsSafe(user.id);
+  }
+
   revalidatePath("/account");
   return {};
 }
@@ -443,6 +448,7 @@ export async function completeProfileSetup(formData: FormData): Promise<ProfileF
         return { error: logResult.error };
       }
     }
+    await refreshUserRankingsSafe(user.id);
   } catch (error) {
     console.error("[profile] setup save failed: unexpected error", error);
     return { error: "Setup failed. Please try again." };
@@ -525,6 +531,8 @@ export async function completeOnboarding(
     if (logResult.error) {
       console.error("[profile] setup save failed: onboarding initialization failed", logResult.error);
     }
+
+    await refreshUserRankingsSafe(user.id);
 
     revalidatePath("/", "layout");
     revalidatePath("/account");

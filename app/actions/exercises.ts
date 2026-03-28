@@ -5,6 +5,7 @@ import type { Exercise } from "@/lib/types";
 import { normalizeLoadType } from "@/lib/loadType";
 import { recalculateExerciseMetricsForLoadTypeChange } from "@/lib/recalculateExerciseMetrics";
 import { recalculateUserRankings } from "@/lib/recalculateUserRankings";
+import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
 import { revalidatePath } from "next/cache";
 
 function isConnectionError(e: unknown): boolean {
@@ -124,6 +125,8 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
       if (mapError) return { error: mapError.message };
     }
 
+    await refreshUserRankingsSafe(user.id);
+
     revalidatePath("/");
     return {};
   } catch (e) {
@@ -195,6 +198,10 @@ export async function deleteExercise(id: string): Promise<{ error?: string }> {
   if (!id) return { error: "Missing exercise id" };
   try {
     const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
 
     const { data: workouts, error: wError } = await supabase
       .from("workouts")
@@ -220,6 +227,8 @@ export async function deleteExercise(id: string): Promise<{ error?: string }> {
 
     const { error: exError } = await supabase.from("exercises").delete().eq("id", id);
     if (exError) return { error: exError.message };
+
+    await refreshUserRankingsSafe(user.id);
 
     revalidatePath("/");
     return {};

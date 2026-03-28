@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { deleteWorkout } from "@/app/actions/workouts";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
@@ -27,6 +28,26 @@ export function WorkoutHistory({
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!confirmId) return;
+    const html = document.documentElement;
+    const prevHtml = html.style.overflow;
+    const prevBody = document.body.style.overflow;
+    html.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      html.style.overflow = prevHtml;
+      document.body.style.overflow = prevBody;
+    };
+  }, [confirmId]);
+
+  useEffect(() => {
+    return () => {
+      document.documentElement.style.overflow = "";
+      document.body.style.overflow = "";
+    };
+  }, []);
 
   const visible = workouts.filter((w) => !removedIds.has(w.id));
 
@@ -72,37 +93,39 @@ export function WorkoutHistory({
         ))}
       </ul>
 
-      {confirmId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-workout-title"
-        >
-          <div className="w-full max-w-sm rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
-            <h3 id="delete-workout-title" className="text-sm font-medium text-zinc-100">
-              Are you sure you want to delete this workout?
-            </h3>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmId(null)}
-                className={buttonClass.modalCancel}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleDelete(confirmId)}
-                disabled={!!pendingId}
-                className={buttonClass.modalConfirm}
-              >
-                {pendingId === confirmId ? "Deleting…" : "Delete"}
-              </button>
+      {confirmId &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto overscroll-none bg-black/60 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-workout-title"
+          >
+            <div className="my-auto w-full max-w-sm rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
+              <h3 id="delete-workout-title" className="text-sm font-medium text-zinc-100">
+                Are you sure you want to delete this workout?
+              </h3>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmId(null)}
+                  className={buttonClass.modalCancel}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(confirmId)}
+                  disabled={!!pendingId}
+                  className={buttonClass.modalConfirm}
+                >
+                  {pendingId === confirmId ? "Deleting…" : "Delete"}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }

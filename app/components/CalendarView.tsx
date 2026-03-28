@@ -322,7 +322,7 @@ export function CalendarView() {
         role="dialog"
         aria-modal="true"
         aria-labelledby="calendar-day-title"
-        className="fixed inset-0 z-[120] flex justify-end"
+        className="fixed inset-0 z-[220] flex justify-end"
         style={{
           pointerEvents: panelOpen ? "auto" : "none",
         }}
