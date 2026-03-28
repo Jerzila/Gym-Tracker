@@ -3,9 +3,8 @@
 import type { ButtonHTMLAttributes } from "react";
 
 const base =
-  "inline-flex items-center justify-center rounded-lg font-medium outline-none cursor-pointer select-none " +
+  "tap-feedback inline-flex items-center justify-center rounded-lg font-medium outline-none cursor-pointer select-none " +
   "transition-[transform,filter,background-color,color,box-shadow,border-color] duration-[100ms] ease-out " +
-  "active:scale-[0.98] active:brightness-95 " +
   "focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 " +
   "disabled:pointer-events-none disabled:opacity-50";
 

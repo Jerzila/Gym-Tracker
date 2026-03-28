@@ -2,6 +2,7 @@
 
 import type { ReactElement, SVGProps } from "react";
 import { BoltIcon, ChartIcon, TrophyIcon } from "@/components/icons";
+import { haptic } from "@/lib/haptic";
 
 const ICON_PX = 20;
 const BULLET_ICON_PX = 18;
@@ -74,6 +75,7 @@ export function ProUpgradeModal({
         <div className="mt-0.5 shrink-0 space-y-1.5">
           <button
             type="button"
+            onClick={() => haptic()}
             className="w-full rounded-[14px] bg-gradient-to-r from-[#f59e0b] to-[#ffb020] px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-[0_6px_20px_rgba(245,158,11,0.45)] transition-opacity hover:opacity-95 tap-feedback"
           >
             Upgrade to Liftly Pro

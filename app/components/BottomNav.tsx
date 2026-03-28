@@ -37,7 +37,7 @@ export function BottomNav() {
               href={href}
               aria-label={label}
               className={[
-                "flex h-20 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[11px] font-medium transition-colors",
+                "tap-feedback flex h-20 flex-col items-center justify-center gap-1 rounded-xl px-2 text-[11px] font-medium transition-colors",
                 active ? "text-zinc-100" : "text-zinc-500 hover:text-zinc-300",
               ].join(" ")}
             >

@@ -167,10 +167,37 @@ html {
   animation: insights-calendar-fade 0.35s ease-out backwards;
 }
 
-/* Button press: immediate feedback (scale + brightness) for all devices */
+/* Primary controls: subtle shrink on press */
+.tap-feedback {
+  transition: transform 0.1s ease;
+  transform-origin: center;
+}
 .tap-feedback:active {
+  transform: scale(0.96);
+}
+
+/* Tappable cards (exercise, history, rankings): lighter shrink */
+.card-tap {
+  transition: transform 0.1s ease;
+  transform-origin: center;
+}
+.card-tap:active {
   transform: scale(0.98);
-  filter: brightness(0.95);
+}
+
+/* Route enter: opacity + slide (see app/(protected)/template.tsx) */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-page-enter {
+  animation: page-enter 0.25s ease-out forwards;
 }
 
 /* Expand/collapse: height + opacity, 220ms ease-in-out */

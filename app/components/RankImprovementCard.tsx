@@ -83,7 +83,7 @@ export function RankImprovementCard({ data }: Props) {
   const weightLabel = weightUnitLabel(units);
 
   return (
-    <div className="flex h-full flex-col justify-between">
+    <div className="card-tap flex h-full flex-col justify-between">
       <div className="space-y-1.5">
         {content.nextLabel ? (
           <>

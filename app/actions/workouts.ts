@@ -17,7 +17,7 @@ export type CalendarWorkout = {
   sets: { reps: number }[];
 };
 
-type CreateResult = { message?: string; error?: string };
+type CreateResult = { message?: string; error?: string; hitPr?: boolean };
 
 function isConnectionError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
@@ -51,43 +51,94 @@ export async function createWorkout(
     if (!user) return { error: "You must be signed in to log a workout." };
 
     const { data: exercise, error: exError } = await supabase
-    .from("exercises")
-    .select("rep_min, rep_max")
-    .eq("id", exerciseId)
-    .single();
+      .from("exercises")
+      .select("rep_min, rep_max, load_type")
+      .eq("id", exerciseId)
+      .single();
 
-  if (exError || !exercise) {
-    return { error: "Exercise not found" };
-  }
+    if (exError || !exercise) {
+      return { error: "Exercise not found" };
+    }
 
-  const { data: workout, error: wError } = await supabase
-    .from("workouts")
-    .insert({ user_id: user.id, exercise_id: exerciseId, date, weight } as Record<string, unknown>)
-    .select("id")
-    .single();
-
-  if (wError) return { error: wError.message };
-  if (!workout) return { error: "Failed to create workout" };
-
-  const { error: sError } = await supabase
-    .from("sets")
-    .insert(
-      reps.map((reps_count) => ({ workout_id: workout.id, reps: reps_count })) as Record<string, unknown>[]
+    const loadType = normalizeLoadType(
+      (exercise as { load_type?: unknown }).load_type
     );
 
-  if (sError) return { error: sError.message };
+    const { data: priorWorkouts, error: pwError } = await supabase
+      .from("workouts")
+      .select("id, weight")
+      .eq("user_id", user.id)
+      .eq("exercise_id", exerciseId);
 
-  const message = getProgressiveOverloadMessage(
-    exercise.rep_min,
-    exercise.rep_max,
-    reps
-  );
+    if (pwError) return { error: pwError.message };
 
-  revalidatePath("/");
-  revalidatePath("/account");
-  revalidatePath("/exercises");
-  revalidatePath(`/exercise/${exerciseId}`);
-  return { message };
+    const priorList = priorWorkouts ?? [];
+    let bestBefore = 0;
+
+    if (priorList.length > 0) {
+      const priorIds = priorList.map((w) => w.id as string);
+      const { data: priorSets, error: psError } = await supabase
+        .from("sets")
+        .select("workout_id, reps")
+        .in("workout_id", priorIds);
+
+      if (psError) return { error: psError.message };
+
+      const setsByWorkout = new Map<string, number[]>();
+      for (const s of priorSets ?? []) {
+        const wid = s.workout_id as string;
+        const list = setsByWorkout.get(wid) ?? [];
+        list.push(Number(s.reps) || 0);
+        setsByWorkout.set(wid, list);
+      }
+
+      for (const w of priorList) {
+        const wid = w.id as string;
+        const repsList = setsByWorkout.get(wid) ?? [];
+        const loggedWeight = Number(w.weight) || 0;
+        for (const r of repsList) {
+          const rm = epley1RM(getEffectiveWeight(loggedWeight, loadType), r);
+          if (rm > bestBefore) bestBefore = rm;
+        }
+      }
+    }
+
+    const effectiveNew = getEffectiveWeight(weight, loadType);
+    let newSessionBest = 0;
+    for (const r of reps) {
+      const rm = epley1RM(effectiveNew, r);
+      if (rm > newSessionBest) newSessionBest = rm;
+    }
+    const hitPr = priorList.length > 0 && newSessionBest > bestBefore;
+
+    const { data: workout, error: wError } = await supabase
+      .from("workouts")
+      .insert({ user_id: user.id, exercise_id: exerciseId, date, weight } as Record<string, unknown>)
+      .select("id")
+      .single();
+
+    if (wError) return { error: wError.message };
+    if (!workout) return { error: "Failed to create workout" };
+
+    const { error: sError } = await supabase
+      .from("sets")
+      .insert(
+        reps.map((reps_count) => ({ workout_id: workout.id, reps: reps_count })) as Record<string, unknown>[]
+      );
+
+    if (sError) return { error: sError.message };
+
+    const message = getProgressiveOverloadMessage(
+      exercise.rep_min,
+      exercise.rep_max,
+      reps
+    );
+
+    revalidatePath("/");
+    revalidatePath("/account");
+    revalidatePath("/exercises");
+    revalidatePath(`/exercise/${exerciseId}`);
+    return { message, hitPr };
   } catch (e) {
     if (isConnectionError(e)) {
       return { error: "Can't connect to Supabase. Check your .env.local." };

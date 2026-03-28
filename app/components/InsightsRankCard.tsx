@@ -33,7 +33,7 @@ export function InsightsRankCard({ display }: Props) {
   }, [display]);
 
   return (
-    <div className="flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="card-tap flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
       <RankBadge rank={rank} tier={tier} size={120} />
       <div className="min-w-0 flex-1">
         <p className="text-lg font-semibold tracking-tight text-zinc-100">{rankLabel}</p>

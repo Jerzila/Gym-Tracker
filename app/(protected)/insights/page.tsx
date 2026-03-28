@@ -14,18 +14,12 @@ export default async function InsightsPage() {
   const strengthRanking = strengthRankingRes.data ?? null;
 
   return (
-    <>
-      <div className="border-b border-zinc-800/60 px-4 py-3 sm:px-6">
-        <h2 className="text-lg font-semibold tracking-tight">Insights</h2>
-      </div>
-
-      <main className="mx-auto max-w-xl px-4 py-4 sm:px-6 sm:py-8">
-        <InsightsPageContent
-          exercises={exercises}
-          gender={gender}
-          strengthRanking={strengthRanking}
-        />
-      </main>
-    </>
+    <main className="mx-auto max-w-xl px-4 py-4 sm:px-6 sm:py-8">
+      <InsightsPageContent
+        exercises={exercises}
+        gender={gender}
+        strengthRanking={strengthRanking}
+      />
+    </main>
   );
 }

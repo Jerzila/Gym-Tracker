@@ -70,7 +70,7 @@ export function MuscleRankList({ data }: Props) {
   }, [data]);
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 transition hover:border-zinc-700">
+    <div className="card-tap rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 transition hover:border-zinc-700">
       <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
         Muscle Strength Rankings
       </h2>
@@ -78,7 +78,7 @@ export function MuscleRankList({ data }: Props) {
         {rows.map((row) => (
           <li
             key={row.muscle}
-            className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/30 px-3 py-2.5"
+            className="card-tap flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/30 px-3 py-2.5"
           >
             {!row.isEmpty && (
               <Image

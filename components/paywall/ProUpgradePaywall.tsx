@@ -3,6 +3,7 @@
 import type { ReactElement, SVGProps } from "react";
 import { useState } from "react";
 import { BoltIcon, CalendarIcon, ChartIcon, StarIcon, TrophyIcon } from "@/components/icons";
+import { haptic } from "@/lib/haptic";
 
 type Plan = "monthly" | "yearly";
 
@@ -229,6 +230,7 @@ export function ProUpgradePaywall() {
 
             <button
               type="button"
+              onClick={() => haptic()}
               className="w-full rounded-[14px] bg-gradient-to-r from-[#f59e0b] to-[#ffb020] px-4 py-2.5 text-[15px] font-semibold leading-tight text-zinc-950 shadow-[0_6px_20px_rgba(245,158,11,0.45)] transition-opacity hover:opacity-95 tap-feedback min-[390px]:py-3 min-[390px]:text-base"
             >
               Start your free trial

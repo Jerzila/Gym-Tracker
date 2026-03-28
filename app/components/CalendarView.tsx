@@ -224,7 +224,7 @@ export function CalendarView() {
               type="button"
               onClick={prevMonth}
               aria-label="Previous month"
-              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
+              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
             >
               ←
             </button>
@@ -235,7 +235,7 @@ export function CalendarView() {
               type="button"
               onClick={nextMonth}
               aria-label="Next month"
-              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 active:scale-[0.98]"
+              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
             >
               →
             </button>
@@ -280,7 +280,7 @@ export function CalendarView() {
                   key={dateKey}
                   type="button"
                   onClick={() => handleDayClick(dateKey)}
-                  className={`day-cell relative flex w-full aspect-square flex-col justify-between items-start rounded-[10px] border px-2 py-2 text-left transition duration-150 hover:border-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 bg-zinc-900 border-zinc-800 ${
+                  className={`card-tap day-cell relative flex w-full aspect-square flex-col justify-between items-start rounded-[10px] border px-2 py-2 text-left transition duration-150 hover:border-zinc-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500 bg-zinc-900 border-zinc-800 ${
                     isSelected ? "border-amber-400" : ""
                   } ${
                     isToday && !isSelected
@@ -393,7 +393,7 @@ function CalendarDayPanel({
             type="button"
             onClick={onClose}
             aria-label="Back to calendar"
-            className="inline-flex h-11 w-11 items-center justify-center rounded-md text-xl text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
+            className="tap-feedback inline-flex h-11 w-11 items-center justify-center rounded-md text-xl text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
           >
             <span aria-hidden>←</span>
           </button>

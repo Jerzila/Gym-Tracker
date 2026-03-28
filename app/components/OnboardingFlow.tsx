@@ -352,13 +352,14 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   };
 
   const handleContinue = async () => {
-    haptic();
     if (step === 0) {
+      haptic();
       setStep(1);
       setError(null);
       return;
     }
     if (step < TOTAL_STEPS) {
+      haptic();
       setStep((s) => s + 1);
       setError(null);
       return;
@@ -381,6 +382,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         setSubmitting(false);
         return;
       }
+      haptic();
       router.refresh();
       router.replace("/");
     } catch {

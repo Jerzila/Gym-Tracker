@@ -44,7 +44,7 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
   return (
     <>
       <li
-        className="group flex min-h-[52px] flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 transition-[transform,background-color,border-color] duration-100 ease-out hover:border-zinc-700 hover:bg-zinc-800/50 active:scale-[0.98] active:brightness-95 sm:flex-nowrap tap-feedback"
+        className="card-tap group flex min-h-[52px] flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 transition-[background-color,border-color] duration-100 ease-out hover:border-zinc-700 hover:bg-zinc-800/50 sm:flex-nowrap"
       >
         <Link
           href={`/exercise/${exercise.id}`}

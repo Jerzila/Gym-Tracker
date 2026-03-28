@@ -3,6 +3,7 @@
 import type { ReactElement, SVGProps } from "react";
 import { useState } from "react";
 import { BoltIcon, CalendarIcon, ChartIcon, TrophyIcon } from "@/components/icons";
+import { haptic } from "@/lib/haptic";
 
 type Plan = "monthly" | "yearly";
 
@@ -169,7 +170,10 @@ export function Paywall() {
           <div className="space-y-1.5">
             <button
               type="button"
-              onClick={() => console.log("Start trial")}
+              onClick={() => {
+                haptic();
+                console.log("Start trial");
+              }}
               className="w-full rounded-[14px] bg-gradient-to-r from-[#f59e0b] to-[#ffb020] px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-[0_6px_20px_rgba(245,158,11,0.45)] transition-opacity hover:opacity-95 tap-feedback"
             >
               Start 7-Day Free Trial

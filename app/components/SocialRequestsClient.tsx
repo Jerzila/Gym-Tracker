@@ -8,6 +8,7 @@ import {
   getIncomingFriendRequests,
   type IncomingFriendRequest,
 } from "@/app/actions/social";
+import { haptic } from "@/lib/haptic";
 
 export function SocialRequestsClient() {
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,7 @@ export function SocialRequestsClient() {
   async function onAccept(requestId: string) {
     const res = await acceptIncomingFriendRequest(requestId);
     if (res.error) return;
+    haptic();
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
   }
 

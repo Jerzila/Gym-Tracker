@@ -20,7 +20,7 @@ export function ExercisePRs({ heaviest, best1RM, maxRepsAtHeaviest }: Props) {
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {heaviest != null && (
-          <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+          <div className="card-tap rounded-xl bg-zinc-900/40 px-4 py-3">
             <p className="text-xs text-zinc-500">Heaviest weight</p>
             <p className="text-lg font-semibold">
               {formatWeight(heaviest, { units })} {weightLabel}
@@ -28,7 +28,7 @@ export function ExercisePRs({ heaviest, best1RM, maxRepsAtHeaviest }: Props) {
           </div>
         )}
         {maxRepsAtHeaviest != null && heaviest != null && (
-          <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+          <div className="card-tap rounded-xl bg-zinc-900/40 px-4 py-3">
             <p className="text-xs text-zinc-500">
               Best at {formatWeight(heaviest, { units })} {weightLabel}
             </p>
@@ -36,7 +36,7 @@ export function ExercisePRs({ heaviest, best1RM, maxRepsAtHeaviest }: Props) {
           </div>
         )}
         {best1RM != null && (
-          <div className="rounded-xl bg-zinc-900/40 px-4 py-3">
+          <div className="card-tap rounded-xl bg-zinc-900/40 px-4 py-3">
             <p className="text-xs text-zinc-500">Est. 1RM</p>
             <p className="text-lg font-semibold">
               {formatWeight(best1RM, { units })} {weightLabel}

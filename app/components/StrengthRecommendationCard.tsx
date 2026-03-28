@@ -36,7 +36,7 @@ export function StrengthRecommendationCard({ recommendation }: Props) {
         {recommendation.title}
       </h2>
 
-      <div className="rounded-xl border-l-4 border-amber-500 bg-zinc-900/40 px-3 py-2.5">
+      <div className="card-tap rounded-xl border-l-4 border-amber-500 bg-zinc-900/40 px-3 py-2.5">
         {recommendation.action === "no_data" ? (
           <p className="text-sm text-zinc-300">{recommendation.emptyStateText}</p>
         ) : (

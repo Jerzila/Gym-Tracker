@@ -50,7 +50,7 @@ export function WorkoutHistory({
         {visible.map((w) => (
           <li
             key={w.id}
-            className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm"
+            className="card-tap flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm"
           >
             <span>
               <span className="text-zinc-500">{w.date}</span>

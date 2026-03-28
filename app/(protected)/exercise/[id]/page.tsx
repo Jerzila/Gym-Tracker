@@ -9,7 +9,6 @@ import { Estimated1RMChart } from "@/app/components/Estimated1RMChart";
 import { WorkoutHistory } from "@/app/components/WorkoutHistory";
 import { getStrengthRecommendation } from "@/lib/strengthRecommendation";
 import { ExerciseLogAndNotes } from "@/app/components/ExerciseLogAndNotes";
-import { CalendarWorkoutDetailHeader } from "@/app/components/CalendarWorkoutDetailHeader";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -49,8 +48,6 @@ export default async function ExercisePage({ params }: Props) {
 
   return (
     <>
-      <CalendarWorkoutDetailHeader />
-
       <div className="px-4 pt-4 sm:px-6">
         <h2 className="text-lg font-semibold tracking-tight">{exercise.name}</h2>
         <p className="mt-1 text-sm text-zinc-500">

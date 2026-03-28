@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonClass } from "@/app/components/Button";
+import { haptic } from "@/lib/haptic";
 import {
   acceptIncomingFriendRequest,
   declineIncomingFriendRequest,
@@ -100,6 +101,7 @@ export function SocialFriendsClient() {
   async function onAccept(requestId: string) {
     const res = await acceptIncomingFriendRequest(requestId);
     if (res.error) return;
+    haptic();
 
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
     const { friends } = await getFriendsList();

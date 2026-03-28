@@ -35,7 +35,7 @@ function AccountSettingsLink() {
   return (
     <Link
       href="/account/settings"
-      className="rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
+      className="tap-feedback rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
       aria-label="Settings"
     >
       <SettingsIcon size={20} aria-hidden />
@@ -47,7 +47,7 @@ function DashboardCalendarLink() {
   return (
     <Link
       href="/calendar"
-      className="flex h-11 w-11 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100 active:bg-zinc-800"
+      className="tap-feedback flex h-11 w-11 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100 active:bg-zinc-800"
       aria-label="Open calendar"
     >
       <CalendarIcon size={20} aria-hidden />

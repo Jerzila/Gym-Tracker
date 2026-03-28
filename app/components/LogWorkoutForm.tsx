@@ -5,12 +5,13 @@ import { createWorkout } from "@/app/actions/workouts";
 import { DatePicker } from "@/app/components/DatePicker";
 import { buttonClass } from "@/app/components/Button";
 import { useToast } from "@/app/components/Toast";
+import { hapticWorkoutSaved } from "@/lib/haptic";
 import { useWorkoutDataCache } from "@/app/components/WorkoutDataCacheContext";
 import { useUnits } from "@/app/components/UnitsContext";
 import { lbToKg } from "@/lib/units";
 import { weightUnitLabel } from "@/lib/formatWeight";
 
-type State = { message?: string; error?: string } | undefined;
+type State = { message?: string; error?: string; hitPr?: boolean } | undefined;
 
 function formAction(_: State, formData: FormData) {
   const exerciseId = formData.get("exercise_id") as string;
@@ -52,6 +53,7 @@ export function LogWorkoutForm({ exerciseId, repMin, repMax, loadType = "bilater
       if (lastShownMessageRef.current !== state.message) {
         lastShownMessageRef.current = state.message;
         toast.show(state.message);
+        hapticWorkoutSaved(!!state.hitPr);
       }
       window.dispatchEvent(new CustomEvent("liftly-request-install-prompt"));
     }
