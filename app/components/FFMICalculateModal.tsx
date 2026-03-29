@@ -109,7 +109,9 @@ export function FFMICalculateModal({
         <div className="overflow-y-auto overscroll-contain p-4 pb-[max(2rem,env(safe-area-inset-bottom,0px))] sm:pb-4">
           <h3 id="ffmi-modal-title" className="text-base font-semibold leading-snug text-zinc-100">
             Calculate FFMI{" "}
-            <span className="font-normal text-zinc-500/60">(see how muscular you are)</span>
+            <span className="whitespace-nowrap text-[11px] font-normal text-zinc-500/60 sm:text-xs">
+              (see how muscular you are)
+            </span>
           </h3>
           <p className="mt-1 text-xs text-zinc-500">
             Uses your profile height and latest logged weight. Body fat is not estimated — enter a value you
