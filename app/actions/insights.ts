@@ -5,6 +5,10 @@ import { epley1RM } from "@/lib/progression";
 import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
 import { getWeekBounds, getMonthBounds, getMonthBoundsFor, getWeekProgress } from "@/lib/insightsDates";
 import { MUSCLE_GROUPS, categoryToMuscle, categoryToMuscleGroups, type MuscleGroup } from "@/lib/muscleMapping";
+import {
+  MUSCLE_BALANCE_RADAR_ORDER,
+  type MuscleBalanceRadarCategoryName,
+} from "@/lib/insightsRadar";
 
 async function getLoadTypeByExerciseId(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
@@ -554,6 +558,22 @@ export type CategoryDistribution = {
   previous: CategoryDistributionPoint[] | null;
 };
 
+export type { MuscleBalanceRadarCategoryName } from "@/lib/insightsRadar";
+
+export type MuscleBalanceRadarSegment = {
+  category: MuscleBalanceRadarCategoryName;
+  /** Total sets attributed to this axis (integer); each logged set counts once, split when a category maps to multiple muscles. */
+  sets: number;
+  setsPrevious: number | null;
+  percentage: number;
+  percentagePrevious: number | null;
+  topExercises: string[];
+};
+
+export type MuscleBalanceRadarDistribution = {
+  segments: MuscleBalanceRadarSegment[];
+};
+
 export type InsightsRange = "this_week" | "last_week" | "this_month" | "last_month" | "lifetime";
 
 /** Heatmap: sets-based stimulus per muscle, with percentage and exercise names. */
@@ -789,6 +809,176 @@ async function getCategorySetsInRange(
   }
 
   return setsPerCategory;
+}
+
+const LEG_MUSCLES_FOR_RADAR = new Set<MuscleGroup>(["Quads", "Hamstrings", "Glutes", "Calves"]);
+
+function muscleGroupToRadarCategory(m: MuscleGroup): MuscleBalanceRadarCategoryName | null {
+  if (m === "Chest") return "Chest";
+  if (m === "Back") return "Back";
+  if (m === "Shoulders") return "Shoulders";
+  if (m === "Biceps") return "Biceps";
+  if (m === "Triceps") return "Triceps";
+  if (LEG_MUSCLES_FOR_RADAR.has(m)) return "Legs";
+  return null;
+}
+
+type MuscleBalanceRadarAccum = {
+  setsByCategory: Record<MuscleBalanceRadarCategoryName, number>;
+  exerciseScores: Record<MuscleBalanceRadarCategoryName, Map<string, number>>;
+};
+
+function emptyMuscleBalanceRadarAccum(): MuscleBalanceRadarAccum {
+  const setsByCategory = {} as Record<MuscleBalanceRadarCategoryName, number>;
+  const exerciseScores = {} as Record<MuscleBalanceRadarCategoryName, Map<string, number>>;
+  for (const c of MUSCLE_BALANCE_RADAR_ORDER) {
+    setsByCategory[c] = 0;
+    exerciseScores[c] = new Map();
+  }
+  return { setsByCategory, exerciseScores };
+}
+
+function topExerciseNamesForRadar(scores: Map<string, number>, limit: number): string[] {
+  return [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .filter(([, v]) => v >= 0.5)
+    .slice(0, limit)
+    .map(([name]) => name);
+}
+
+/**
+ * Sum of logged sets per radar muscle axis for a date range.
+ * Each row in `sets` counts as one set. Categories mapping to multiple muscles split that workout's sets evenly.
+ */
+async function getMuscleBalanceRadarAccumForBounds(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  start: string,
+  end: string
+): Promise<MuscleBalanceRadarAccum> {
+  const out = emptyMuscleBalanceRadarAccum();
+
+  const { data: workouts, error: wError } = await supabase
+    .from("workouts")
+    .select("id, exercise_id")
+    .eq("user_id", userId)
+    .gte("date", start)
+    .lte("date", end);
+
+  if (wError || !workouts?.length) return out;
+
+  const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
+  const { data: exercises } = await supabase
+    .from("exercises")
+    .select("id, name, category_id")
+    .in("id", exerciseIds);
+
+  const { data: categories } = await supabase
+    .from("categories")
+    .select("id, name")
+    .eq("user_id", userId);
+
+  const catNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const exerciseToCategoryName = new Map<string, string>();
+  const exerciseNameById = new Map<string, string>();
+  for (const e of exercises ?? []) {
+    const name = catNameById.get(e.category_id);
+    if (name != null) exerciseToCategoryName.set(e.id, name);
+    exerciseNameById.set(e.id, e.name);
+  }
+
+  const workoutIds = workouts.map((w) => w.id);
+  const { data: setsRows } = await supabase.from("sets").select("workout_id").in("workout_id", workoutIds);
+
+  const setCountByWorkout = new Map<string, number>();
+  for (const s of setsRows ?? []) {
+    setCountByWorkout.set(s.workout_id, (setCountByWorkout.get(s.workout_id) ?? 0) + 1);
+  }
+
+  for (const w of workouts) {
+    const categoryName = exerciseToCategoryName.get(w.exercise_id);
+    if (categoryName == null) continue;
+    const muscles = categoryToMuscleGroups(categoryName);
+    if (muscles.length === 0) continue;
+    const nSets = setCountByWorkout.get(w.id) ?? 0;
+    if (nSets === 0) continue;
+    const share = nSets / muscles.length;
+    const exName = exerciseNameById.get(w.exercise_id) ?? "Unknown";
+
+    for (const m of muscles) {
+      const rc = muscleGroupToRadarCategory(m);
+      if (rc == null) continue;
+      out.setsByCategory[rc] += share;
+      const map = out.exerciseScores[rc];
+      map.set(exName, (map.get(exName) ?? 0) + share);
+    }
+  }
+
+  return out;
+}
+
+function buildMuscleBalanceRadarDistribution(
+  current: MuscleBalanceRadarAccum,
+  previous: MuscleBalanceRadarAccum | null
+): MuscleBalanceRadarDistribution {
+  const totalC = MUSCLE_BALANCE_RADAR_ORDER.reduce((s, c) => s + current.setsByCategory[c], 0);
+  const totalP =
+    previous != null
+      ? MUSCLE_BALANCE_RADAR_ORDER.reduce((s, c) => s + previous.setsByCategory[c], 0)
+      : 0;
+
+  const segments: MuscleBalanceRadarSegment[] = MUSCLE_BALANCE_RADAR_ORDER.map((category) => {
+    const sets = Math.round(current.setsByCategory[category]);
+    const setsPrevious = previous != null ? Math.round(previous.setsByCategory[category]) : null;
+    const percentage =
+      totalC > 0 ? Math.round((current.setsByCategory[category] / totalC) * 100) : 0;
+    const percentagePrevious =
+      previous != null
+        ? totalP > 0
+          ? Math.round((previous.setsByCategory[category] / totalP) * 100)
+          : 0
+        : null;
+    return {
+      category,
+      sets,
+      setsPrevious,
+      percentage,
+      percentagePrevious,
+      topExercises: topExerciseNamesForRadar(current.exerciseScores[category], 5),
+    };
+  });
+
+  return { segments };
+}
+
+export async function getMuscleBalanceRadarData(range: InsightsRange): Promise<{
+  data: MuscleBalanceRadarDistribution | null;
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: null, error: "Not authenticated" };
+
+    const { current, previous } = rangeToBounds(range);
+    const [curAcc, prevAcc] = await Promise.all([
+      getMuscleBalanceRadarAccumForBounds(supabase, user.id, current.start, current.end),
+      previous
+        ? getMuscleBalanceRadarAccumForBounds(supabase, user.id, previous.start, previous.end)
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      data: buildMuscleBalanceRadarDistribution(curAcc, prevAcc),
+    };
+  } catch (e) {
+    return {
+      data: null,
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
 }
 
 export async function getMuscleDistribution(range: InsightsRange): Promise<{
@@ -1767,7 +1957,7 @@ export type InsightsInitialData = {
   weeklyError?: string;
   monthly: MonthlySummary | null;
   plateauExercises: { name: string }[];
-  categoryDistribution: CategoryDistribution | null;
+  muscleBalanceRadar: MuscleBalanceRadarDistribution | null;
   muscleDistribution: MuscleDistribution | null;
   topStrengthGains: TopStrengthGain[];
   /** All-time largest 1RM improvements (earliest vs latest per exercise). Precomputed on load. */
@@ -1794,7 +1984,7 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
       getWeeklyComparison(),
       getMonthlySummary(),
       getPlateauExercises(),
-      getCategoryDistribution("this_week"),
+      getMuscleBalanceRadarData("this_week"),
       getMuscleDistribution("this_week"),
       getTopStrengthImprovements("this_week"),
       getTrainingBalance("this_week"),
@@ -1807,7 +1997,7 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
     const weekly = weeklyRes.error ? null : weeklyRes.data;
     const monthly = monthRes.data ?? null;
     const plateauExercises = plateauRes ?? [];
-    const categoryDistribution = categoryRes.data ?? null;
+    const muscleBalanceRadar = categoryRes.data ?? null;
     const muscleDistribution = muscleRes.data ?? null;
     const topStrengthGains = gainsRes.data ?? [];
     const topStrengthGainsAllTime = gainsAllTimeRes.data ?? [];
@@ -1828,7 +2018,7 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
       weeklyError: weeklyRes.error,
       monthly,
       plateauExercises,
-      categoryDistribution,
+      muscleBalanceRadar,
       muscleDistribution,
       topStrengthGains,
       topStrengthGainsAllTime,
@@ -1843,7 +2033,7 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
       weeklyError: "Unable to load dashboard data right now.",
       monthly: null,
       plateauExercises: [],
-      categoryDistribution: null,
+      muscleBalanceRadar: null,
       muscleDistribution: null,
       topStrengthGains: [],
       topStrengthGainsAllTime: [],
@@ -1872,7 +2062,7 @@ export async function getInsightsCriticalData(): Promise<InsightsInitialData> {
     oneRMRes,
   ] = await Promise.all([
     getWeeklyComparison(),
-    getCategoryDistribution("this_week"),
+    getMuscleBalanceRadarData("this_week"),
     getMuscleDistribution("this_week"),
     getTopStrengthImprovements("this_week"),
     getTrainingBalance("this_week"),
@@ -1881,7 +2071,7 @@ export async function getInsightsCriticalData(): Promise<InsightsInitialData> {
 
   const estimated1RMByExercise = oneRMRes.data ?? {};
   const weekly = weeklyRes.error ? null : weeklyRes.data;
-  const categoryDistribution = categoryRes.data ?? null;
+  const muscleBalanceRadar = categoryRes.data ?? null;
   const muscleDistribution = muscleRes.data ?? null;
   const topStrengthGains = gainsRes.data ?? [];
   const trainingBalance = balanceRes.data ?? null;
@@ -1901,7 +2091,7 @@ export async function getInsightsCriticalData(): Promise<InsightsInitialData> {
     weeklyError: weeklyRes.error,
     monthly: null,
     plateauExercises: [],
-    categoryDistribution,
+    muscleBalanceRadar,
     muscleDistribution,
     topStrengthGains,
     topStrengthGainsAllTime: [],
@@ -1928,7 +2118,7 @@ export async function getInsightsDeferredData(
 }
 
 export type InsightsRangeData = {
-  categoryDistribution: CategoryDistribution | null;
+  muscleBalanceRadar: MuscleBalanceRadarDistribution | null;
   muscleDistribution: MuscleDistribution | null;
   topStrengthGains: TopStrengthGain[];
   trainingBalance: TrainingBalanceResult | null;
@@ -1947,13 +2137,13 @@ export async function getInsightsRangeData(
   range: InsightsRange,
   context?: InsightsRangeContext
 ): Promise<InsightsRangeData> {
-  const [categoryRes, muscleRes, gainsRes, balanceRes] = await Promise.all([
-    getCategoryDistribution(range),
+  const [radarRes, muscleRes, gainsRes, balanceRes] = await Promise.all([
+    getMuscleBalanceRadarData(range),
     getMuscleDistribution(range),
     getTopStrengthImprovements(range),
     getTrainingBalance(range),
   ]);
-  const categoryDistribution = categoryRes.data ?? null;
+  const muscleBalanceRadar = radarRes.data ?? null;
   const muscleDistribution = muscleRes.data ?? null;
   const topStrengthGains = gainsRes.data ?? [];
   const trainingBalance = balanceRes.data ?? null;
@@ -1967,7 +2157,7 @@ export async function getInsightsRangeData(
     trainingBalance
   );
   return {
-    categoryDistribution,
+    muscleBalanceRadar,
     muscleDistribution,
     topStrengthGains,
     trainingBalance,

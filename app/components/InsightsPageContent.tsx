@@ -9,10 +9,7 @@ import {
   getInsightsRangeData,
   getMonthlyAnalytics,
   getMonthsWithWorkoutData,
-  getMuscleHeatmapData,
   type WeeklyComparison,
-  type MuscleHeatmapPoint,
-  type CategoryDistribution,
   type MuscleDistribution,
   type MonthlySummary,
   type MonthlyAnalytics,
@@ -118,8 +115,6 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   const weightLabel = weightUnitLabel(units);
   const [weekly, setWeekly] = useState<WeeklyComparison | null>(null);
   const [muscleRange, setMuscleRange] = useState<InsightsRange>("this_week");
-  const [categoryData, setCategoryData] = useState<CategoryDistribution | null>(null);
-  const [muscleData, setMuscleData] = useState<MuscleDistribution | null>(null);
   const [selectedExerciseId, setSelectedExerciseId] = useState<string>("");
   const [oneRMRange, setOneRMRange] = useState<"30" | "90" | "all">("90");
   /** Precomputed on initial load; charts read from this (no fetch on exercise/range change). */
@@ -134,10 +129,6 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   const [balanceDatasets, setBalanceDatasets] = useState<Partial<Record<BalanceRange, InsightsRangeData>>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  /** Heatmap data for current balance range — used for Muscle Balance chart tooltip (sets + exercises). */
-  const [balanceHeatmapData, setBalanceHeatmapData] = useState<MuscleHeatmapPoint[]>([]);
-  const [balanceHeatmapLoading, setBalanceHeatmapLoading] = useState(false);
 
   const [monthOptions, setMonthOptions] = useState<MonthOption[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<MonthOption>(() => {
@@ -168,7 +159,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   /** Build InsightsRangeData for this_week from initial payload (so we can store in balanceDatasets). */
   const buildRangeDataFromInitial = useMemo(
     () => (data: Awaited<ReturnType<typeof getInsightsInitialData>>): InsightsRangeData => ({
-      categoryDistribution: data.categoryDistribution ?? null,
+      muscleBalanceRadar: data.muscleBalanceRadar ?? null,
       muscleDistribution: data.muscleDistribution ?? null,
       topStrengthGains: data.topStrengthGains ?? [],
       trainingBalance: data.trainingBalance ?? null,
@@ -184,8 +175,6 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
       else setWeekly(cached.weekly);
       setMonthly(cached.monthly ?? null);
       setPlateauExercises(cached.plateauExercises);
-      setCategoryData(cached.categoryDistribution ?? null);
-      setMuscleData(cached.muscleDistribution ?? null);
       setTopStrengthGains(cached.topStrengthGains);
       setTopStrengthGainsAllTime(cached.topStrengthGainsAllTime ?? []);
       setTrainingBalance(cached.trainingBalance ?? null);
@@ -221,8 +210,6 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
       else setWeekly(data.weekly);
       setMonthly(data.monthly ?? null);
       setPlateauExercises(data.plateauExercises);
-      setCategoryData(data.categoryDistribution ?? null);
-      setMuscleData(data.muscleDistribution ?? null);
       setTopStrengthGains(data.topStrengthGains);
       setTopStrengthGainsAllTime(data.topStrengthGainsAllTime ?? []);
       setTrainingBalance(data.trainingBalance ?? null);
@@ -304,46 +291,6 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   const currentRangeData = balanceDatasets[muscleRange as BalanceRange];
   const balanceRangeReady = currentRangeData !== undefined;
 
-  /** Aggregate heatmap to 6 radar categories for Muscle Balance tooltip: sets + top 3 exercises. */
-  const muscleBalanceTooltipData = useMemo(() => {
-    const LEGS_GROUPS = ["Quads", "Hamstrings", "Glutes", "Calves"] as const;
-    const RADAR_CATEGORIES = ["Back", "Biceps", "Chest", "Legs", "Shoulders", "Triceps"] as const;
-    const byCategory: Record<string, { sets: number; exercises: string[] }> = {};
-    for (const cat of RADAR_CATEGORIES) {
-      byCategory[cat] = { sets: 0, exercises: [] };
-    }
-    for (const p of balanceHeatmapData) {
-      if (p.muscle === "Chest") {
-        byCategory["Chest"].sets += p.sets;
-        byCategory["Chest"].exercises.push(...(p.exercises ?? []));
-      } else if (p.muscle === "Back") {
-        byCategory["Back"].sets += p.sets;
-        byCategory["Back"].exercises.push(...(p.exercises ?? []));
-      } else if (p.muscle === "Shoulders") {
-        byCategory["Shoulders"].sets += p.sets;
-        byCategory["Shoulders"].exercises.push(...(p.exercises ?? []));
-      } else if (p.muscle === "Biceps") {
-        byCategory["Biceps"].sets += p.sets;
-        byCategory["Biceps"].exercises.push(...(p.exercises ?? []));
-      } else if (p.muscle === "Triceps") {
-        byCategory["Triceps"].sets += p.sets;
-        byCategory["Triceps"].exercises.push(...(p.exercises ?? []));
-      } else if (LEGS_GROUPS.includes(p.muscle as (typeof LEGS_GROUPS)[number])) {
-        byCategory["Legs"].sets += p.sets;
-        byCategory["Legs"].exercises.push(...(p.exercises ?? []));
-      }
-    }
-    return RADAR_CATEGORIES.map((category) => {
-      const { sets, exercises } = byCategory[category];
-      const unique = [...new Set(exercises)];
-      return {
-        category,
-        sets: Math.round(sets * 10) / 10,
-        exercises: unique.slice(0, 3),
-      };
-    });
-  }, [balanceHeatmapData]);
-
   /** Filter precomputed 1RM by selected range; no fetch, instant when changing exercise or range. */
   const oneRMData = useMemo(() => {
     const points = estimated1RMByExercise[selectedExerciseId] ?? [];
@@ -354,21 +301,6 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
     const start = cutoff.toISOString().slice(0, 10);
     return points.filter((p) => p.date >= start);
   }, [estimated1RMByExercise, selectedExerciseId, oneRMRange]);
-
-  /** Fetch heatmap data for the selected balance range (for chart tooltip: sets + exercises). */
-  useEffect(() => {
-    let cancelled = false;
-    setBalanceHeatmapLoading(true);
-    getMuscleHeatmapData(muscleRange).then((res) => {
-      if (!cancelled) {
-        setBalanceHeatmapData(res.data ?? []);
-        setBalanceHeatmapLoading(false);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [muscleRange]);
 
   if (loading && !weekly) {
     return <SkeletonInsightsPage />;
@@ -421,13 +353,13 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         </>
       )}
 
-      {/* Muscle Balance — total sets per muscle group; hover for sets + exercises */}
+      {/* Muscle Balance — total sets per muscle group; tap chart for details */}
       <section id="muscle-balance" className="mt-10">
         <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Muscle Balance
         </h3>
         <p className="mb-3 text-xs text-zinc-500">
-          Total sets per muscle group for the selected period. Hover over a point for sets and top exercises.
+          Total sets per muscle group for the selected period. Tap a muscle group to see details.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
           {RANGE_OPTIONS.map((opt) => (
@@ -451,9 +383,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
           <MuscleRadarChart
             key={muscleRange}
             range={muscleRange as BalanceRange}
-            current={currentRangeData?.categoryDistribution?.current ?? []}
-            previous={currentRangeData?.categoryDistribution?.previous ?? null}
-            tooltipData={muscleBalanceTooltipData}
+            distribution={currentRangeData?.muscleBalanceRadar ?? null}
           />
         )}
         {balanceRangeReady && currentRangeData?.trainingBalance && (

@@ -1,4 +1,4 @@
-import { getWeeklyComparison, getCategoryDistribution, getMuscleDistribution } from "@/app/actions/insights";
+import { getWeeklyComparison, getMuscleBalanceRadarData, getMuscleDistribution } from "@/app/actions/insights";
 import { getProfile } from "@/app/actions/profile";
 import { getBodyweightStats } from "@/app/actions/bodyweight";
 import { getLastWorkoutSummary } from "@/app/actions/workouts";
@@ -18,7 +18,7 @@ export default async function DashboardPage() {
     getWeeklyComparison(),
     getBodyweightStats(),
     getLastWorkoutSummary(),
-    getCategoryDistribution("this_week"),
+    getMuscleBalanceRadarData("this_week"),
     getMuscleDistribution("this_week"),
     getProfile(),
     getStrengthRanking(),
@@ -27,7 +27,7 @@ export default async function DashboardPage() {
 
   const weekly = weeklyRes.error ? null : weeklyRes.data;
   const lastWorkout = lastWorkoutRes.data ?? null;
-  const categoryDistribution = categoryRes.data ?? null;
+  const muscleBalanceRadar = categoryRes.data ?? null;
   const muscleDistribution = muscleRes.data?.current ?? null;
   const strengthRanking = strengthRankingRes.data ?? null;
 
@@ -38,7 +38,7 @@ export default async function DashboardPage() {
       profileWeightKg={profile?.body_weight ?? null}
       heightCm={profile?.height ?? null}
       lastWorkout={lastWorkout}
-      categoryDistribution={categoryDistribution}
+      muscleBalanceRadar={muscleBalanceRadar}
       muscleDistribution={muscleDistribution}
       gender={gender}
       strengthRanking={strengthRanking}

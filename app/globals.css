@@ -67,6 +67,21 @@ html {
   border-radius: 10px;
 }
 
+/* Muscle Balance radar: tap pulse on selected node (1 → 1.15 → 1) */
+@keyframes muscle-radar-node-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+}
+.muscle-radar-node-pulse {
+  transform-origin: center;
+  animation: muscle-radar-node-pulse 0.45s ease-out;
+}
+
 /* DatePicker (react-day-picker) dark theme */
 .rdp-root {
   --rdp-accent-color: #d97706;

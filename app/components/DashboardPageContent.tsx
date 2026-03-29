@@ -44,7 +44,7 @@ const WeeklyProgressWidget = dynamic(
 
 import { calculateBMI, getBMICategory } from "@/lib/bmi";
 import { BMISlider } from "@/app/components/BMISlider";
-import type { CategoryDistribution, MuscleDistributionPoint } from "@/app/actions/insights";
+import type { MuscleBalanceRadarDistribution, MuscleDistributionPoint } from "@/app/actions/insights";
 import type { LastWorkoutSummary } from "@/app/actions/workouts";
 
 type BodyweightStats = {
@@ -59,7 +59,7 @@ type Props = {
   profileWeightKg: number | null;
   heightCm: number | null;
   lastWorkout: LastWorkoutSummary | null;
-  categoryDistribution: CategoryDistribution | null;
+  muscleBalanceRadar: MuscleBalanceRadarDistribution | null;
   muscleDistribution: MuscleDistributionPoint[] | null;
   gender?: "male" | "female";
   strengthRanking: StrengthRankingWithExercises | null;
@@ -71,7 +71,7 @@ export function DashboardPageContent({
   profileWeightKg,
   heightCm,
   lastWorkout,
-  categoryDistribution,
+  muscleBalanceRadar,
   muscleDistribution,
   gender = "male",
   strengthRanking,
@@ -200,16 +200,12 @@ export function DashboardPageContent({
             <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
               Training Balance
             </h2>
-            {categoryDistribution?.current?.length ? (
+            {muscleBalanceRadar ? (
               <div
                 className="min-h-[160px] w-full overflow-hidden rounded-lg"
                 onClickCapture={(e) => e.stopPropagation()}
               >
-                <MuscleRadarChart
-                  range="this_week"
-                  current={categoryDistribution.current}
-                  previous={categoryDistribution.previous}
-                />
+                <MuscleRadarChart range="this_week" distribution={muscleBalanceRadar} />
               </div>
             ) : (
               <div className="flex h-28 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/30 text-xs text-zinc-500">

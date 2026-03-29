@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useRef, useCallback, useState } from "react";
+import { memo, useMemo, useRef, useCallback, useState, useEffect } from "react";
 import {
   RadarChart,
   Radar,
@@ -9,8 +9,12 @@ import {
   PolarRadiusAxis,
   ResponsiveContainer,
   Legend,
+  Tooltip,
 } from "recharts";
-import type { CategoryDistributionPoint } from "@/app/actions/insights";
+import type {
+  MuscleBalanceRadarDistribution,
+  MuscleBalanceRadarSegment,
+} from "@/app/actions/insights";
 import { ChartIcon } from "@/components/icons";
 
 type BalanceRange = "this_week" | "last_week" | "this_month" | "last_month";
@@ -25,27 +29,17 @@ const RANGE_LEGEND_LABELS: Record<
   last_month: { current: "Last Month", previous: "Month Before" },
 };
 
-export type MuscleBalanceTooltipPoint = {
-  category: string;
-  sets: number;
-  exercises: string[];
-};
-
 type Props = {
   range: BalanceRange;
-  current: CategoryDistributionPoint[];
-  previous: CategoryDistributionPoint[] | null;
-  /** Optional: sets and top exercises per category for hover tooltip. */
-  tooltipData?: MuscleBalanceTooltipPoint[];
+  distribution: MuscleBalanceRadarDistribution | null;
 };
 
 const LIFTLY_ORANGE = "#f59e0b";
 const MUTED_GREY = "#52525b";
 const AXIS_LABEL_FILL = "#d4d4d8";
 const CHART_ANIMATION_DURATION = 250;
-const WIDGET_TRANSITION_MS = 150;
 
-/** Fixed category order for axis-angle hover. Index 0 → Back (top), then clockwise. */
+/** Fixed category order: index 0 → Back (top), then clockwise — must match angle math. */
 const CATEGORIES = [
   "Back",
   "Biceps",
@@ -57,17 +51,14 @@ const CATEGORIES = [
 
 type MuscleName = (typeof CATEGORIES)[number];
 
-/** Chart margin (px); used to estimate radar drawing radius so hover works only inside the hexagon. */
 const CHART_MARGIN = 24;
 
-/** Keep axis labels short to avoid overlap (max 12 chars). */
 function shortLabel(category: string, maxLen: number = 12): string {
   const trimmed = category.trim();
   if (trimmed.length <= maxLen) return trimmed;
   return trimmed.slice(0, maxLen - 1).trim() + "…";
 }
 
-/** Chart max so the shape fills the space: if highest value is 30%, domain goes to ~35–40%. */
 function getDomainMax(current: { value: number }[], previous: { value: number }[] | null): number {
   const allValues = [
     ...current.map((c) => c.value),
@@ -79,11 +70,8 @@ function getDomainMax(current: { value: number }[], previous: { value: number }[
   return Math.min(100, padded);
 }
 
-/**
- * Hover only inside the radar hexagon: use center, cursor offset, and radius check.
- * Returns the hovered category or null if cursor is outside the radar.
- */
-function getHoveredCategoryFromAngle(
+/** Map tap position to radar axis (inside the polygon). */
+function getCategoryFromPolarTap(
   offsetX: number,
   offsetY: number,
   rect: { width: number; height: number }
@@ -108,59 +96,68 @@ function getHoveredCategoryFromAngle(
   return CATEGORIES[clamped];
 }
 
-function getValueByCategory(
-  points: CategoryDistributionPoint[],
-  category: string
-): number {
-  const normalized = category.trim().toLowerCase();
-  const found = points.find(
-    (p) => p.category.trim().toLowerCase() === normalized
+function segmentByCategory(
+  segments: MuscleBalanceRadarSegment[] | undefined,
+  category: MuscleName
+): MuscleBalanceRadarSegment | undefined {
+  return segments?.find(
+    (s) => s.category.trim().toLowerCase() === category.toLowerCase()
   );
-  return found?.value ?? 0;
 }
 
-function MuscleRadarChartInner({ range, current, previous, tooltipData }: Props) {
+function MuscleRadarChartInner({ range, distribution }: Props) {
   const labels = RANGE_LEGEND_LABELS[range];
   const currentKey = labels.current;
   const previousKey = labels.previous;
   const containerRef = useRef<HTMLDivElement>(null);
-  const [hoveredCategory, setHoveredCategory] = useState<MuscleName | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<MuscleName | null>(null);
+  const [pulseKey, setPulseKey] = useState(0);
 
-  const data = useMemo(
-    () =>
-      CATEGORIES.map((category) => ({
+  const segments = distribution?.segments ?? [];
+
+  const hasPrevious = segments.some((s) => s.percentagePrevious !== null);
+
+  const data = useMemo(() => {
+    return CATEGORIES.map((category) => {
+      const seg = segmentByCategory(segments, category);
+      return {
         category,
-        [currentKey]: getValueByCategory(current, category),
-        ...(previous
-          ? { [previousKey]: getValueByCategory(previous, category) }
-          : {}),
-      })),
-    [current, previous, currentKey, previousKey]
-  );
+        [currentKey]: seg?.percentage ?? 0,
+        ...(hasPrevious ? { [previousKey]: seg?.percentagePrevious ?? 0 } : {}),
+      };
+    });
+  }, [segments, currentKey, previousKey, hasPrevious]);
 
-  const onHover = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const el = containerRef.current;
-      if (!el) return;
-      const rect = el.getBoundingClientRect();
-      const mouseX = e.clientX - rect.left;
-      const mouseY = e.clientY - rect.top;
-      const category = getHoveredCategoryFromAngle(mouseX, mouseY, {
-        width: rect.width,
-        height: rect.height,
-      });
-      setHoveredCategory((prev) => (prev === category ? prev : category));
-    },
-    []
-  );
-
-  const onHoverLeave = useCallback(() => {
-    setHoveredCategory(null);
+  const onPointerUp = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const el = containerRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const category = getCategoryFromPolarTap(x, y, {
+      width: rect.width,
+      height: rect.height,
+    });
+    if (category) {
+      setSelectedCategory(category);
+      setPulseKey((k) => k + 1);
+    }
   }, []);
+
+  const selectedIndex =
+    selectedCategory != null ? CATEGORIES.indexOf(selectedCategory) : -1;
 
   const hasData = data.some(
     (d) => Number(d[currentKey] ?? 0) > 0 || Number(d[previousKey] ?? 0) > 0
   );
+
+  const selectedSeg =
+    selectedCategory != null ? segmentByCategory(segments, selectedCategory) : null;
+
+  useEffect(() => {
+    setSelectedCategory(null);
+  }, [range, distribution]);
 
   if (!hasData) {
     return (
@@ -171,185 +168,222 @@ function MuscleRadarChartInner({ range, current, previous, tooltipData }: Props)
         <span className="flex items-center justify-center text-zinc-400" aria-hidden>
           <ChartIcon size={24} />
         </span>
-        <p className="font-medium text-zinc-400">
-          No workouts logged for this period.
-        </p>
-        <p>
-          Add exercises to start seeing your training balance.
-        </p>
+        <p className="font-medium text-zinc-400">No workouts logged for this period.</p>
+        <p>Add exercises to start seeing your training balance.</p>
       </div>
     );
   }
 
-  const domainMax = getDomainMax(current, previous);
-  const hoveredRow =
-    hoveredCategory != null
-      ? data.find((d) => d.category === hoveredCategory) ?? null
-      : null;
-  const hoveredTooltip =
-    hoveredCategory != null && tooltipData
-      ? tooltipData.find(
-          (t) => t.category.trim().toLowerCase() === hoveredCategory.trim().toLowerCase()
-        ) ?? null
-      : null;
-  const hoveredIndex =
-    hoveredCategory != null ? CATEGORIES.indexOf(hoveredCategory) : null;
+  const domainMax = getDomainMax(
+    CATEGORIES.map((c) => ({
+      value: segmentByCategory(segments, c)?.percentage ?? 0,
+    })),
+    hasPrevious
+      ? CATEGORIES.map((c) => ({
+          value: segmentByCategory(segments, c)?.percentagePrevious ?? 0,
+        }))
+      : null
+  );
+
+  const fillOpacityCurrent = selectedCategory != null ? 0.42 : 0.3;
 
   return (
-    <div
-      ref={containerRef}
-      className="relative h-72 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
-      style={{ minHeight: 288 }}
-      onMouseMove={onHover}
-      onMouseLeave={onHoverLeave}
-    >
-      {/* Fixed info widget — top-right, does not cover chart */}
+    <div className="flex w-full flex-col gap-3">
       <div
-        className="absolute right-4 top-4 z-10 min-w-[140px] max-w-[180px] rounded-lg border border-zinc-700/80 bg-zinc-900/95 px-3 py-2.5 text-left shadow-lg backdrop-blur-sm sm:right-4 sm:top-4"
-        style={{
-          transition: `opacity ${WIDGET_TRANSITION_MS}ms ease`,
-        }}
+        ref={containerRef}
+        className="relative h-72 w-full touch-manipulation rounded-lg border border-zinc-800 bg-zinc-900/50 p-4"
+        style={{ minHeight: 288 }}
+        onPointerUp={onPointerUp}
+        role="application"
+        aria-label="Muscle balance chart. Tap inside the radar to select a muscle group."
       >
-        {hoveredRow ? (
-          <div key={hoveredCategory} className="radar-widget-fade space-y-1.5">
-            <div className="font-medium text-zinc-200">
-              {hoveredRow.category}
-            </div>
-            {hoveredTooltip != null && (
-              <>
-                <div className="text-sm text-zinc-400">
-                  Sets in this period:{" "}
-                  <span className="font-medium text-zinc-300">
-                    {hoveredTooltip.sets} set{hoveredTooltip.sets !== 1 ? "s" : ""}
-                  </span>
-                </div>
-                {hoveredTooltip.exercises.length > 0 && (
-                  <div className="text-xs text-zinc-500">
-                    <span className="block font-medium uppercase tracking-wider text-zinc-500">
-                      Exercises contributing:
-                    </span>
-                    <ul className="mt-0.5 list-inside list-disc space-y-0.5">
-                      {hoveredTooltip.exercises.map((name) => (
-                        <li key={name}>{name}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
+        <ResponsiveContainer width="100%" height={288}>
+          <RadarChart data={data} margin={{ top: 24, right: 24, left: 24, bottom: 24 }}>
+            <Tooltip active={false} />
+            <PolarGrid stroke="#3f3f46" />
+            <PolarAngleAxis
+              dataKey="category"
+              tick={{ fill: AXIS_LABEL_FILL, fontSize: 11 }}
+              tickFormatter={(value) => shortLabel(String(value))}
+            />
+            <PolarRadiusAxis
+              angle={90}
+              domain={[0, domainMax]}
+              tick={{ fill: AXIS_LABEL_FILL, fontSize: 10 }}
+            />
+            {hasPrevious && (
+              <Radar
+                name={previousKey}
+                dataKey={previousKey}
+                stroke={MUTED_GREY}
+                fill={MUTED_GREY}
+                fillOpacity={0.12}
+                strokeWidth={selectedCategory ? 1.5 : 2}
+                strokeLinejoin="round"
+                isAnimationActive={true}
+                animationDuration={CHART_ANIMATION_DURATION}
+                animationEasing="ease-out"
+                dot={({ index, cx, cy }) => {
+                  const isActive = index === selectedIndex;
+                  return (
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={isActive ? 5 : 3}
+                      fill={MUTED_GREY}
+                      fillOpacity={isActive ? 0.9 : 0.45}
+                      stroke={isActive ? "#a1a1aa" : "transparent"}
+                      strokeWidth={1.5}
+                      className="pointer-events-none"
+                    />
+                  );
+                }}
+              />
             )}
-            <div className="space-y-0.5 text-sm text-zinc-400">
-              {previous && (
-                <div className="flex items-center gap-2">
-                  <span
-                    className="h-1.5 w-1.5 shrink-0 rounded-full"
-                    style={{ backgroundColor: MUTED_GREY }}
-                    aria-hidden
-                  />
-                  <span>
-                    Last period: {hoveredRow[previousKey] != null ? `${hoveredRow[previousKey]}%` : "—"}
-                  </span>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: LIFTLY_ORANGE }}
-                  aria-hidden
-                />
-                <span>
-                  This period: {hoveredRow[currentKey] != null ? `${hoveredRow[currentKey]}%` : "—"}
-                </span>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <p key="default" className="radar-widget-fade text-sm text-zinc-500">
-            Hover over a muscle group
-          </p>
-        )}
-      </div>
-
-      {/* Default tooltip disabled; axis-angle hover only. Top-right card is the only hover display. */}
-      <ResponsiveContainer width="100%" height={288}>
-        <RadarChart data={data} margin={{ top: 24, right: 24, left: 24, bottom: 24 }}>
-          <PolarGrid stroke="#3f3f46" />
-          <PolarAngleAxis
-            dataKey="category"
-            tick={{ fill: AXIS_LABEL_FILL, fontSize: 11 }}
-            tickFormatter={(value) => shortLabel(value)}
-          />
-          <PolarRadiusAxis
-            angle={90}
-            domain={[0, domainMax]}
-            tick={{ fill: AXIS_LABEL_FILL, fontSize: 10 }}
-          />
-          {previous && (
             <Radar
-              name={previousKey}
-              dataKey={previousKey}
-              stroke={MUTED_GREY}
-              fill={MUTED_GREY}
-              fillOpacity={0.15}
-              strokeWidth={2}
+              name={currentKey}
+              dataKey={currentKey}
+              stroke={LIFTLY_ORANGE}
+              fill={LIFTLY_ORANGE}
+              fillOpacity={fillOpacityCurrent}
+              strokeWidth={selectedCategory ? 3.5 : 3}
               strokeLinejoin="round"
               isAnimationActive={true}
               animationDuration={CHART_ANIMATION_DURATION}
               animationEasing="ease-out"
               dot={({ index, cx, cy }) => {
-                const isActive = index === hoveredIndex;
+                const isActive = index === selectedIndex;
+                const baseR = isActive ? 6 : 3;
                 return (
-                  <circle
-                    cx={cx}
-                    cy={cy}
-                    r={isActive ? 5 : 3}
-                    fill={MUTED_GREY}
-                    fillOpacity={isActive ? 0.9 : 0.5}
-                    stroke={isActive ? "#a1a1aa" : "transparent"}
-                    strokeWidth={1.5}
-                    pointerEvents="none"
-                  />
+                  <g
+                    key={isActive ? `${index}-${pulseKey}` : index}
+                    transform={`translate(${cx},${cy})`}
+                    className="pointer-events-none"
+                  >
+                    {isActive && (
+                      <circle r={baseR + 6} fill="rgba(245, 158, 11, 0.22)" />
+                    )}
+                    <circle
+                      r={baseR}
+                      fill={LIFTLY_ORANGE}
+                      fillOpacity={isActive ? 1 : 0.75}
+                      stroke={isActive ? "#fbbf24" : "transparent"}
+                      strokeWidth={2}
+                      style={
+                        isActive
+                          ? {
+                              filter:
+                                "drop-shadow(0 0 4px rgba(251, 191, 36, 0.85)) drop-shadow(0 0 10px rgba(245, 158, 11, 0.35))",
+                            }
+                          : undefined
+                      }
+                      className={isActive ? "muscle-radar-node-pulse" : undefined}
+                    />
+                  </g>
                 );
               }}
             />
+            <Legend
+              wrapperStyle={{ fontSize: 12, marginTop: 10 }}
+              formatter={(value) => <span className="text-zinc-400">{value}</span>}
+              iconType="circle"
+              iconSize={8}
+              layout="horizontal"
+              align="center"
+              verticalAlign="bottom"
+            />
+          </RadarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <MuscleBalanceInfoCard
+        selectedCategory={selectedCategory}
+        segment={selectedSeg ?? null}
+        hasPrevious={hasPrevious}
+        previousLabel={previousKey}
+        currentLabel={currentKey}
+      />
+    </div>
+  );
+}
+
+function MuscleBalanceInfoCard({
+  selectedCategory,
+  segment,
+  hasPrevious,
+  previousLabel,
+  currentLabel,
+}: {
+  selectedCategory: MuscleName | null;
+  segment: MuscleBalanceRadarSegment | null;
+  hasPrevious: boolean;
+  previousLabel: string;
+  currentLabel: string;
+}) {
+  if (selectedCategory == null) {
+    return (
+      <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-500">
+        Tap the chart to select a muscle group.
+      </div>
+    );
+  }
+
+  const muscleLabel = selectedCategory;
+  const setsThis = segment?.sets ?? 0;
+  const noData = setsThis <= 0;
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-3 text-left">
+      <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Muscle</p>
+      <p className="text-base font-semibold text-zinc-100">{muscleLabel}</p>
+
+      {noData ? (
+        <p className="mt-3 text-sm text-zinc-400">
+          No training data for this muscle in this period.
+        </p>
+      ) : (
+        <>
+          <p className="mt-3 text-sm text-zinc-400">
+            Sets this period:{" "}
+            <span className="font-medium text-zinc-200">
+              {setsThis} set{setsThis !== 1 ? "s" : ""}
+            </span>
+          </p>
+
+          {segment && segment.topExercises.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Top exercises
+              </p>
+              <ul className="mt-1.5 list-inside list-disc space-y-0.5 text-sm text-zinc-300">
+                {segment.topExercises.map((name) => (
+                  <li key={name}>{name}</li>
+                ))}
+              </ul>
+            </div>
           )}
-          <Radar
-            name={currentKey}
-            dataKey={currentKey}
-            stroke={LIFTLY_ORANGE}
-            fill={LIFTLY_ORANGE}
-            fillOpacity={0.3}
-            strokeWidth={3}
-            strokeLinejoin="round"
-            isAnimationActive={true}
-            animationDuration={CHART_ANIMATION_DURATION}
-            animationEasing="ease-out"
-            dot={({ index, cx, cy }) => {
-              const isActive = index === hoveredIndex;
-              return (
-                <circle
-                  cx={cx}
-                  cy={cy}
-                  r={isActive ? 6 : 3}
-                  fill={LIFTLY_ORANGE}
-                  fillOpacity={isActive ? 1 : 0.7}
-                  stroke={isActive ? "#fbbf24" : "transparent"}
-                  strokeWidth={1.5}
-                  pointerEvents="none"
-                />
-              );
-            }}
-          />
-          <Legend
-            wrapperStyle={{ fontSize: 12, marginTop: 10 }}
-            formatter={(value) => <span className="text-zinc-400">{value}</span>}
-            iconType="circle"
-            iconSize={8}
-            layout="horizontal"
-            align="center"
-            verticalAlign="bottom"
-          />
-        </RadarChart>
-      </ResponsiveContainer>
+
+          {hasPrevious && segment && (
+            <div className="mt-4 border-t border-zinc-800/80 pt-3">
+              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Previous period comparison
+              </p>
+              <p className="mt-1 text-sm text-zinc-400">
+                <span className="text-zinc-500">{previousLabel}:</span>{" "}
+                <span className="font-medium text-zinc-300">
+                  {segment.setsPrevious ?? 0} set{(segment.setsPrevious ?? 0) !== 1 ? "s" : ""}
+                </span>
+              </p>
+              <p className="mt-0.5 text-sm text-zinc-400">
+                <span className="text-zinc-500">{currentLabel}:</span>{" "}
+                <span className="font-medium text-amber-400/90">
+                  {segment.sets} set{segment.sets !== 1 ? "s" : ""}
+                </span>
+              </p>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

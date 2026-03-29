@@ -18,10 +18,10 @@ export default async function FriendProfilePage({ params }: Props) {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100">
-      <div className="fixed inset-x-0 top-0 z-[210] h-14 border-b border-white/[0.05] bg-zinc-950">
+      <div className="fixed inset-x-0 top-0 z-[210] bg-zinc-950 pt-[env(safe-area-inset-top,0px)]">
         <AppHeader title={data.username} leftSlot={<BackArrowButton />} />
       </div>
-      <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-24 pt-14 sm:px-6">
+      <main className="mx-auto w-full max-w-xl flex-1 px-4 pb-24 pt-[calc(3.5rem+env(safe-area-inset-top,0px))] sm:px-6">
         <div className="pt-4">
           <div className="card-tap flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
             <RankBadge
