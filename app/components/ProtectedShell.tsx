@@ -91,7 +91,6 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const isMainTab =
     pathname === "/" ||
     pathname === "/exercises" ||
-    pathname === "/calendar" ||
     pathname === "/insights" ||
     pathname === "/social" ||
     pathname === "/bodyweight" ||

@@ -12,6 +12,10 @@ export type Profile = {
   country: string | null;
   body_weight: number | null;
   height: number | null;
+  /** Set by dashboard FFMI calculator; omitted/null until first calculation */
+  ffmi?: number | null;
+  /** Body fat % from last FFMI calculation */
+  body_fat_percent?: number | null;
   units: "metric" | "imperial" | null;
   profile_completed: boolean;
   /** Full rank label for leaderboard (synced from rankings). */

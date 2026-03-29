@@ -74,7 +74,7 @@ export function BMISlider({ bmi, compact }: Props) {
         />
       </div>
 
-      <div className={compact ? "relative mt-1 h-10 w-full" : "relative mt-1.5 h-10 w-full"}>
+      <div className={compact ? "relative mt-0.5 h-8 w-full" : "relative mt-1.5 h-10 w-full"}>
         {LEGEND_ITEMS.map(({ label, centerBmi }) => (
           <span
             key={label}

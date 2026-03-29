@@ -37,6 +37,8 @@ export default async function DashboardPage() {
       bodyweightStats={bodyweightStats}
       profileWeightKg={profile?.body_weight ?? null}
       heightCm={profile?.height ?? null}
+      storedFfmi={profile?.ffmi ?? null}
+      initialBodyFatPercent={profile?.body_fat_percent ?? null}
       lastWorkout={lastWorkout}
       muscleBalanceRadar={muscleBalanceRadar}
       muscleDistribution={muscleDistribution}

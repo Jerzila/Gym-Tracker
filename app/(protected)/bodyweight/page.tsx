@@ -60,6 +60,7 @@ export default async function BodyweightPage() {
         <BMICard
           weightKg={stats.latest?.weight ?? profile?.body_weight ?? null}
           heightCm={profile?.height ?? null}
+          ffmi={profile?.ffmi ?? null}
         />
 
         {chartData.length > 0 && (

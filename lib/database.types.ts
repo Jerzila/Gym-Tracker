@@ -12,6 +12,8 @@ export type Database = {
           country: string | null;
           body_weight: number | null;
           height: number | null;
+          ffmi: number | null;
+          body_fat_percent: number | null;
           units: "metric" | "imperial" | null;
           profile_completed: boolean;
           created_at: string;
@@ -25,6 +27,8 @@ export type Database = {
           country?: string | null;
           body_weight?: number | null;
           height?: number | null;
+          ffmi?: number | null;
+          body_fat_percent?: number | null;
           units?: "metric" | "imperial" | null;
           profile_completed?: boolean;
           created_at?: string;
@@ -38,6 +42,8 @@ export type Database = {
           country?: string | null;
           body_weight?: number | null;
           height?: number | null;
+          ffmi?: number | null;
+          body_fat_percent?: number | null;
           units?: "metric" | "imperial" | null;
           profile_completed?: boolean;
           created_at?: string;

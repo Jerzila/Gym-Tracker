@@ -3,6 +3,8 @@
  * Use these for display and input conversion only.
  */
 
+import type { WeightUnits } from "@/lib/formatWeight";
+
 const KG_TO_LB = 2.20462;
 const CM_TO_IN = 1 / 2.54;
 
@@ -45,4 +47,13 @@ export function kgToLbs(kg: number): number {
 /** Alias for lbToKg (plural) */
 export function lbsToKg(lb: number): number {
   return lbToKg(lb);
+}
+
+/** Display height stored in cm for dashboard read-only fields. */
+export function formatHeightDisplay(cm: number, units: WeightUnits): string {
+  if (units === "imperial") {
+    const { ft, in: inch } = cmToFtIn(cm);
+    return `${ft}'${inch}"`;
+  }
+  return `${Math.round(cm)} cm`;
 }

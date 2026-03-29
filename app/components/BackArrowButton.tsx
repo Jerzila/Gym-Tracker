@@ -7,6 +7,10 @@ export function BackArrowButton() {
   const pathname = usePathname();
 
   function handleBack() {
+    if (pathname === "/calendar") {
+      router.push("/");
+      return;
+    }
     if (pathname.startsWith("/exercise/")) {
       router.push("/exercises");
       return;

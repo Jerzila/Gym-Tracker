@@ -149,3 +149,21 @@ export function SettingsIcon({ size, ...props }: IconProps) {
     </svg>
   );
 }
+
+export function CalculatorIcon({ size, ...props }: IconProps) {
+  return (
+    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="3" width="14" height="18" rx="2" />
+      <path d="M7.5 6.5h9" />
+      <circle cx="8" cy="10.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="10.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="10.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="14.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="14.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="14.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
+      <circle cx="16" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}

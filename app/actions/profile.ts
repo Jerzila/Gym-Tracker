@@ -15,6 +15,7 @@ import {
   USERNAME_CHANGE_COOLDOWN_ERROR_MESSAGE,
   validateUsernameFormat,
 } from "@/lib/username";
+import { calculateFFMI, getFFMICategory } from "@/lib/ffmi";
 
 const AGE_MIN = 13;
 const AGE_MAX = 90;
@@ -22,6 +23,8 @@ const BODY_WEIGHT_MIN = 30;
 const BODY_WEIGHT_MAX = 250;
 const HEIGHT_MIN = 120;
 const HEIGHT_MAX = 230;
+const BODY_FAT_PCT_MIN = 3;
+const BODY_FAT_PCT_MAX = 50;
 
 export type ProfileFormState = {
   error?: string;
@@ -541,5 +544,99 @@ export async function completeOnboarding(
   } catch (error) {
     console.error("[profile] setup save failed: unexpected error", error);
     return { error: "Setup failed. Please try again." };
+  }
+}
+
+export type SaveCalculatedFFMIResult =
+  | { ok: true; ffmi: number; categoryLabel: string }
+  | { ok: false; error: string };
+
+/**
+ * Computes FFMI from latest logged weight (or profile fallback), profile height, and user-supplied body fat %.
+ * Persists `ffmi` and `body_fat_percent` on the profile.
+ */
+export async function saveCalculatedFFMI(bodyFatPercentInput: number): Promise<SaveCalculatedFFMIResult> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { ok: false, error: "Not signed in." };
+
+    const bodyFat = Number(bodyFatPercentInput);
+    if (
+      !Number.isFinite(bodyFat) ||
+      bodyFat < BODY_FAT_PCT_MIN ||
+      bodyFat > BODY_FAT_PCT_MAX
+    ) {
+      return {
+        ok: false,
+        error: `Body fat must be between ${BODY_FAT_PCT_MIN}% and ${BODY_FAT_PCT_MAX}%.`,
+      };
+    }
+
+    const { data: profile, error: profileErr } = await supabase
+      .from("profiles")
+      .select("height, body_weight")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileErr || !profile) {
+      return { ok: false, error: "Could not load your profile." };
+    }
+
+    const heightCm = profile.height != null ? Number(profile.height) : null;
+    if (heightCm == null || heightCm <= 0) {
+      return { ok: false, error: "Add your height in settings first." };
+    }
+
+    const { data: logRows, error: logErr } = await supabase
+      .from("bodyweight_logs")
+      .select("weight")
+      .eq("user_id", user.id)
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (logErr) {
+      console.error("[profile] saveCalculatedFFMI bodyweight fetch failed", logErr);
+      return { ok: false, error: "Could not load your latest weight." };
+    }
+
+    const logWeight = logRows?.[0]?.weight != null ? Number(logRows[0].weight) : null;
+    const profileWeight = profile.body_weight != null ? Number(profile.body_weight) : null;
+    const weightKg = logWeight != null && logWeight > 0 ? logWeight : profileWeight;
+    if (weightKg == null || weightKg <= 0) {
+      return { ok: false, error: "Log your weight to calculate FFMI." };
+    }
+
+    const ffmi = calculateFFMI(weightKg, heightCm, bodyFat);
+    if (ffmi == null) {
+      return { ok: false, error: "Could not calculate FFMI. Check your inputs." };
+    }
+
+    const categoryLabel = getFFMICategory(ffmi).label;
+    const updatedAt = new Date().toISOString();
+
+    const { error: upErr } = await supabase
+      .from("profiles")
+      .update({
+        ffmi,
+        body_fat_percent: bodyFat,
+        updated_at: updatedAt,
+      })
+      .eq("id", user.id);
+
+    if (upErr) {
+      console.error("[profile] saveCalculatedFFMI update failed", upErr);
+      return { ok: false, error: upErr.message };
+    }
+
+    revalidatePath("/", "layout");
+    revalidatePath("/account");
+    return { ok: true, ffmi, categoryLabel };
+  } catch (e) {
+    console.error("[profile] saveCalculatedFFMI unexpected", e);
+    return { ok: false, error: "Something went wrong. Try again." };
   }
 }

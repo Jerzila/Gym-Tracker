@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
@@ -43,7 +44,10 @@ const WeeklyProgressWidget = dynamic(
 );
 
 import { calculateBMI, getBMICategory } from "@/lib/bmi";
+import { getFFMICategory } from "@/lib/ffmi";
 import { BMISlider } from "@/app/components/BMISlider";
+import { FFMICalculateModal } from "@/app/components/FFMICalculateModal";
+import { CalculatorIcon } from "@/components/icons";
 import type { MuscleBalanceRadarDistribution, MuscleDistributionPoint } from "@/app/actions/insights";
 import type { LastWorkoutSummary } from "@/app/actions/workouts";
 
@@ -58,6 +62,9 @@ type Props = {
   /** Fallback weight from profile when user has no bodyweight logs */
   profileWeightKg: number | null;
   heightCm: number | null;
+  /** From profile after user runs FFMI calculator; omit to hide FFMI on the card */
+  storedFfmi: number | null;
+  initialBodyFatPercent: number | null;
   lastWorkout: LastWorkoutSummary | null;
   muscleBalanceRadar: MuscleBalanceRadarDistribution | null;
   muscleDistribution: MuscleDistributionPoint[] | null;
@@ -70,6 +77,8 @@ export function DashboardPageContent({
   bodyweightStats,
   profileWeightKg,
   heightCm,
+  storedFfmi,
+  initialBodyFatPercent,
   lastWorkout,
   muscleBalanceRadar,
   muscleDistribution,
@@ -80,6 +89,16 @@ export function DashboardPageContent({
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const weightKg = bodyweightStats.latest?.weight ?? profileWeightKg ?? null;
+  const [ffmiModalOpen, setFfmiModalOpen] = useState(false);
+
+  const bmi =
+    weightKg != null && heightCm != null && heightCm > 0
+      ? calculateBMI(weightKg, heightCm)
+      : null;
+  const bmiCategory = bmi != null ? getBMICategory(bmi) : null;
+  const ffmiCategory = storedFfmi != null ? getFFMICategory(storedFfmi) : null;
+  const cardTitle =
+    storedFfmi != null ? "Bodyweight · BMI · FFMI" : "Bodyweight · BMI";
 
   return (
     <div className="mx-auto max-w-xl space-y-4 px-4 pb-24 pt-6 sm:px-6">
@@ -117,7 +136,7 @@ export function DashboardPageContent({
       <section className="animate-fade-in" style={{ animationDelay: "50ms" }}>
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700">
           <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-            Bodyweight · BMI
+            {cardTitle}
           </h2>
           {weightKg != null ? (
             <>
@@ -135,36 +154,55 @@ export function DashboardPageContent({
                   previous
                 </p>
               )}
-              {(() => {
-                const bmi =
-                  weightKg != null && heightCm != null && heightCm > 0
-                    ? calculateBMI(weightKg, heightCm)
-                    : null;
-                const category = bmi != null ? getBMICategory(bmi) : null;
-                if (bmi == null || category == null) {
-                  return (
-                    <p className="mt-3 text-sm text-zinc-500">Add your height in settings to see BMI.</p>
-                  );
-                }
-                return (
-                  <div className="mt-3 w-full">
-                    <p className="mb-1.5 flex flex-wrap items-baseline gap-2">
-                      <span className="text-base font-semibold tabular-nums text-zinc-100">{bmi}</span>
-                      <span className="text-xs font-medium" style={{ color: category.color }}>
-                        {category.label}
-                      </span>
-                    </p>
-                    <BMISlider bmi={bmi} compact />
-                  </div>
-                );
-              })()}
-              <Link
-                href="/bodyweight"
-                prefetch={true}
-                className="mt-2 inline-flex items-center rounded-lg border border-zinc-600 bg-transparent px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
-              >
-                + Log Weight
-              </Link>
+              {bmi == null || bmiCategory == null ? (
+                <p className="mt-3 text-sm text-zinc-500">Add your height in settings to see BMI.</p>
+              ) : (
+                <div className="mt-3 w-full">
+                  <p className="mb-1 flex flex-wrap items-baseline gap-2">
+                    <span className="text-base font-semibold tabular-nums text-zinc-100">{bmi}</span>
+                    <span className="text-xs font-medium" style={{ color: bmiCategory.color }}>
+                      {bmiCategory.label}
+                    </span>
+                  </p>
+                  <BMISlider bmi={bmi} compact />
+                </div>
+              )}
+              {storedFfmi != null && ffmiCategory != null ? (
+                <p className="mt-1 flex flex-wrap items-baseline gap-2">
+                  <span className="text-sm font-medium text-zinc-500">FFMI:</span>
+                  <span className="text-xl font-semibold tabular-nums text-zinc-100">{storedFfmi}</span>
+                  <span className="text-sm font-medium" style={{ color: ffmiCategory.color }}>
+                    {ffmiCategory.label}
+                  </span>
+                </p>
+              ) : null}
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <Link
+                  href="/bodyweight"
+                  prefetch={true}
+                  className="inline-flex items-center rounded-lg border border-zinc-600 bg-transparent px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+                >
+                  + Log Weight
+                </Link>
+                {bmi != null && bmiCategory != null && heightCm != null && weightKg != null ? (
+                  <button
+                    type="button"
+                    onClick={() => setFfmiModalOpen(true)}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border-2 border-amber-500 bg-zinc-900/80 px-2.5 py-1.5 text-xs font-medium text-zinc-200 shadow-[0_0_0_1px_rgba(245,158,11,0.35)] transition hover:border-amber-400 hover:bg-zinc-800 hover:text-zinc-50"
+                    aria-label="Calculate FFMI"
+                  >
+                    <CalculatorIcon size={16} className="text-amber-400" aria-hidden />
+                    FFMI
+                  </button>
+                ) : null}
+              </div>
+              <FFMICalculateModal
+                open={ffmiModalOpen}
+                onClose={() => setFfmiModalOpen(false)}
+                heightCm={heightCm ?? 0}
+                weightKg={weightKg ?? 0}
+                initialBodyFatPercent={initialBodyFatPercent}
+              />
             </>
           ) : (
             <>
