@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button, buttonClass } from "@/app/components/Button";
 import { haptic } from "@/lib/haptic";
+import { FriendListRowWithMenu } from "@/app/components/FriendListRowWithMenu";
 import {
   acceptIncomingFriendRequest,
   declineIncomingFriendRequest,
@@ -202,12 +203,12 @@ export function SocialFriendsClient() {
                 <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
                   {r.username || "Unknown user"}
                 </span>
-                <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" onClick={() => onDecline(r.id)}>
-                    Decline
-                  </Button>
+                <div className="flex shrink-0 gap-2">
                   <Button variant="primary" size="sm" onClick={() => onAccept(r.id)}>
                     Accept
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => onDecline(r.id)}>
+                    Decline
                   </Button>
                 </div>
               </li>
@@ -229,11 +230,12 @@ export function SocialFriendsClient() {
         ) : (
           <ul className="mt-3 space-y-2">
             {friends.map((f) => (
-              <li
-                key={f.friend_id}
-                className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm font-medium text-zinc-100"
-              >
-                {f.username}
+              <li key={f.friend_id}>
+                <FriendListRowWithMenu
+                  friendId={f.friend_id}
+                  username={f.username}
+                  onRemoved={(id) => setFriends((prev) => prev.filter((x) => x.friend_id !== id))}
+                />
               </li>
             ))}
           </ul>

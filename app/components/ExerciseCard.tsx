@@ -1,9 +1,11 @@
 "use client";
 
 import { useState, memo } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { deleteExercise } from "@/app/actions/exercises";
+import { useLockBodyScroll } from "@/app/lib/useLockBodyScroll";
 import type { Exercise } from "@/lib/types";
 import { EditExerciseModal } from "@/app/components/EditExerciseModal";
 import { buttonClass } from "@/app/components/Button";
@@ -38,6 +40,8 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
       // ignore
     }
   }
+
+  useLockBodyScroll(showDeleteConfirm);
 
   if (optimisticallyDeleted) return null;
 
@@ -98,37 +102,39 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
         />
       )}
 
-      {showDeleteConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="delete-exercise-title"
-        >
-          <div className="w-full max-w-sm rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
-            <h3 id="delete-exercise-title" className="text-sm font-medium text-zinc-100">
-              Delete &quot;{exercise.name}&quot;? This will remove the exercise and all its workout history.
-            </h3>
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDeleteConfirm(false)}
-                className={buttonClass.modalCancel}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deletePending}
-                className={buttonClass.modalConfirm}
-              >
-                {deletePending ? "Deleting…" : "Delete"}
-              </button>
+      {showDeleteConfirm &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto overscroll-none bg-black/60 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-exercise-title"
+          >
+            <div className="my-auto w-full max-w-sm rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
+              <h3 id="delete-exercise-title" className="text-sm font-medium text-zinc-100">
+                Delete &quot;{exercise.name}&quot;? This will remove the exercise and all its workout history.
+              </h3>
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className={buttonClass.modalCancel}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deletePending}
+                  className={buttonClass.modalConfirm}
+                >
+                  {deletePending ? "Deleting…" : "Delete"}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { deleteWorkout } from "@/app/actions/workouts";
+import { useLockBodyScroll } from "@/app/lib/useLockBodyScroll";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { buttonClass } from "@/app/components/Button";
@@ -29,25 +30,7 @@ export function WorkoutHistory({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!confirmId) return;
-    const html = document.documentElement;
-    const prevHtml = html.style.overflow;
-    const prevBody = document.body.style.overflow;
-    html.style.overflow = "hidden";
-    document.body.style.overflow = "hidden";
-    return () => {
-      html.style.overflow = prevHtml;
-      document.body.style.overflow = prevBody;
-    };
-  }, [confirmId]);
-
-  useEffect(() => {
-    return () => {
-      document.documentElement.style.overflow = "";
-      document.body.style.overflow = "";
-    };
-  }, []);
+  useLockBodyScroll(confirmId !== null);
 
   const visible = workouts.filter((w) => !removedIds.has(w.id));
 
@@ -96,7 +79,7 @@ export function WorkoutHistory({
       {confirmId &&
         createPortal(
           <div
-            className="fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto overscroll-none bg-black/60 p-4"
+            className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto overscroll-none bg-black/60 p-4"
             role="dialog"
             aria-modal="true"
             aria-labelledby="delete-workout-title"

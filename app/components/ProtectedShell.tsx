@@ -112,12 +112,12 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-zinc-950 pb-[env(safe-area-inset-bottom)] text-zinc-100">
       {showFixedHeader ? (
-        <div className="fixed inset-x-0 top-0 z-[210] h-14 bg-zinc-950">
+        <div className="fixed inset-x-0 top-0 z-[210] bg-zinc-950 pt-[env(safe-area-inset-top,0px)]">
           <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
         </div>
       ) : null}
       <main
-        className={`min-h-0 flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-[calc(5rem+env(safe-area-inset-bottom))] ${showFixedHeader ? "pt-14" : "pt-0"}`}
+        className={`min-h-0 flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-[calc(5rem+env(safe-area-inset-bottom))] ${showFixedHeader ? "pt-[calc(3.5rem+env(safe-area-inset-top,0px))]" : "pt-0"}`}
       >
         {children}
       </main>

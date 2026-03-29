@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { FriendListRowWithMenu } from "@/app/components/FriendListRowWithMenu";
 import { getFriendsList, type FriendListItem } from "@/app/actions/social";
 
 export function SocialFriendsList() {
@@ -38,12 +38,11 @@ export function SocialFriendsList() {
         <ul className="mt-3 space-y-2">
           {friends.map((f) => (
             <li key={f.friend_id}>
-              <Link
-                href={`/friend/${f.friend_id}`}
-                className="block rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm font-medium text-zinc-100 transition-colors hover:border-zinc-700 hover:bg-zinc-900/70 tap-feedback"
-              >
-                {f.username}
-              </Link>
+              <FriendListRowWithMenu
+                friendId={f.friend_id}
+                username={f.username}
+                onRemoved={(id) => setFriends((prev) => prev.filter((x) => x.friend_id !== id))}
+              />
             </li>
           ))}
         </ul>

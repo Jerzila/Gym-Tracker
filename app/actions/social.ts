@@ -229,16 +229,46 @@ export async function sendFriendRequest(
     .maybeSingle();
   if (existingFriend) return { already: true };
 
-  // Existing pending request in either direction?
+  // After unfriend, `friend_requests` can still be `accepted`; that must not block a new request.
+  const { error: clearAcceptedErr } = await supabase
+    .from("friend_requests")
+    .delete()
+    .or(
+      `and(sender_id.eq.${user.id},receiver_id.eq.${receiver_id}),and(sender_id.eq.${receiver_id},receiver_id.eq.${user.id})`
+    )
+    .eq("status", "accepted");
+
+  if (clearAcceptedErr) return { error: clearAcceptedErr.message };
+
+  // Existing pending request in either direction? (accepted rows were cleared above when stale.)
   const { data: existingReq } = await supabase
     .from("friend_requests")
     .select("id, status, sender_id, receiver_id")
     .or(
       `and(sender_id.eq.${user.id},receiver_id.eq.${receiver_id}),and(sender_id.eq.${receiver_id},receiver_id.eq.${user.id})`
     )
-    .in("status", ["pending", "accepted"])
+    .eq("status", "pending")
     .maybeSingle();
   if (existingReq) return { already: true };
+
+  // Same pair (I was sender) was declined/rejected — unique (sender_id, receiver_id) blocks a new insert.
+  const { data: declinedOut } = await supabase
+    .from("friend_requests")
+    .select("id")
+    .eq("sender_id", user.id)
+    .eq("receiver_id", receiver_id)
+    .in("status", ["declined", "rejected"])
+    .maybeSingle();
+
+  if (declinedOut) {
+    const { error } = await supabase
+      .from("friend_requests")
+      .update({ status: "pending", created_at: new Date().toISOString() })
+      .eq("id", declinedOut.id)
+      .eq("sender_id", user.id);
+    if (error) return { error: error.message };
+    return { ok: true };
+  }
 
   const { error } = await supabase.from("friend_requests").insert({
     sender_id: user.id,
@@ -247,6 +277,22 @@ export async function sendFriendRequest(
   });
 
   if (error?.code === "23505") return { already: true };
+  if (error) return { error: error.message };
+  return { ok: true };
+}
+
+export async function removeFriend(friendId: string): Promise<{ ok?: true; error?: string }> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const fid = String(friendId || "").trim();
+  if (!fid || fid === user.id) return { error: "Invalid friend" };
+
+  // SECURITY DEFINER RPC deletes both (me→them) and (them→me) in one transaction; RLS cannot block half the pair.
+  const { error } = await supabase.rpc("remove_friendship", { p_friend_id: fid });
   if (error) return { error: error.message };
   return { ok: true };
 }
@@ -300,24 +346,37 @@ export async function getIncomingFriendRequests(): Promise<{
   } = await supabase.auth.getUser();
   if (!user) return { requests: [], error: "Not authenticated" };
 
-  const { data, error } = await supabase
+  // Avoid embedding `profiles` in one query: friend_requests has two FKs to profiles (sender + receiver),
+  // which makes PostgREST embedding ambiguous and can return no rows or fail silently per version.
+  const { data: reqRows, error: reqErr } = await supabase
     .from("friend_requests")
-    .select("id, sender_id, created_at, profiles:sender_id(username)")
+    .select("id, sender_id, created_at")
     .eq("receiver_id", user.id)
     .eq("status", "pending")
     .order("created_at", { ascending: false });
 
-  if (error) return { requests: [], error: error.message };
+  if (reqErr) return { requests: [], error: reqErr.message };
 
-  const requests: IncomingFriendRequest[] = (data ?? []).map((r: any) => ({
-    id: String(r.id),
-    sender_id: String(r.sender_id),
-    created_at: String(r.created_at),
-    username: String(r.profiles?.username ?? ""),
-  }));
+  const rows = reqRows ?? [];
+  if (rows.length === 0) return { requests: [] };
 
-  // Don't drop rows if sender profile is temporarily unreadable (RLS) or missing username.
-  // The UI can still show the request and allow accept/decline.
+  const senderIds = [...new Set(rows.map((r) => String((r as { sender_id: string }).sender_id)))];
+  const { data: profileRows } = await supabase.from("profiles").select("id, username").in("id", senderIds);
+
+  const usernameById = new Map(
+    (profileRows ?? []).map((p) => [String((p as { id: string }).id), String((p as { username?: string | null }).username ?? "")])
+  );
+
+  const requests: IncomingFriendRequest[] = rows.map((r) => {
+    const row = r as { id: string; sender_id: string; created_at: string };
+    return {
+      id: String(row.id),
+      sender_id: String(row.sender_id),
+      created_at: String(row.created_at),
+      username: usernameById.get(String(row.sender_id)) ?? "",
+    };
+  });
+
   return { requests };
 }
 

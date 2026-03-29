@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { updateExercise } from "@/app/actions/exercises";
+import { useLockBodyScroll } from "@/app/lib/useLockBodyScroll";
 import type { Exercise } from "@/lib/types";
 
 function formAction(_: { error?: string } | undefined, formData: FormData) {
@@ -29,14 +31,16 @@ export function EditExerciseModal({
     }
   }, [state, onSuccess, onClose]);
 
-  return (
+  useLockBodyScroll(true);
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto overscroll-none bg-black/60 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="edit-exercise-title"
     >
-      <div className="w-full max-w-sm rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
+      <div className="my-auto w-full max-w-sm max-h-[min(90dvh,100%)] overflow-y-auto rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
         <h3 id="edit-exercise-title" className="text-sm font-medium text-zinc-100">
           Edit exercise
         </h3>
@@ -119,6 +123,7 @@ export function EditExerciseModal({
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

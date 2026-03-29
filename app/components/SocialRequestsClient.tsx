@@ -13,15 +13,17 @@ import { haptic } from "@/lib/haptic";
 export function SocialRequestsClient() {
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<IncomingFriendRequest[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     let intervalId: number | null = null;
 
     async function refresh() {
-      const { requests } = await getIncomingFriendRequests();
+      const { requests, error } = await getIncomingFriendRequests();
       if (cancelled) return;
       setRequests(requests);
+      setLoadError(error ?? null);
       setLoading(false);
     }
 
@@ -59,11 +61,17 @@ export function SocialRequestsClient() {
         <p className="text-xs text-zinc-500">Incoming</p>
       </div>
 
+      {loadError ? (
+        <p className="mt-3 text-sm text-red-400" role="alert">
+          Could not load requests: {loadError}
+        </p>
+      ) : null}
+
       {loading ? (
         <p className="mt-3 text-sm text-zinc-500">Loading…</p>
-      ) : requests.length === 0 ? (
+      ) : !loadError && requests.length === 0 ? (
         <p className="mt-3 text-sm text-zinc-500">No pending requests.</p>
-      ) : (
+      ) : !loadError ? (
         <ul className="mt-3 space-y-2">
           {requests.map((r) => (
             <li
@@ -73,18 +81,18 @@ export function SocialRequestsClient() {
               <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
                 {r.username || "Unknown user"}
               </span>
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={() => onDecline(r.id)}>
-                  Decline
-                </Button>
+              <div className="flex shrink-0 gap-2">
                 <Button variant="primary" size="sm" onClick={() => onAccept(r.id)}>
                   Accept
+                </Button>
+                <Button variant="secondary" size="sm" onClick={() => onDecline(r.id)}>
+                  Decline
                 </Button>
               </div>
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </section>
   );
 }

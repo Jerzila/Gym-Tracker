@@ -37,6 +37,184 @@ export async function countWorkoutSessionsFromDate(
   return { count: count ?? 0 };
 }
 
+type WorkoutRow = {
+  id: string;
+  exercise_id: string;
+  date: string;
+  weight: unknown;
+};
+
+/**
+ * Same aggregate definitions as lifetime totals (`computeUserLifetimeWorkoutAggregatesForUser`),
+ * but for an arbitrary ordered list of workout rows (e.g. date-filtered).
+ */
+async function computeAggregatesFromWorkoutRows(
+  supabase: SupabaseClient,
+  list: WorkoutRow[]
+): Promise<{ data: UserLifetimeWorkoutAggregates | null; error?: string }> {
+  const sorted = list.slice().sort((a, b) => {
+    const da = String(a.date).localeCompare(String(b.date));
+    if (da !== 0) return da;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  const workoutCount = sorted.length;
+  const exerciseCount = new Set(sorted.map((w) => w.exercise_id as string)).size;
+
+  if (sorted.length === 0) {
+    return {
+      data: { workoutCount: 0, exerciseCount: 0, setCount: 0, prCount: 0, totalVolumeKg: 0 },
+    };
+  }
+
+  const exerciseIds = [...new Set(sorted.map((w) => w.exercise_id as string))];
+  const { data: exercises } = await supabase
+    .from("exercises")
+    .select("id, load_type")
+    .in("id", exerciseIds);
+  const loadTypeByExerciseId = new Map(
+    (exercises ?? []).map((e) => [e.id as string, normalizeLoadType((e as { load_type?: unknown }).load_type)])
+  );
+
+  const workoutIds = sorted.map((w) => w.id as string);
+  const CHUNK = 200;
+  const allSets: { workout_id: string; reps: number }[] = [];
+
+  for (let i = 0; i < workoutIds.length; i += CHUNK) {
+    const chunk = workoutIds.slice(i, i + CHUNK);
+    const { data: sets, error: sError } = await supabase
+      .from("sets")
+      .select("workout_id, reps")
+      .in("workout_id", chunk);
+
+    if (sError) return { data: null, error: sError.message };
+    for (const s of sets ?? []) {
+      allSets.push({ workout_id: s.workout_id as string, reps: Number(s.reps) });
+    }
+  }
+
+  const setsByWorkout = new Map<string, number[]>();
+  for (const s of allSets) {
+    const arr = setsByWorkout.get(s.workout_id) ?? [];
+    arr.push(s.reps);
+    setsByWorkout.set(s.workout_id, arr);
+  }
+
+  const setCount = allSets.length;
+
+  let totalVolumeKg = 0;
+  for (const w of sorted) {
+    const wid = w.id as string;
+    const weight = Number(w.weight) || 0;
+    for (const reps of setsByWorkout.get(wid) ?? []) {
+      totalVolumeKg += weight * Math.max(0, reps);
+    }
+  }
+
+  let prCount = 0;
+  const bestByExercise = new Map<string, number>();
+  for (const w of sorted) {
+    const wid = w.id as string;
+    const eid = w.exercise_id as string;
+    const repsList = setsByWorkout.get(wid) ?? [];
+    const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
+    const weight = Number(w.weight) || 0;
+    const effectiveWeight = getEffectiveWeight(weight, loadTypeByExerciseId.get(eid));
+    const est = epley1RM(effectiveWeight, bestReps);
+    const prev = bestByExercise.get(eid) ?? 0;
+    if (est >= prev) {
+      prCount += 1;
+    }
+    bestByExercise.set(eid, Math.max(prev, est));
+  }
+
+  return {
+    data: { workoutCount, exerciseCount, setCount, prCount, totalVolumeKg },
+  };
+}
+
+/**
+ * Profile-style PR tally for rows whose `date` falls in [startInclusive, endInclusive]:
+ * chronological history through `endInclusive` for the given exercises, same `est >= prev`
+ * rule as lifetime aggregates, but only increments when the workout row is in the week.
+ */
+async function countProfileStylePrsInWeek(
+  supabase: SupabaseClient,
+  userId: string,
+  startInclusive: string,
+  endInclusive: string,
+  exerciseIds: string[]
+): Promise<{ count: number; error?: string }> {
+  if (exerciseIds.length === 0) return { count: 0 };
+
+  const { data: hist, error: hError } = await supabase
+    .from("workouts")
+    .select("id, exercise_id, date, weight")
+    .eq("user_id", userId)
+    .in("exercise_id", exerciseIds)
+    .lte("date", endInclusive);
+
+  if (hError) return { count: 0, error: hError.message };
+
+  const list = (hist ?? []).slice().sort((a, b) => {
+    const da = String(a.date).localeCompare(String(b.date));
+    if (da !== 0) return da;
+    return String(a.id).localeCompare(String(b.id));
+  });
+
+  if (list.length === 0) return { count: 0 };
+
+  const { data: exercises } = await supabase
+    .from("exercises")
+    .select("id, load_type")
+    .in("id", exerciseIds);
+  const loadTypeByExerciseId = new Map(
+    (exercises ?? []).map((e) => [e.id as string, normalizeLoadType((e as { load_type?: unknown }).load_type)])
+  );
+
+  const workoutIds = list.map((w) => w.id as string);
+  const CHUNK = 200;
+  const setsByWorkout = new Map<string, number[]>();
+
+  for (let i = 0; i < workoutIds.length; i += CHUNK) {
+    const chunk = workoutIds.slice(i, i + CHUNK);
+    const { data: sets, error: sError } = await supabase
+      .from("sets")
+      .select("workout_id, reps")
+      .in("workout_id", chunk);
+
+    if (sError) return { count: 0, error: sError.message };
+    for (const s of sets ?? []) {
+      const wid = s.workout_id as string;
+      const arr = setsByWorkout.get(wid) ?? [];
+      arr.push(Number(s.reps));
+      setsByWorkout.set(wid, arr);
+    }
+  }
+
+  let prCount = 0;
+  const bestByExercise = new Map<string, number>();
+
+  for (const w of list) {
+    const wid = w.id as string;
+    const eid = w.exercise_id as string;
+    const d = String(w.date);
+    const inWeek = d >= startInclusive && d <= endInclusive;
+    const repsList = setsByWorkout.get(wid) ?? [];
+    const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
+    const weight = Number(w.weight) || 0;
+    const effectiveWeight = getEffectiveWeight(weight, loadTypeByExerciseId.get(eid));
+    const est = epley1RM(effectiveWeight, bestReps);
+    const prev = bestByExercise.get(eid) ?? 0;
+    if (inWeek && est >= prev) {
+      prCount += 1;
+    }
+    bestByExercise.set(eid, Math.max(prev, est));
+  }
+
+  return { count: prCount };
+}
+
 /**
  * Lifetime workout aggregates for a user. Caller supplies an authenticated Supabase client
  * (RLS applies). Used by server actions and `recalculateUserRankings`.
@@ -53,83 +231,55 @@ export async function computeUserLifetimeWorkoutAggregatesForUser(
 
     if (wError) return { data: null, error: wError.message };
 
-    const list = (workouts ?? []).slice().sort((a, b) => {
-      const da = String(a.date).localeCompare(String(b.date));
-      if (da !== 0) return da;
-      return String(a.id).localeCompare(String(b.id));
-    });
-    const workoutCount = list.length;
-    const exerciseCount = new Set(list.map((w) => w.exercise_id as string)).size;
-
-    if (list.length === 0) {
-      return {
-        data: { workoutCount: 0, exerciseCount: 0, setCount: 0, prCount: 0, totalVolumeKg: 0 },
-      };
+    return computeAggregatesFromWorkoutRows(supabase, (workouts ?? []) as WorkoutRow[]);
+  } catch (e) {
+    if (isConnectionError(e)) {
+      return { data: null, error: "Can't connect to Supabase. Check your .env.local." };
     }
+    return {
+      data: null,
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
+}
 
-    const exerciseIds = [...new Set(list.map((w) => w.exercise_id as string))];
-    const { data: exercises } = await supabase
-      .from("exercises")
-      .select("id, load_type")
-      .in("id", exerciseIds);
-    const loadTypeByExerciseId = new Map(
-      (exercises ?? []).map((e) => [e.id as string, normalizeLoadType((e as { load_type?: unknown }).load_type)])
+/**
+ * Inclusive `YYYY-MM-DD` bounds. Volume / sets / workout rows match that window only.
+ * PR count uses the same running-best rule as profile lifetime stats, but only counts
+ * workout rows whose date is in the window (history before end of week is included for context).
+ */
+export async function computeUserWorkoutAggregatesForUserInDateRange(
+  supabase: SupabaseClient,
+  userId: string,
+  startInclusive: string,
+  endInclusive: string
+): Promise<{ data: UserLifetimeWorkoutAggregates | null; error?: string }> {
+  try {
+    const { data: workouts, error: wError } = await supabase
+      .from("workouts")
+      .select("id, exercise_id, date, weight")
+      .eq("user_id", userId)
+      .gte("date", startInclusive)
+      .lte("date", endInclusive);
+
+    if (wError) return { data: null, error: wError.message };
+
+    const weekList = (workouts ?? []) as WorkoutRow[];
+    const base = await computeAggregatesFromWorkoutRows(supabase, weekList);
+    if (base.error || !base.data) return base;
+
+    const exerciseIds = [...new Set(weekList.map((w) => w.exercise_id as string))];
+    const { count: prCount, error: prError } = await countProfileStylePrsInWeek(
+      supabase,
+      userId,
+      startInclusive,
+      endInclusive,
+      exerciseIds
     );
-
-    const workoutIds = list.map((w) => w.id as string);
-    const CHUNK = 200;
-    const allSets: { workout_id: string; reps: number }[] = [];
-
-    for (let i = 0; i < workoutIds.length; i += CHUNK) {
-      const chunk = workoutIds.slice(i, i + CHUNK);
-      const { data: sets, error: sError } = await supabase
-        .from("sets")
-        .select("workout_id, reps")
-        .in("workout_id", chunk);
-
-      if (sError) return { data: null, error: sError.message };
-      for (const s of sets ?? []) {
-        allSets.push({ workout_id: s.workout_id as string, reps: Number(s.reps) });
-      }
-    }
-
-    const setsByWorkout = new Map<string, number[]>();
-    for (const s of allSets) {
-      const arr = setsByWorkout.get(s.workout_id) ?? [];
-      arr.push(s.reps);
-      setsByWorkout.set(s.workout_id, arr);
-    }
-
-    const setCount = allSets.length;
-
-    let totalVolumeKg = 0;
-    for (const w of list) {
-      const wid = w.id as string;
-      const weight = Number(w.weight) || 0;
-      for (const reps of setsByWorkout.get(wid) ?? []) {
-        totalVolumeKg += weight * Math.max(0, reps);
-      }
-    }
-
-    let prCount = 0;
-    const bestByExercise = new Map<string, number>();
-    for (const w of list) {
-      const wid = w.id as string;
-      const eid = w.exercise_id as string;
-      const repsList = setsByWorkout.get(wid) ?? [];
-      const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
-      const weight = Number(w.weight) || 0;
-      const effectiveWeight = getEffectiveWeight(weight, loadTypeByExerciseId.get(eid));
-      const est = epley1RM(effectiveWeight, bestReps);
-      const prev = bestByExercise.get(eid) ?? 0;
-      if (est >= prev) {
-        prCount += 1;
-      }
-      bestByExercise.set(eid, Math.max(prev, est));
-    }
+    if (prError) return { data: null, error: prError };
 
     return {
-      data: { workoutCount, exerciseCount, setCount, prCount, totalVolumeKg },
+      data: { ...base.data, prCount },
     };
   } catch (e) {
     if (isConnectionError(e)) {

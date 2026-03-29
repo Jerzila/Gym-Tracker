@@ -3,7 +3,6 @@
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 function logServerError(context: string, err: unknown) {
   console.error(`[auth] ${context}`, err);
@@ -188,38 +187,47 @@ export async function updatePassword(formData: FormData) {
   }
 }
 
-function createSupabaseAdminClient() {
-  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const url = typeof rawUrl === "string" ? rawUrl.trim() : "";
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
-
-  if (!url || !serviceRoleKey) {
-    throw new Error("Missing admin Supabase env for account deletion.");
-  }
-
-  return createSupabaseClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+function getSupabaseAnonKey(): string {
+  return (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+  )?.trim() ?? "";
 }
 
-async function deleteUserRows(supabase: Awaited<ReturnType<typeof createServerClient>>, userId: string) {
-  const deleteFromUserIdTable = async (table: string) => {
-    const { error } = await supabase.from(table).delete().eq("user_id", userId);
-    if (error && error.code !== "42P01") {
-      throw new Error(error.message);
-    }
-  };
+/**
+ * Account data + auth user removal runs in the `delete-user` Edge Function (service role).
+ * Requires deploy: `supabase functions deploy delete-user`
+ */
+async function invokeDeleteUserEdgeFunction(accessToken: string): Promise<{ error?: string }> {
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const baseUrl = typeof rawUrl === "string" ? rawUrl.trim().replace(/\/$/, "") : "";
+  const anonKey = getSupabaseAnonKey();
 
-  await deleteFromUserIdTable("sets");
-  await deleteFromUserIdTable("workouts");
-  await deleteFromUserIdTable("exercises");
-  await deleteFromUserIdTable("bodyweight_logs");
-  await deleteFromUserIdTable("rankings");
-
-  const { error: profileDeleteError } = await supabase.from("profiles").delete().eq("id", userId);
-  if (profileDeleteError && profileDeleteError.code !== "42P01") {
-    throw new Error(profileDeleteError.message);
+  if (!baseUrl || !anonKey) {
+    return { error: "Account deletion is not configured. Please try again later." };
   }
+
+  const fnUrl = `${baseUrl}/functions/v1/delete-user`;
+  let res: Response;
+  try {
+    res = await fetch(fnUrl, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey,
+      },
+    });
+  } catch (err) {
+    logServerError("invokeDeleteUserEdgeFunction fetch failed", err);
+    return { error: "Unable to reach account deletion service. Please try again." };
+  }
+
+  const body = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
+  if (!res.ok || !body.success) {
+    return { error: body.error ?? "Unable to delete your account. Please try again." };
+  }
+
+  return {};
 }
 
 export async function deleteAccount(formData: FormData) {
@@ -239,7 +247,7 @@ export async function deleteAccount(formData: FormData) {
       return { error: "You must be signed in to delete your account." };
     }
 
-    const { error: passwordError } = await supabase.auth.signInWithPassword({
+    const { data: signInData, error: passwordError } = await supabase.auth.signInWithPassword({
       email: user.email,
       password,
     });
@@ -247,14 +255,22 @@ export async function deleteAccount(formData: FormData) {
       return { error: "Incorrect password. Please try again." };
     }
 
-    await deleteUserRows(supabase, user.id);
+    const accessToken = signInData.session?.access_token;
+    if (!accessToken) {
+      return { error: "Unable to verify your session for account deletion." };
+    }
 
-    const supabaseAdmin = createSupabaseAdminClient();
-    const { error: deleteAuthError } = await supabaseAdmin.auth.admin.deleteUser(user.id);
-    if (deleteAuthError) throw deleteAuthError;
+    const fnResult = await invokeDeleteUserEdgeFunction(accessToken);
+    if (fnResult.error) {
+      return { error: fnResult.error };
+    }
 
-    const { error: signOutError } = await supabase.auth.signOut();
-    if (signOutError) throw signOutError;
+    try {
+      const { error: signOutError } = await supabase.auth.signOut();
+      if (signOutError) logServerError("deleteAccount signOut after edge delete", signOutError);
+    } catch (signOutErr) {
+      logServerError("deleteAccount signOut threw after edge delete", signOutErr);
+    }
 
     return { success: true };
   } catch (err) {

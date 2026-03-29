@@ -27,7 +27,9 @@ export function ThisWeekSection() {
   const hasWorkouts = stats.workoutCount > 0;
 
   return (
-    <div className="mt-2 space-y-0.5" aria-label="This week summary">
+    <div className="mt-2 space-y-1" aria-label="This week summary">
+      <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">This week</p>
+      <p className="text-xs text-zinc-500">{stats.weekLabel}</p>
       {hasWorkouts ? (
         <>
           <p className="text-sm text-zinc-400">
