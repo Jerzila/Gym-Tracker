@@ -5,6 +5,7 @@ import {
   type CoreExerciseType,
   type CoreImprovementSuggestion,
 } from "@/lib/computeStrengthRankingForUser";
+import { parseStoredRankingsMusclePayload } from "@/lib/friendStrengthFromRankings";
 import { createServerClient } from "@/lib/supabase/server";
 import {
   categoryToStrengthMuscles,
@@ -39,6 +40,11 @@ export type StrengthRankingWithExercises = StrengthRankingOutput & {
 export type GetStrengthRankingResult = {
   data: StrengthRankingWithExercises | null;
   error?: string;
+};
+
+export type WorkoutDateBounds = {
+  earliestWorkoutDate: string | null;
+  latestWorkoutDate: string | null;
 };
 
 const emptyMuscleRank = {
@@ -223,4 +229,165 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
       error: e instanceof Error ? e.message : "Something went wrong.",
     };
   }
+}
+
+export async function getWorkoutDateBounds(): Promise<{
+  data: WorkoutDateBounds;
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: { earliestWorkoutDate: null, latestWorkoutDate: null }, error: "Not authenticated" };
+
+    const [earliestRes, latestRes] = await Promise.all([
+      supabase
+        .from("workouts")
+        .select("date")
+        .eq("user_id", user.id)
+        .order("date", { ascending: true })
+        .limit(1),
+      supabase
+        .from("workouts")
+        .select("date")
+        .eq("user_id", user.id)
+        .order("date", { ascending: false })
+        .limit(1),
+    ]);
+
+    const earliestWorkoutDate = earliestRes.data?.[0]?.date ?? null;
+    const latestWorkoutDate = latestRes.data?.[0]?.date ?? null;
+    return { data: { earliestWorkoutDate, latestWorkoutDate } };
+  } catch (e) {
+    return {
+      data: { earliestWorkoutDate: null, latestWorkoutDate: null },
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
+}
+
+export async function getStrengthRankingAtDate(endDateISO: string): Promise<GetStrengthRankingResult> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { data: null, error: "Not authenticated" };
+
+    const computed = await computeStrengthRankingBundleForUser(supabase, user.id, { endDate: endDateISO });
+    if (!computed.ok) {
+      return { data: defaultStrengthRankingWithExercises() };
+    }
+
+    const {
+      output,
+      exerciseDataPoints,
+      exerciseCountByMuscle,
+      categoryByExercise,
+      bodyweightKg,
+      coreImprovementSuggestions,
+    } = computed.bundle;
+
+    const topExercisesData = getTopExercisesByMuscleForSuggestions(exerciseDataPoints);
+
+    const bestExerciseByMuscle: Record<StrengthRankMuscle, BestExerciseByMuscle | null> = {
+      chest: null,
+      back: null,
+      legs: null,
+      shoulders: null,
+      biceps: null,
+      triceps: null,
+      forearms: null,
+      traps: null,
+      core: null,
+    };
+    const topExercisesByMuscle: TopExercisesByMuscle = {
+      chest: [],
+      back: [],
+      legs: [],
+      shoulders: [],
+      biceps: [],
+      triceps: [],
+      forearms: [],
+      traps: [],
+      core: [],
+    };
+    const improvementSuggestionsByMuscle = Object.fromEntries(
+      STRENGTH_RANK_MUSCLES.map((m) => [m, [] as WeightIncreaseSuggestion[]])
+    ) as Record<StrengthRankMuscle, WeightIncreaseSuggestion[]>;
+
+    for (const muscle of STRENGTH_RANK_MUSCLES) {
+      const list = topExercisesData[muscle] ?? [];
+      if (list.length > 0) {
+        bestExerciseByMuscle[muscle] = { name: list[0].name, estimated1RM: list[0].estimated1RM };
+        topExercisesByMuscle[muscle] = list.map(({ name, estimated1RM }) => ({ name, estimated1RM }));
+        if (muscle !== "core") {
+          const nextScore = getNextRankThreshold(output.muscleScores[muscle], muscle);
+          if (nextScore != null && nextScore > output.muscleScores[muscle]) {
+            const suggestions = getWeightIncreaseSuggestions(
+              bodyweightKg > 0 ? bodyweightKg : 1,
+              output.muscleScores[muscle],
+              nextScore,
+              list.map(({ exerciseId, name, estimated1RM }) => ({
+                exerciseId,
+                name,
+                estimated1RM,
+              }))
+            );
+            improvementSuggestionsByMuscle[muscle] = suggestions;
+          }
+        }
+      }
+    }
+
+    const hasExerciseFor = (muscle: StrengthRankMuscle) =>
+      Object.values(categoryByExercise).some((cat) => categoryToStrengthMuscles(cat).includes(muscle));
+
+    const visibleMuscles: StrengthRankMuscle[] = [
+      ...PRIMARY_STRENGTH_RANK_MUSCLES,
+      ...(exerciseCountByMuscle.forearms > 0 ? (["forearms"] as const) : []),
+      ...(exerciseCountByMuscle.core > 0 ? (["core"] as const) : []),
+      ...(hasExerciseFor("traps") ? (["traps"] as const) : []),
+    ];
+
+    return {
+      data: {
+        ...output,
+        bestExerciseByMuscle,
+        topExercisesByMuscle,
+        improvementSuggestionsByMuscle,
+        visibleMuscles,
+        exerciseCountByMuscle,
+        coreImprovementSuggestions,
+      },
+    };
+  } catch (e) {
+    return {
+      data: null,
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
+}
+
+/**
+ * Build a `StrengthRankingWithExercises` for another user's stored `rankings` row
+ * (friend profile, compare view). Muscle tap panel has no best exercise / suggestions.
+ */
+export async function rankingWithExercisesFromStoredRankingsJson(
+  muscleRanksJson: unknown,
+  muscleScoresJson: unknown
+): Promise<StrengthRankingWithExercises> {
+  const { muscleRanks, exerciseCountByMuscle, muscleScores } = parseStoredRankingsMusclePayload(
+    muscleRanksJson,
+    muscleScoresJson
+  );
+  const base = defaultStrengthRankingWithExercises();
+  return {
+    ...base,
+    muscleRanks,
+    exerciseCountByMuscle,
+    muscleScores,
+  };
 }

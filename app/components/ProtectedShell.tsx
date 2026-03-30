@@ -14,6 +14,8 @@ function getPageTitle(pathname: string): string {
   if (pathname === "/exercises") return "Exercises";
   if (pathname === "/calendar") return "Calendar";
   if (pathname === "/insights") return "Insights";
+  if (pathname === "/insights/strength-progress") return "Insights";
+  if (pathname === "/insights/strength-compare") return "Compare strength";
   if (pathname === "/social") return "Social";
   if (pathname === "/bodyweight") return "Bodyweight";
   if (pathname === "/account") return "Account";

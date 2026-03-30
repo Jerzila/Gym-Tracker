@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import Body, { type ExtendedBodyPart } from "react-muscle-highlighter";
 import { RankBadge } from "@/app/components/RankBadge";
-import { getRankColor, RANK_COLORS } from "@/lib/rankBadges";
+import { getRankColor, RANK_COLORS, RANK_LEGEND_ENTRIES } from "@/lib/rankBadges";
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
@@ -63,21 +63,6 @@ const STRENGTH_MUSCLE_LABEL: Record<StrengthRankMuscle, string> = {
   traps: "Traps",
   core: "Core",
 };
-
-/** Legend order and labels for rank colors. */
-const RANK_LEGEND_ENTRIES: { rank: RankSlug; label: string }[] = [
-  { rank: "newbie", label: "Newbie" },
-  { rank: "starter", label: "Starter" },
-  { rank: "apprentice", label: "Apprentice" },
-  { rank: "lifter", label: "Lifter" },
-  { rank: "semi-pro", label: "Semi-Pro" },
-  { rank: "pro", label: "Pro" },
-  { rank: "elite", label: "Elite" },
-  { rank: "master", label: "Master" },
-  { rank: "grandmaster", label: "Grandmaster" },
-  { rank: "titan", label: "Titan" },
-  { rank: "goat", label: "GOAT" },
-];
 
 type Props = {
   data: StrengthRankingWithExercises;
@@ -279,14 +264,6 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
       )}
       {/* Section 7: Rank color legend — compact */}
       <div className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-zinc-500">
-        <span className="flex items-center gap-1">
-          <span
-            className="h-2 w-2 shrink-0 rounded"
-            style={{ backgroundColor: RANK_COLORS.newbie }}
-            aria-hidden
-          />
-          Newbie
-        </span>
         {RANK_LEGEND_ENTRIES.map(({ rank, label }) => (
           <span key={rank} className="flex items-center gap-1">
             <span

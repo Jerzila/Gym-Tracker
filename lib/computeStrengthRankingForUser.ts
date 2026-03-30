@@ -184,32 +184,49 @@ export type StrengthRankingComputeResult =
   | { ok: false; reason: "no_exercises_and_no_bodyweight" }
   | { ok: true; bundle: StrengthRankingComputeBundle };
 
+export type ComputeStrengthRankingBundleOptions = {
+  /**
+   * Optional ISO date string (YYYY-MM-DD). When provided, only workouts and bodyweight logs
+   * on/before this date are considered (ranking "as of" that date).
+   */
+  endDate?: string;
+};
+
 /**
  * Same inputs as Insights: latest bodyweight log → profile weight, muscle mapping, core score, farmer rule.
  * Caller must use a Supabase client whose RLS allows reading this user's rows (typically auth.uid() === userId).
  */
 export async function computeStrengthRankingBundleForUser(
   supabase: SupabaseServer,
-  userId: string
+  userId: string,
+  options?: ComputeStrengthRankingBundleOptions
 ): Promise<StrengthRankingComputeResult> {
+  const endDate = options?.endDate;
   const [{ data: profile }, { data: latestBwRows }] = await Promise.all([
     supabase.from("profiles").select("body_weight").eq("id", userId).maybeSingle(),
-    supabase
-      .from("bodyweight_logs")
-      .select("weight")
-      .eq("user_id", userId)
-      .order("date", { ascending: false })
-      .order("created_at", { ascending: false })
-      .limit(1),
+    (() => {
+      const q = supabase
+        .from("bodyweight_logs")
+        .select("weight")
+        .eq("user_id", userId)
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (endDate) q.lte("date", endDate);
+      return q;
+    })(),
   ]);
 
   const latestLog = latestBwRows?.[0];
+  /** As-of-date snapshots must not use current profile weight when no log existed by that date. */
   const bodyweightKgRaw =
     latestLog?.weight != null
       ? Number(latestLog.weight)
-      : profile?.body_weight != null
-        ? Number(profile.body_weight)
-        : 0;
+      : endDate
+        ? 0
+        : profile?.body_weight != null
+          ? Number(profile.body_weight)
+          : 0;
 
   const { data: allExercises } = await supabase
     .from("exercises")
@@ -236,11 +253,13 @@ export async function computeStrengthRankingBundleForUser(
     loadTypeByExercise[e.id] = normalizeLoadType((e as { load_type?: unknown }).load_type);
   }
 
-  const { data: workouts } = await supabase
+  const workoutsQ = supabase
     .from("workouts")
     .select("id, exercise_id, date, weight")
     .eq("user_id", userId)
     .order("date", { ascending: true });
+  if (endDate) workoutsQ.lte("date", endDate);
+  const { data: workouts } = await workoutsQ;
 
   const workoutIds = (workouts ?? []).map((w) => w.id);
   const { data: sets } =
@@ -313,11 +332,13 @@ export async function computeStrengthRankingBundleForUser(
   const coreImprovementSuggestions: CoreImprovementSuggestion[] = [];
 
   if (coreExerciseIds.length > 0) {
-    const { data: coreWorkouts } = await supabase
+    const coreWorkoutsQ = supabase
       .from("workouts")
       .select("id, exercise_id, weight")
       .eq("user_id", userId)
       .in("exercise_id", coreExerciseIds);
+    if (endDate) coreWorkoutsQ.lte("date", endDate);
+    const { data: coreWorkouts } = await coreWorkoutsQ;
 
     const coreWorkoutIds = (coreWorkouts ?? []).map((w) => w.id);
     const { data: coreSets } =

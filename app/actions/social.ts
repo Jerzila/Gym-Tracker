@@ -8,6 +8,14 @@ import {
   countWorkoutSessionsFromDate,
   isoDateDaysAgoUTC,
 } from "@/lib/computeUserWorkoutAggregates";
+import { strongestMuscleSummaryFromPayload } from "@/lib/friendStrengthFromRankings";
+import { getWeekBoundsMondaySundayInTimeZone } from "@/lib/weekBoundsTz";
+import { format, parseISO, subDays } from "date-fns";
+import {
+  getStrengthRanking,
+  rankingWithExercisesFromStoredRankingsJson,
+  type StrengthRankingWithExercises,
+} from "@/app/actions/strengthRanking";
 import {
   computeStrengthRanking,
   type StrengthRankingOutput,
@@ -48,6 +56,13 @@ export type FriendProfilePageData = {
   workoutCount: number;
   prCount: number;
   totalVolumeKg: number;
+  gender: "male" | "female";
+  strengthRankingView: StrengthRankingWithExercises;
+  bestMuscle: { linePrimary: string; linePercentile: string } | null;
+  workoutsThisWeek: number;
+  workoutStreak: number;
+  lastWorkoutDate: string | null;
+  lastWorkoutDisplay: string | null;
 };
 
 export type FriendLeaderboardEntry = {
@@ -153,6 +168,31 @@ function formatPrLeaderboardLine(n: number): string {
 
 function formatConsistencyLeaderboardLine(n: number): string {
   return `${n} workout${n === 1 ? "" : "s"}`;
+}
+
+function parseISODateOnly(iso: string): Date {
+  return parseISO(iso.length === 10 ? `${iso}T12:00:00` : iso);
+}
+
+function formatFriendLastWorkout(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const s = String(iso).trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  try {
+    return format(parseISODateOnly(s), "MMM d, yyyy");
+  } catch {
+    return null;
+  }
+}
+
+function workoutStreakFromDateSet(dateSet: Set<string>, lastDate: string): number {
+  let count = 0;
+  let d = lastDate;
+  while (dateSet.has(d)) {
+    count += 1;
+    d = format(subDays(parseISODateOnly(d), 1), "yyyy-MM-dd");
+  }
+  return count;
 }
 
 export async function searchUsersByUsername(
@@ -424,20 +464,68 @@ export async function getFriendProfilePageData(
     .maybeSingle();
   if (!friendRow) return { data: null, error: "not_friend" };
 
-  const { data: profile, error: pErr } = await supabase
-    .from("profiles")
-    .select("username, overall_rank, overall_percentile, rank_badge")
-    .eq("id", fid)
-    .maybeSingle();
+  const weekBounds = getWeekBoundsMondaySundayInTimeZone("UTC");
 
+  const [profileRes, aggRes, rankingsRes, lastWorkoutRes, weekWorkoutsRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("username, overall_rank, overall_percentile, rank_badge, gender")
+      .eq("id", fid)
+      .maybeSingle(),
+    getUserLifetimeWorkoutAggregatesForUserId(fid),
+    supabase.from("rankings").select("muscle_ranks, muscle_scores").eq("user_id", fid).maybeSingle(),
+    supabase.from("workouts").select("date").eq("user_id", fid).order("date", { ascending: false }).limit(1).maybeSingle(),
+    supabase
+      .from("workouts")
+      .select("date")
+      .eq("user_id", fid)
+      .gte("date", weekBounds.start)
+      .lte("date", weekBounds.end),
+  ]);
+
+  const { data: profile, error: pErr } = profileRes;
   if (pErr) return { data: null, error: pErr.message };
   if (!profile) return { data: null, error: "not_found" };
 
-  const { data: agg, error: aErr } = await getUserLifetimeWorkoutAggregatesForUserId(fid);
+  const { error: aErr } = aggRes;
   if (aErr) return { data: null, error: aErr };
+  const agg = aggRes.data;
+
+  const rkRow = rankingsRes.data;
+  const strengthRankingView = await rankingWithExercisesFromStoredRankingsJson(
+    rkRow?.muscle_ranks,
+    rkRow?.muscle_scores
+  );
+  const parsedMuscles = strongestMuscleSummaryFromPayload(
+    strengthRankingView.muscleRanks,
+    strengthRankingView.muscleScores
+  );
+  const bestMuscle = parsedMuscles
+    ? { linePrimary: parsedMuscles.linePrimary, linePercentile: parsedMuscles.linePercentile }
+    : null;
+
+  const lastWorkoutDate = lastWorkoutRes.data?.date ? String(lastWorkoutRes.data.date) : null;
+  const lastWorkoutDisplay = formatFriendLastWorkout(lastWorkoutDate);
+
+  const weekRows = weekWorkoutsRes.data ?? [];
+  const workoutsThisWeek = new Set(weekRows.map((r) => String((r as { date: string }).date))).size;
+
+  let workoutStreak = 0;
+  if (lastWorkoutDate) {
+    const streakMin = format(subDays(parseISODateOnly(lastWorkoutDate), 500), "yyyy-MM-dd");
+    const { data: streakRows } = await supabase
+      .from("workouts")
+      .select("date")
+      .eq("user_id", fid)
+      .gte("date", streakMin);
+    const dateSet = new Set((streakRows ?? []).map((r) => String((r as { date: string }).date)));
+    workoutStreak = workoutStreakFromDateSet(dateSet, lastWorkoutDate);
+  }
 
   const pctRaw = Number((profile as { overall_percentile?: unknown }).overall_percentile);
   const overall_percentile = Number.isFinite(pctRaw) ? pctRaw : 100;
+  const genderRaw = (profile as { gender?: string | null }).gender;
+  const gender: "male" | "female" = genderRaw === "female" ? "female" : "male";
 
   return {
     data: {
@@ -449,6 +537,73 @@ export async function getFriendProfilePageData(
       workoutCount: agg?.workoutCount ?? 0,
       prCount: agg?.prCount ?? 0,
       totalVolumeKg: agg?.totalVolumeKg ?? 0,
+      gender,
+      strengthRankingView,
+      bestMuscle,
+      workoutsThisWeek,
+      workoutStreak,
+      lastWorkoutDate,
+      lastWorkoutDisplay,
+    },
+  };
+}
+
+export type StrengthCompareWithFriendPageData = {
+  friendUsername: string;
+  friendGender: "male" | "female";
+  myGender: "male" | "female";
+  myStrength: StrengthRankingWithExercises;
+  friendStrength: StrengthRankingWithExercises;
+};
+
+/** You vs friend strength maps — only for accepted friends. */
+export async function getStrengthCompareWithFriendPageData(
+  friendId: string
+): Promise<{ data: StrengthCompareWithFriendPageData | null; error?: string }> {
+  const supabase = await createServerClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated" };
+
+  const fid = String(friendId || "").trim();
+  if (!fid || fid === user.id) return { data: null, error: "not_friend" };
+
+  const { data: friendRow } = await supabase
+    .from("friends")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("friend_id", fid)
+    .maybeSingle();
+  if (!friendRow) return { data: null, error: "not_friend" };
+
+  const [myRankingRes, myProfileRes, friendProfileRes, friendRankingRes] = await Promise.all([
+    getStrengthRanking(),
+    supabase.from("profiles").select("gender").eq("id", user.id).maybeSingle(),
+    supabase.from("profiles").select("username, gender").eq("id", fid).maybeSingle(),
+    supabase.from("rankings").select("muscle_ranks, muscle_scores").eq("user_id", fid).maybeSingle(),
+  ]);
+
+  const friendProfile = friendProfileRes.data;
+  if (!friendProfile?.username) return { data: null, error: "not_found" };
+
+  const myStrength =
+    myRankingRes.data ?? (await rankingWithExercisesFromStoredRankingsJson(null, null));
+  const friendStrength = await rankingWithExercisesFromStoredRankingsJson(
+    friendRankingRes.data?.muscle_ranks,
+    friendRankingRes.data?.muscle_scores
+  );
+
+  const myGenderRaw = myProfileRes.data?.gender;
+  const friendGenderRaw = (friendProfile as { gender?: string | null }).gender;
+
+  return {
+    data: {
+      friendUsername: String(friendProfile.username),
+      friendGender: friendGenderRaw === "female" ? "female" : "male",
+      myGender: myGenderRaw === "female" ? "female" : "male",
+      myStrength,
+      friendStrength,
     },
   };
 }

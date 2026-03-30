@@ -41,6 +41,21 @@ export function getRankColor(rank: RankSlug): string {
   return RANK_COLORS[rank] ?? RANK_COLORS.newbie;
 }
 
+/** Legend order and labels for the muscle diagram key (Insights Muscle Strength, Strength Progress, etc.). */
+export const RANK_LEGEND_ENTRIES: { rank: RankSlug; label: string }[] = [
+  { rank: "newbie", label: "Newbie" },
+  { rank: "starter", label: "Starter" },
+  { rank: "apprentice", label: "Apprentice" },
+  { rank: "lifter", label: "Lifter" },
+  { rank: "semi-pro", label: "Semi-Pro" },
+  { rank: "pro", label: "Pro" },
+  { rank: "elite", label: "Elite" },
+  { rank: "master", label: "Master" },
+  { rank: "grandmaster", label: "Grandmaster" },
+  { rank: "titan", label: "Titan" },
+  { rank: "goat", label: "GOAT" },
+];
+
 /**
  * Legacy coordinate bands for getRank() only. Strength UI uses fixed per-tier "Top X%" labels.
  */

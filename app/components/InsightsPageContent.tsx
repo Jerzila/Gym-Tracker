@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useRef, memo } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import {
   getInsightsCriticalData,
   getInsightsDeferredData,
@@ -44,6 +45,7 @@ import {
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { InstallPromptOnNewRank } from "@/app/components/InstallPromptOnNewRank";
+import { MuscleProgressCompareModal } from "@/app/components/MuscleProgressCompareModal";
 
 const MuscleRadarChart = dynamic(
   () => import("@/app/components/MuscleRadarChart").then((m) => ({ default: m.MuscleRadarChart })),
@@ -91,6 +93,7 @@ type Props = {
   exercises: Exercise[];
   gender?: "male" | "female";
   strengthRanking: StrengthRankingWithExercises | null;
+  earliestWorkoutDate: string | null;
 };
 
 const RANGE_OPTIONS: { value: InsightsRange; label: string }[] = [
@@ -110,7 +113,8 @@ const ONE_RM_RANGES: { value: "30" | "90" | "all"; label: string }[] = [
   { value: "all", label: "All time" },
 ];
 
-export function InsightsPageContent({ exercises, gender = "male", strengthRanking }: Props) {
+export function InsightsPageContent({ exercises, gender = "male", strengthRanking, earliestWorkoutDate }: Props) {
+  const router = useRouter();
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const [weekly, setWeekly] = useState<WeeklyComparison | null>(null);
@@ -143,6 +147,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   const monthlyCacheRef = useRef<Record<string, MonthlyAnalytics>>({});
   monthlyCacheRef.current = monthlyAnalyticsCache;
   const [showDeferred, setShowDeferred] = useState(false);
+  const [showCompareModal, setShowCompareModal] = useState(false);
   const cache = useWorkoutDataCache();
   useEffect(() => {
     const t = setTimeout(() => setShowDeferred(true), 0);
@@ -352,6 +357,31 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
           </section>
         </>
       )}
+
+      {strengthRanking && (
+        <section className="mt-4 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowCompareModal(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-[rgba(255,170,40,0.4)] bg-[rgba(255,170,40,0.12)] px-[18px] py-[14px] text-sm font-semibold text-[#FFAA28] transition-[transform,background-color,border-color] duration-150 ease-out hover:border-[rgba(255,170,40,0.55)] hover:bg-[rgba(255,170,40,0.18)] active:scale-[0.97]"
+          >
+            <span className="text-base leading-none" aria-hidden>
+              ⇄
+            </span>
+            Compare Progress
+          </button>
+        </section>
+      )}
+
+      <MuscleProgressCompareModal
+        open={showCompareModal}
+        onClose={() => setShowCompareModal(false)}
+        earliestWorkoutDate={earliestWorkoutDate ?? null}
+        onConfirm={({ startDate, endDate }) => {
+          setShowCompareModal(false);
+          router.push(`/insights/strength-progress?start=${encodeURIComponent(startDate)}&end=${encodeURIComponent(endDate)}`);
+        }}
+      />
 
       {/* Muscle Balance — total sets per muscle group; tap chart for details */}
       <section id="muscle-balance" className="mt-10">
