@@ -547,6 +547,30 @@ export async function completeOnboarding(
   }
 }
 
+export async function skipOnboarding(): Promise<{ error?: string }> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("profiles")
+      .update({ profile_completed: true, updated_at: now })
+      .eq("id", user.id);
+    if (error) return { error: error.message };
+
+    revalidatePath("/", "layout");
+    revalidatePath("/profile-setup");
+    return {};
+  } catch (e) {
+    console.error("[profile] skipOnboarding unexpected", e);
+    return { error: "Something went wrong." };
+  }
+}
+
 export type SaveCalculatedFFMIResult =
   | { ok: true; ffmi: number; categoryLabel: string }
   | { ok: false; error: string };

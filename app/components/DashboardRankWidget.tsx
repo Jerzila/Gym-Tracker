@@ -13,9 +13,11 @@ export function DashboardRankWidget({ display }: Props) {
     return (
       <div className="flex h-full min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700">
         <h2 className="mb-1.5 shrink-0 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-          Your Rank
+          Overall Rank
         </h2>
-        <p className="flex flex-1 items-center justify-center text-sm text-zinc-500">No rank data</p>
+        <p className="flex flex-1 items-center justify-center text-sm text-zinc-500 text-center px-2">
+          Log more lifts to calculate your overall strength rank.
+        </p>
       </div>
     );
   }
@@ -25,7 +27,7 @@ export function DashboardRankWidget({ display }: Props) {
   return (
     <div className="flex h-full min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700">
       <h2 className="mb-1.5 shrink-0 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-        Your Rank
+        Overall Rank
       </h2>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1.5">
         <RankBadge rank={rankSlug} tier={tier} size={112} />

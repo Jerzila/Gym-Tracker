@@ -117,11 +117,13 @@ export function DashboardPageContent({
       <section className="animate-fade-in grid grid-cols-2 gap-3 items-stretch" style={{ animationDelay: "25ms" }}>
         <WeeklyProgressWidget weekly={weekly} lastWorkout={lastWorkout} />
         {strengthRanking ? (
-          <DashboardRankWidget display={overallRankDisplayFromOutput(strengthRanking)} />
+          <DashboardRankWidget
+            display={overallRankDisplayFromOutput(strengthRanking)}
+          />
         ) : (
           <div className="flex h-full min-h-0 flex-col rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
             <h2 className="mb-1.5 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
-              Your Rank
+              Overall Rank
             </h2>
             <div className="flex flex-1 items-center">
               <p className="text-xs text-zinc-500">

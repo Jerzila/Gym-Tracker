@@ -1,7 +1,6 @@
 "use server";
 
 import { createServerClient } from "@/lib/supabase/server";
-import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
 import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
 import { epley1RM } from "@/lib/progression";
 
@@ -139,8 +138,6 @@ export async function logOnboardingStrengthLift(args: {
       .from("sets")
       .insert([{ workout_id: workoutId, reps: args.reps }] as Record<string, unknown>[]);
     if (sErr) return { ok: false, error: sErr.message };
-
-    await refreshUserRankingsSafe(user.id);
     return { ok: true };
   } catch (e) {
     if (isConnectionError(e)) return { ok: false, error: "Can't connect to Supabase. Check your .env.local." };

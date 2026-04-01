@@ -10,7 +10,6 @@ import { cmToFtIn, ftInToCm, kgToLbs, lbsToKg } from "@/lib/units";
 import type { Profile } from "@/lib/types";
 import { localCalendarDateYYYYMMDD } from "@/lib/localCalendarDate";
 import { epleyEstimated1RM, strengthScoreToRank, type StrengthRankMuscle } from "@/lib/strengthRanking";
-import { logOnboardingStrengthLift } from "@/app/actions/onboardingStrengthRank";
 import { RankBadge } from "@/app/components/RankBadge";
 import type { RankSlug } from "@/lib/rankBadges";
 
@@ -61,6 +60,14 @@ type OnboardingData = {
 };
 
 type StrengthCategory = "chest" | "back" | "shoulders" | "arms" | "legs";
+
+function strengthCategoryToLabel(c: StrengthCategory): string {
+  if (c === "chest") return "Chest";
+  if (c === "back") return "Back";
+  if (c === "shoulders") return "Shoulder";
+  if (c === "arms") return "Arms";
+  return "Legs";
+}
 
 function strengthCategoryToMuscle(c: StrengthCategory): StrengthRankMuscle {
   if (c === "legs") return "legs";
@@ -298,6 +305,8 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [countrySearch, setCountrySearch] = useState("");
+  const [logWorkoutPressed, setLogWorkoutPressed] = useState(false);
+  const [logWorkoutLoading, setLogWorkoutLoading] = useState(false);
 
   // Strength rank mini-flow (step 5)
   // 0 = category, 1 = exercise+log, 2 = calculating, 3 = reveal
@@ -321,6 +330,20 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
     reps: number;
     estimated1RMDisplay: string;
   } | null>(null);
+
+  const resetStrengthRankDemo = useCallback(() => {
+    setRankSubStep(0);
+    setRankCategory(null);
+    setRankExercise(null);
+    setRankWeight("");
+    setRankReps("");
+    setRankCustomOpen(false);
+    setRankCustomName("");
+    setRankRevealPhase(0);
+    setRankResult(null);
+    setLogWorkoutPressed(false);
+    setLogWorkoutLoading(false);
+  }, []);
 
   // Derive DOB parts for wheel (default: 25 years old)
   const defaultYear = new Date().getFullYear() - 25;
@@ -395,6 +418,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   const isStrengthReveal = isStrengthRankStep && (rankSubStep === 2 || rankSubStep === 3);
   const strengthPrimaryButtonDisabled =
     submitting ||
+    logWorkoutLoading ||
     (isStrengthRankStep
       ? rankSubStep === 0
         ? rankCategory === null
@@ -481,6 +505,35 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
     setError(null);
   };
 
+  // Only show Skip on the "Log your first workout" entry point, not within the lift logging form.
+  const showSkip = step === 5 && rankSubStep === 0;
+  const handleSkip = async () => {
+    try {
+      setSubmitting(true);
+      setError(null);
+      const result = await completeOnboarding({
+        name: data.firstName.trim() || null,
+        birthday: data.birthday,
+        height: data.heightCm,
+        weight: data.weightKg,
+        units: data.units,
+        gender: data.gender,
+        country: data.country || null,
+        logDate: localCalendarDateYYYYMMDD(),
+      });
+      if (result?.error) {
+        setError(result.error);
+        setSubmitting(false);
+        return;
+      }
+      haptic();
+      router.refresh();
+      router.replace("/");
+    } catch {
+      setSubmitting(false);
+    }
+  };
+
   const handleContinue = async () => {
     if (step === 0) {
       haptic();
@@ -525,38 +578,47 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
     }
   };
 
+  useEffect(() => {
+    if (!isStrengthRankStep || rankSubStep !== 1) {
+      setLogWorkoutPressed(false);
+      setLogWorkoutLoading(false);
+    }
+  }, [isStrengthRankStep, rankSubStep]);
+
   const progress = step === 0 ? 0 : (step / TOTAL_STEPS) * 100;
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
-      {/* Header */}
-      <header
-        className="relative mx-auto flex h-14 w-full max-w-3xl items-center justify-center border-b border-white/[0.05] bg-zinc-950 px-4"
-        role="banner"
-      >
-        {step === 5 && rankSubStep === 3 ? null : (
-          <button
-            type="button"
-            onClick={handleHeaderBack}
-            className="tap-feedback absolute left-4 z-10 rounded-lg px-2 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
-            aria-label="Back"
-          >
-            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-          </button>
-        )}
-        <h1 className="pointer-events-none whitespace-nowrap px-12 text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
-          Complete Your Profile
-        </h1>
-      </header>
+      <div className="bg-zinc-950 pt-[env(safe-area-inset-top,0px)]">
+        {/* Header */}
+        <header
+          className="relative mx-auto flex h-14 w-full max-w-3xl items-center justify-center border-b border-white/[0.05] bg-zinc-950 px-4"
+          role="banner"
+        >
+          {step === 0 || (step === 5 && rankSubStep === 3) ? null : (
+            <button
+              type="button"
+              onClick={handleHeaderBack}
+              className="tap-feedback absolute left-4 z-10 rounded-lg px-2 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+              aria-label="Back"
+            >
+              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+          )}
+          <h1 className="pointer-events-none whitespace-nowrap px-12 text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
+            Complete Your Profile
+          </h1>
+        </header>
 
-      {/* Progress bar */}
-      <div className="mt-2 mb-4 h-1 w-full bg-zinc-800">
-        <div
-          className="h-full bg-amber-500 transition-all duration-300"
-          style={{ width: `${progress}%` }}
-        />
+        {/* Progress bar */}
+        <div className="mt-2 mb-4 h-1 w-full bg-zinc-800">
+          <div
+            className="h-full bg-amber-500 transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
       </div>
 
       {/* Welcome screen (step 0) */}
@@ -1038,7 +1100,10 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                     ) : (
                       <div className="w-full max-w-sm">
                         <p className="text-xl font-semibold text-zinc-100">
-                          Your Strength Level
+                          {(rankCategory ? `${strengthCategoryToLabel(rankCategory)} Rank Unlocked` : "Rank Unlocked")}
+                        </p>
+                        <p className="mt-1 text-sm text-zinc-400">
+                          {rankCategory ? `Your ${strengthCategoryToLabel(rankCategory)} Rank` : "Your Rank"}
                         </p>
                         <div
                           className="mx-auto"
@@ -1135,6 +1200,11 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                   const r = Math.floor(Number(rankReps));
                   if (!rankExercise || !Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r <= 0) return;
 
+                  // Immediate press feedback, then show loading state.
+                  setLogWorkoutPressed(true);
+                  await new Promise((res) => setTimeout(res, 120));
+                  setLogWorkoutLoading(true);
+
                   const weightKg = data.units === "imperial" ? lbsToKg(w) : w;
                   const bodyweightKg = Math.max(1, data.weightKg);
                   const oneRmKg = epleyEstimated1RM(weightKg, r);
@@ -1165,34 +1235,23 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                     estimated1RMDisplay: `${Math.round((data.units === "imperial" ? kgToLbs(oneRmKg) : oneRmKg) * 10) / 10} ${data.units === "imperial" ? "lb" : "kg"}`,
                   });
 
-                  // Persist this lift to power the strength map (best effort).
-                  const logResult = await logOnboardingStrengthLift({
-                    category: rankCategory ?? "chest",
-                    exerciseName: rankExercise,
-                    date: localCalendarDateYYYYMMDD(),
-                    weightKg,
-                    reps: r,
-                  });
-                  if (!logResult.ok) {
-                    // Don't block the reveal; show a non-fatal message if needed.
-                    setError(logResult.error);
-                  }
-
                   haptic();
                   setRankSubStep(2);
                   return;
                 }
                 if (rankSubStep === 3) {
+                  // Keep the user on the result screen while we save + navigate.
                   await handleContinue();
                 }
               }}
               disabled={isStrengthRankStep ? strengthPrimaryButtonDisabled : !canContinue || submitting}
               className={[
-                "tap-feedback w-full rounded-[14px] bg-amber-500 text-base font-semibold text-zinc-950 shadow-lg shadow-amber-500/20 transition disabled:opacity-50 disabled:shadow-none hover:bg-amber-400 active:scale-[0.97] active:brightness-95",
+                "tap-feedback w-full rounded-[14px] bg-amber-500 text-base font-semibold text-zinc-950 transition disabled:opacity-50 disabled:shadow-none hover:bg-amber-400 active:scale-[0.97] active:brightness-95",
+                logWorkoutPressed || logWorkoutLoading ? "shadow-none brightness-95" : "shadow-lg shadow-amber-500/20",
                 isStrengthRankStep && rankSubStep === 0 ? "h-[54px]" : isStrengthRankStep && rankSubStep === 1 ? "h-[50px]" : "h-14",
               ].join(" ")}
             >
-              {isStrengthRankStep && rankSubStep === 2 ? (
+              {isStrengthRankStep && (rankSubStep === 2 || logWorkoutLoading || submitting) ? (
                 <span className="mr-2 inline-flex align-middle" aria-hidden>
                   <svg className="h-5 w-5 animate-spin text-zinc-950" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -1205,12 +1264,16 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                 </span>
               ) : null}
               {submitting
-                ? "Saving…"
+                ? isStrengthRankStep && rankSubStep === 3
+                  ? "Starting…"
+                  : "Saving…"
                 : isStrengthRankStep
                   ? rankSubStep === 0
                     ? "Continue"
                     : rankSubStep === 1
-                      ? "Log Workout"
+                      ? logWorkoutLoading
+                        ? "Calculating..."
+                        : "Log Workout"
                       : rankSubStep === 2
                         ? "Calculating…"
                         : "Start Training"
@@ -1218,6 +1281,17 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                     ? "Finish"
                     : "Continue"}
             </button>
+            {showSkip ? (
+              <div className="mt-3 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleSkip}
+                  className="tap-feedback text-xs font-medium text-zinc-400/70 hover:text-zinc-300"
+                >
+                  Skip
+                </button>
+              </div>
+            ) : null}
           </div>
         </>
       )}
