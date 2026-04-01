@@ -51,6 +51,22 @@ export async function signUp(formData: FormData) {
     } else {
       console.error("[auth] onboarding initialization failed: signup returned no user");
     }
+
+    if (user && !user.email_confirmed_at) {
+      try {
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false },
+        });
+        if (otpError) {
+          console.error("[auth] signUp OTP send failed", otpError);
+        }
+      } catch (otpErr) {
+        console.error("[auth] signUp OTP send threw", otpErr);
+      }
+
+      redirect(`/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent("/profile-setup")}`);
+    }
   } catch (err) {
     logServerError("signUp failed", err);
     return { error: "Unable to create account. Please try again." };
@@ -72,7 +88,53 @@ export async function signIn(formData: FormData) {
     const supabase = await createServerClient();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+    if (userError) throw userError;
+
+    if (user && !user.email_confirmed_at) {
+      try {
+        const { error: otpError } = await supabase.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false },
+        });
+        if (otpError) {
+          console.error("[auth] signIn OTP send failed", otpError);
+        }
+      } catch (otpErr) {
+        console.error("[auth] signIn OTP send threw", otpErr);
+      }
+
+      redirect(
+        `/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(
+          redirectTo.startsWith("/") ? redirectTo : "/"
+        )}`
+      );
+    }
   } catch (err) {
+    const msg =
+      typeof err === "object" && err && "message" in err ? String((err as { message?: unknown }).message) : "";
+    if (/email\s+not\s+confirmed/i.test(msg)) {
+      try {
+        const supabase = await createServerClient();
+        await supabase.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false },
+        });
+      } catch (otpErr) {
+        console.error("[auth] signIn OTP send after unconfirmed error threw", otpErr);
+      }
+
+      redirect(
+        `/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(
+          redirectTo.startsWith("/") ? redirectTo : "/"
+        )}`
+      );
+    }
+
     logServerError("signIn failed", err);
     return { error: "Unable to sign in. Please check your email and password." };
   }

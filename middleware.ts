@@ -2,6 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 const authPaths = ["/login", "/signup", "/forgot-password", "/reset-password"];
+const verificationPath = "/verify-email";
 
 function isProtectedPath(pathname: string): boolean {
   if (pathname === "/" || pathname === "/bodyweight" || pathname === "/categories") return true;
@@ -13,6 +14,17 @@ function isProtectedPath(pathname: string): boolean {
 
 function isAuthPath(pathname: string): boolean {
   return authPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
+function isVerificationPath(pathname: string): boolean {
+  return pathname === verificationPath || pathname.startsWith(`${verificationPath}/`);
+}
+
+function buildVerifyEmailUrl(request: NextRequest, email: string | null, next: string): URL {
+  const url = new URL(verificationPath, request.url);
+  if (email) url.searchParams.set("email", email);
+  url.searchParams.set("next", next);
+  return url;
 }
 
 export async function middleware(request: NextRequest) {
@@ -43,6 +55,17 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  if (user && !user.email_confirmed_at && !isVerificationPath(request.nextUrl.pathname)) {
+    const next = request.nextUrl.pathname;
+    if (isProtectedPath(request.nextUrl.pathname)) {
+      return NextResponse.redirect(buildVerifyEmailUrl(request, user.email ?? null, next));
+    }
+    if (isAuthPath(request.nextUrl.pathname)) {
+      const redirectTo = request.nextUrl.searchParams.get("redirect") || "/";
+      return NextResponse.redirect(buildVerifyEmailUrl(request, user.email ?? null, redirectTo));
+    }
+  }
 
   if (isProtectedPath(request.nextUrl.pathname)) {
     if (!user) {

@@ -85,7 +85,8 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
 
   /** Friend profile renders its own fixed header (username + back); skip shell header to avoid double bars. */
   const isFriendProfileRoute = pathname.startsWith("/friend/");
-  const showFixedHeader = !isFriendProfileRoute;
+  const showFixedHeader = !isFriendProfileRoute && pathname !== "/profile-setup";
+  const hideBottomNav = pathname === "/profile-setup";
 
   let leftSlot: ReactNode = null;
   let rightSlot: ReactNode = null;
@@ -111,18 +112,22 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-zinc-950 pb-[env(safe-area-inset-bottom)] text-zinc-100">
+    <div
+      className={`flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100 ${
+        hideBottomNav ? "pb-0" : "pb-[env(safe-area-inset-bottom)]"
+      }`}
+    >
       {showFixedHeader ? (
         <div className="fixed inset-x-0 top-0 z-[210] bg-zinc-950 pt-[env(safe-area-inset-top,0px)]">
           <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
         </div>
       ) : null}
       <main
-        className={`min-h-0 flex-1 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-[calc(5rem+env(safe-area-inset-bottom))] ${showFixedHeader ? "pt-[calc(3.5rem+env(safe-area-inset-top,0px))]" : "pt-0"}`}
+        className={`min-h-0 flex-1 ${hideBottomNav ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-[calc(5rem+env(safe-area-inset-bottom))]"} ${showFixedHeader ? "pt-[calc(3.5rem+env(safe-area-inset-top,0px))]" : "pt-0"}`}
       >
         {children}
       </main>
-      <BottomNav />
+      {hideBottomNav ? null : <BottomNav />}
     </div>
   );
 }

@@ -96,7 +96,7 @@ export function DashboardPageContent({
       ? calculateBMI(weightKg, heightCm)
       : null;
   const bmiCategory = bmi != null ? getBMICategory(bmi) : null;
-  const ffmiCategory = storedFfmi != null ? getFFMICategory(storedFfmi) : null;
+  const ffmiCategory = storedFfmi != null ? getFFMICategory(storedFfmi, gender) : null;
   const cardTitle =
     storedFfmi != null ? "Bodyweight · BMI · FFMI" : "Bodyweight · BMI";
 
@@ -202,6 +202,7 @@ export function DashboardPageContent({
                 heightCm={heightCm ?? 0}
                 weightKg={weightKg ?? 0}
                 initialBodyFatPercent={initialBodyFatPercent}
+                gender={gender}
               />
             </>
           ) : (

@@ -20,7 +20,7 @@ export function AppHeader({
         <div className="absolute left-4 z-10">{leftSlot}</div>
       ) : null}
 
-      <h1 className="pointer-events-none min-w-0 max-w-[calc(100%-6rem)] px-12 text-center text-[22px] font-bold leading-snug text-zinc-100">
+      <h1 className="pointer-events-none whitespace-nowrap px-12 text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
         {title}
       </h1>
 

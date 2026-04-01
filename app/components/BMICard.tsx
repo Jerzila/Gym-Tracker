@@ -12,6 +12,7 @@ type Props = {
   heightCm: number | null;
   /** From profile after dashboard FFMI calculation; scale hidden until set. */
   ffmi: number | null;
+  gender?: "male" | "female" | "other" | "prefer_not_to_say" | null;
 };
 
 function IndexSectionTitle({ title, hint }: { title: string; hint: string }) {
@@ -23,10 +24,10 @@ function IndexSectionTitle({ title, hint }: { title: string; hint: string }) {
   );
 }
 
-export function BMICard({ weightKg, heightCm, ffmi }: Props) {
+export function BMICard({ weightKg, heightCm, ffmi, gender }: Props) {
   const bmi = weightKg != null && heightCm != null ? calculateBMI(weightKg, heightCm) : null;
   const category = bmi != null ? getBMICategory(bmi) : null;
-  const ffmiCategory = ffmi != null ? getFFMICategory(ffmi) : null;
+  const ffmiCategory = ffmi != null ? getFFMICategory(ffmi, gender ?? undefined) : null;
 
   if (bmi == null) {
     const message =

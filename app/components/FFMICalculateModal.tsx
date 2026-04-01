@@ -10,13 +10,22 @@ import { formatHeightDisplay } from "@/lib/units";
 import { useUnits } from "@/app/components/UnitsContext";
 import { getFFMICategory } from "@/lib/ffmi";
 
-const RANGE_LEGEND = [
+const RANGE_LEGEND_MALE = [
   { range: "< 18", label: "Very low" },
   { range: "18–20", label: "Average" },
   { range: "20–22", label: "Trained" },
   { range: "22–24", label: "Muscular" },
   { range: "24–25", label: "Elite natural" },
   { range: "25+", label: "Extremely muscular" },
+] as const;
+
+const RANGE_LEGEND_FEMALE = [
+  { range: "< 14", label: "Very low" },
+  { range: "14–16", label: "Average" },
+  { range: "16–18", label: "Trained" },
+  { range: "18–20", label: "Muscular" },
+  { range: "20–21", label: "Elite natural" },
+  { range: "21+", label: "Extremely muscular" },
 ] as const;
 
 function filterNumericPercentDraft(nextRaw: string) {
@@ -116,12 +125,14 @@ export function FFMICalculateModal({
   heightCm,
   weightKg,
   initialBodyFatPercent,
+  gender = "male",
 }: {
   open: boolean;
   onClose: () => void;
   heightCm: number;
   weightKg: number;
   initialBodyFatPercent: number | null;
+  gender?: "male" | "female";
 }) {
   const router = useRouter();
   const units = useUnits();
@@ -133,6 +144,10 @@ export function FFMICalculateModal({
   const [pending, startTransition] = useTransition();
   const bodyFatFieldRef = useRef<BodyFatFieldHandle | null>(null);
   const [keyboardOffsetPx, setKeyboardOffsetPx] = useState(0);
+  const rangeLegend = useMemo(
+    () => (gender === "female" ? RANGE_LEGEND_FEMALE : RANGE_LEGEND_MALE),
+    [gender]
+  );
   const initialDraft = useMemo(() => {
     return initialBodyFatPercent != null && Number.isFinite(initialBodyFatPercent)
       ? String(initialBodyFatPercent)
@@ -306,13 +321,16 @@ export function FFMICalculateModal({
               <p className="flex flex-wrap items-baseline gap-2">
                 <span className="text-sm text-zinc-400">FFMI:</span>
                 <span className="text-lg font-semibold tabular-nums text-zinc-100">{result.ffmi}</span>
-                <span className="text-sm font-medium" style={{ color: getFFMICategory(result.ffmi).color }}>
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: getFFMICategory(result.ffmi, gender).color }}
+                >
                   {result.label}
                 </span>
               </p>
               <p className="mt-3 text-[11px] font-medium uppercase tracking-wide text-zinc-500">Reference</p>
               <ul className="mt-1 space-y-0.5 text-[11px] text-zinc-500">
-                {RANGE_LEGEND.map((row) => (
+                {rangeLegend.map((row) => (
                   <li key={row.label}>
                     {row.range} → {row.label}
                   </li>

@@ -577,7 +577,7 @@ export async function saveCalculatedFFMI(bodyFatPercentInput: number): Promise<S
 
     const { data: profile, error: profileErr } = await supabase
       .from("profiles")
-      .select("height, body_weight")
+      .select("height, body_weight, gender")
       .eq("id", user.id)
       .maybeSingle();
 
@@ -615,7 +615,7 @@ export async function saveCalculatedFFMI(bodyFatPercentInput: number): Promise<S
       return { ok: false, error: "Could not calculate FFMI. Check your inputs." };
     }
 
-    const categoryLabel = getFFMICategory(ffmi).label;
+    const categoryLabel = getFFMICategory(ffmi, profile.gender).label;
     const updatedAt = new Date().toISOString();
 
     const { error: upErr } = await supabase

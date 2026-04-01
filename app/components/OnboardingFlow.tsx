@@ -9,13 +9,18 @@ import { getAgeFromBirthday } from "@/lib/age";
 import { cmToFtIn, ftInToCm, kgToLbs, lbsToKg } from "@/lib/units";
 import type { Profile } from "@/lib/types";
 import { localCalendarDateYYYYMMDD } from "@/lib/localCalendarDate";
+import { epleyEstimated1RM, strengthScoreToRank, type StrengthRankMuscle } from "@/lib/strengthRanking";
+import { logOnboardingStrengthLift } from "@/app/actions/onboardingStrengthRank";
+import { RankBadge } from "@/app/components/RankBadge";
+import type { RankSlug } from "@/lib/rankBadges";
 
-const TOTAL_STEPS = 4; // name+DOB+gender, units, height&weight, country (welcome is step 0)
+const TOTAL_STEPS = 5; // name+DOB+gender, units, height&weight, country, strength-rank (welcome is step 0)
 const STEP_TITLES = [
   "Basic Info",
   "Choose your units",
   "Height & weight",
   "Where are you from?",
+  "Find your strength rank",
 ];
 
 const MONTHS = [
@@ -54,6 +59,16 @@ type OnboardingData = {
   units: "metric" | "imperial";
   country: string;
 };
+
+type StrengthCategory = "chest" | "back" | "shoulders" | "arms" | "legs";
+
+function strengthCategoryToMuscle(c: StrengthCategory): StrengthRankMuscle {
+  if (c === "legs") return "legs";
+  if (c === "back") return "back";
+  if (c === "shoulders") return "shoulders";
+  if (c === "arms") return "biceps";
+  return "chest";
+}
 
 function parseBirthday(y: number, m: number, d: number): string {
   const month = String(m).padStart(2, "0");
@@ -282,6 +297,30 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [countrySearch, setCountrySearch] = useState("");
+
+  // Strength rank mini-flow (step 5)
+  // 0 = category, 1 = exercise+log, 2 = calculating, 3 = reveal
+  const [rankSubStep, setRankSubStep] = useState<0 | 1 | 2 | 3>(0);
+  const [rankCategory, setRankCategory] = useState<StrengthCategory | null>(null);
+  const [rankExercise, setRankExercise] = useState<string | null>(null);
+  const [rankWeight, setRankWeight] = useState<string>("");
+  const [rankReps, setRankReps] = useState<string>("");
+  const [rankCustomOpen, setRankCustomOpen] = useState(false);
+  const [rankCustomName, setRankCustomName] = useState("");
+  const [rankRevealPhase, setRankRevealPhase] = useState<0 | 1 | 2 | 3>(0);
+  const [rankResult, setRankResult] = useState<{
+    rankLabel: string; // e.g. "Master II"
+    rankSlug: RankSlug;
+    tier: "I" | "II" | "III";
+    topPercentileLabel: string; // e.g. "Top 9.6%"
+    nextRankLabel: string | null;
+    weightIncreaseLabel: string | null;
+    exercise: string;
+    weightDisplay: string;
+    reps: number;
+    estimated1RMDisplay: string;
+  } | null>(null);
 
   // Derive DOB parts for wheel (default: 25 years old)
   const defaultYear = new Date().getFullYear() - 25;
@@ -343,7 +382,98 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
     (step === 1 && data.firstName.trim() !== "" && !!data.birthday && age !== null && age >= AGE_MIN && age <= AGE_MAX && data.gender !== null) ||
     (step === 2 && true) ||
     (step === 3 && true) ||
-    (step === 4 && data.country !== "");
+    (step === 4 && data.country !== "") ||
+    (step === 5 &&
+      ((rankSubStep === 0 && rankCategory !== null) ||
+        (rankSubStep === 1 &&
+          !!rankExercise &&
+          Number(rankWeight) > 0 &&
+          Math.floor(Number(rankReps)) > 0) ||
+        rankSubStep === 3));
+
+  const isStrengthRankStep = step === 5;
+  const isStrengthReveal = isStrengthRankStep && (rankSubStep === 2 || rankSubStep === 3);
+  const strengthPrimaryButtonDisabled =
+    submitting ||
+    (isStrengthRankStep
+      ? rankSubStep === 0
+        ? rankCategory === null
+        : rankSubStep === 1
+          ? !rankExercise || !(Number(rankWeight) > 0) || !(Math.floor(Number(rankReps)) > 0)
+          : rankSubStep === 2
+            ? true
+            : false
+      : false);
+
+  const exercisesForCategory: Record<StrengthCategory, string[]> = {
+    chest: ["Bench Press", "Incline Bench"],
+    back: ["Deadlift", "Barbell Row"],
+    shoulders: ["Overhead Press", "Lateral Raise"],
+    arms: ["Bicep Curl", "Tricep Pushdown"],
+    legs: ["Squat", "Leg Press"],
+  };
+
+  const POPULAR_COUNTRIES: string[] = ["US", "GB", "CA", "AU", "DE"];
+  const popularCountries = COUNTRIES.filter((c) => POPULAR_COUNTRIES.includes(c.code));
+  const filteredCountries = countrySearch.trim()
+    ? COUNTRIES.filter((c) =>
+        c.name.toLowerCase().includes(countrySearch.trim().toLowerCase())
+      )
+    : COUNTRIES;
+
+  const handleHeaderBack = () => {
+    haptic();
+    setError(null);
+
+    // Lock the user on the final strength result screen.
+    if (step === 5 && rankSubStep === 3) return;
+
+    if (step === 0) {
+      router.back();
+      return;
+    }
+
+    if (step === 5) {
+      if (rankSubStep === 3) {
+        // From reveal -> back to logging
+        setRankSubStep(1);
+        setRankCustomOpen(false);
+        setRankCustomName("");
+        return;
+      }
+      if (rankSubStep === 2) {
+        // From calculating -> back to logging
+        setRankSubStep(1);
+        setRankCustomOpen(false);
+        setRankCustomName("");
+        return;
+      }
+      if (rankSubStep === 1) {
+        // Back to category selection
+        setRankSubStep(0);
+        setRankCustomOpen(false);
+        setRankCustomName("");
+        return;
+      }
+    }
+
+    setStep((s) => Math.max(0, s - 1));
+  };
+
+  useEffect(() => {
+    if (!isStrengthRankStep || rankSubStep !== 2) return;
+    setRankRevealPhase(0);
+    const t1 = setTimeout(() => setRankRevealPhase(1), 700);
+    const t2 = setTimeout(() => setRankRevealPhase(2), 1400);
+    const t3 = setTimeout(() => setRankRevealPhase(3), 2100);
+    const t4 = setTimeout(() => setRankSubStep(3), 2800);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
+      clearTimeout(t4);
+    };
+  }, [isStrengthRankStep, rankSubStep]);
 
   const handleBack = () => {
     haptic();
@@ -364,6 +494,10 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
       setError(null);
       return;
     }
+
+    // Final step: strength rank flow must finish before completing onboarding.
+    if (step === TOTAL_STEPS && rankSubStep !== 3) return;
+
     setSubmitting(true);
     setError(null);
     try {
@@ -394,9 +528,31 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   const progress = step === 0 ? 0 : (step / TOTAL_STEPS) * 100;
 
   return (
-    <div className="flex min-h-dvh flex-col bg-zinc-950 text-zinc-100">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+      {/* Header */}
+      <header
+        className="relative mx-auto flex h-14 w-full max-w-3xl items-center justify-center border-b border-white/[0.05] bg-zinc-950 px-4"
+        role="banner"
+      >
+        {step === 5 && rankSubStep === 3 ? null : (
+          <button
+            type="button"
+            onClick={handleHeaderBack}
+            className="tap-feedback absolute left-4 z-10 rounded-lg px-2 py-2 text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100"
+            aria-label="Back"
+          >
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
+        <h1 className="pointer-events-none whitespace-nowrap px-12 text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
+          Complete Your Profile
+        </h1>
+      </header>
+
       {/* Progress bar */}
-      <div className="h-1 w-full bg-zinc-800">
+      <div className="mt-2 mb-4 h-1 w-full bg-zinc-800">
         <div
           className="h-full bg-amber-500 transition-all duration-300"
           style={{ width: `${progress}%` }}
@@ -405,10 +561,10 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
 
       {/* Welcome screen (step 0) */}
       {isWelcome ? (
-        <div className="flex min-h-dvh flex-col">
-          <div className="flex flex-1 flex-col items-center justify-center px-6 py-8">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-4">
             {/* Logo */}
-            <p className="mb-12 text-2xl font-semibold tracking-wide text-amber-500">
+            <p className="mb-6 text-2xl font-semibold tracking-wide text-amber-500">
               Liftly
             </p>
             {/* Title */}
@@ -419,7 +575,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
               Your personal strength tracker.
             </p>
             {/* Description */}
-            <div className="mt-10 max-w-sm space-y-4 text-center text-zinc-400">
+            <div className="mt-6 max-w-sm space-y-3 text-center text-zinc-400">
               <p>
                 Track your workouts, see your progress, and unlock powerful training insights.
               </p>
@@ -429,8 +585,11 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
               <p>It takes less than a minute.</p>
             </div>
           </div>
-          {/* Fixed bottom: button + hint */}
-          <div className="border-t border-zinc-800 bg-zinc-950 px-4 pb-[env(safe-area-inset-bottom)] pt-6">
+          {/* Bottom action bar */}
+          <div
+            className="relative mt-auto w-full border-t border-zinc-800 bg-zinc-950 p-5"
+            style={{ paddingBottom: "calc(20px + env(safe-area-inset-bottom))" }}
+          >
             <button
               type="button"
               onClick={handleContinue}
@@ -445,28 +604,20 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         </div>
       ) : (
         <>
-          {/* Header with back */}
-          <header className="flex items-center px-4 py-3">
-            <button
-              type="button"
-              onClick={handleBack}
-              className="tap-feedback -ml-1 rounded-lg px-2 py-2 text-zinc-400 hover:text-zinc-200"
-              aria-label="Back"
-            >
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-          </header>
-
-          <div className="flex flex-1 flex-col px-4 pb-32">
-            <h1 className="text-center text-xl font-semibold text-zinc-100">
-              {STEP_TITLES[formStep]}
-            </h1>
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            {step !== 4 && step !== 5 ? (
+              <div className="px-4 pt-4">
+                <div className="mb-3">
+                  <h1 className="text-center text-lg font-semibold text-zinc-100 sm:text-xl">
+                    {STEP_TITLES[formStep]}
+                  </h1>
+                </div>
+              </div>
+            ) : null}
 
             {/* Step content */}
             {step === 1 && (
-              <div className="mt-4 space-y-4">
+              <div className="min-h-0 flex-1 space-y-3 px-4">
                 <label className="block">
                   <span className="mb-1 block text-sm font-medium text-zinc-400">First name</span>
                   <input
@@ -474,7 +625,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                     value={data.firstName}
                     onChange={(e) => setData((prev) => ({ ...prev, firstName: e.target.value }))}
                     placeholder="Your first name"
-                    className="w-full rounded-xl border-2 border-zinc-700 bg-zinc-800/80 px-3 py-2.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                    className="w-full rounded-xl border-2 border-zinc-700 bg-zinc-800/80 px-3 py-2 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                     autoComplete="given-name"
                   />
                 </label>
@@ -527,7 +678,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                           haptic();
                           setData((prev) => ({ ...prev, gender: value }));
                         }}
-                        className={`tap-feedback flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-2.5 text-center transition-colors ${
+                        className={`tap-feedback flex flex-col items-center gap-0.5 rounded-xl border-2 px-2 py-2 text-center transition-colors ${
                           data.gender === value
                             ? "border-amber-500 bg-amber-500/20 text-amber-400"
                             : "border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-600"
@@ -543,8 +694,8 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
             )}
 
             {step === 2 && (
-              <div className="mt-6 flex flex-col items-center">
-                <div className="grid w-full grid-cols-2 gap-4">
+              <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-4">
+                <div className="grid w-full max-w-md grid-cols-2 gap-3">
                   {(["metric", "imperial"] as const).map((u) => (
                     <button
                       key={u}
@@ -553,7 +704,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                         haptic();
                         setData((prev) => ({ ...prev, units: u }));
                       }}
-                      className={`tap-feedback rounded-2xl border-2 px-6 py-6 text-lg font-medium transition-colors ${
+                      className={`tap-feedback rounded-2xl border-2 px-4 py-4 text-base font-medium transition-colors ${
                         data.units === u
                           ? "border-amber-500 bg-amber-500/20 text-amber-400"
                           : "border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-600"
@@ -563,12 +714,15 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                     </button>
                   ))}
                 </div>
-                <UnitsKettlebellVisual unit={data.units} />
+                <div className="mt-4 scale-[0.78] origin-top sm:scale-100 sm:mt-6">
+                  <UnitsKettlebellVisual unit={data.units} />
+                </div>
               </div>
             )}
 
             {step === 3 && (
-          <div className="mt-8 flex justify-center gap-12">
+          <div className="flex flex-1 items-center justify-center">
+          <div className="flex justify-center gap-10">
             <div className="flex flex-col items-center">
               <span className="mb-2 text-sm font-medium text-zinc-400">
                 {data.units === "metric" ? "Height (cm)" : "Height"}
@@ -638,87 +792,591 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
               )}
             </div>
           </div>
+          </div>
         )}
 
             {step === 4 && (
-          <CountryStep
-            value={data.country}
-            onChange={(code) => {
-              haptic();
-              setData((prev) => ({ ...prev, country: code }));
-            }}
-          />
+          <div className="flex min-h-0 flex-1 flex-col px-4 pb-2">
+            <div className="mt-6 mb-5 text-center">
+              <h2 className="text-xl font-semibold text-zinc-100 sm:text-2xl">
+                Where are you from?
+              </h2>
+            </div>
+
+            <div className="mb-4">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-zinc-400 text-center">
+                  Search country
+                </span>
+                <input
+                  type="search"
+                  value={countrySearch}
+                  onChange={(e) => setCountrySearch(e.target.value)}
+                  placeholder="Search country..."
+                  className="h-12 w-full rounded-xl border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950/40">
+              {countrySearch.trim() === "" ? (
+                <div className="p-3">
+                  <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    Popular
+                  </p>
+                  <div className="space-y-1">
+                    {popularCountries.map((c) => {
+                      const selected = data.country === c.code;
+                      return (
+                        <button
+                          key={`popular-${c.code}`}
+                          type="button"
+                          onClick={() => {
+                            haptic();
+                            setData((prev) => ({ ...prev, country: c.code }));
+                          }}
+                          className={[
+                            "tap-feedback flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition-colors",
+                            selected
+                              ? "bg-amber-500/20 text-amber-300"
+                              : "text-zinc-200 hover:bg-zinc-900/60",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span aria-hidden>{getFlagEmoji(c.code)}</span>
+                            <span className="font-medium">{c.name}</span>
+                          </span>
+                          {selected ? (
+                            <span className="text-xs font-semibold text-amber-300">Selected</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                      All Countries
+                    </p>
+                    <div className="space-y-1">
+                      {filteredCountries.map((c) => {
+                        const selected = data.country === c.code;
+                        return (
+                          <button
+                            key={c.code}
+                            type="button"
+                            onClick={() => {
+                              haptic();
+                              setData((prev) => ({ ...prev, country: c.code }));
+                            }}
+                            className={[
+                              "tap-feedback flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition-colors",
+                              selected
+                                ? "bg-amber-500/20 text-amber-300"
+                                : "text-zinc-200 hover:bg-zinc-900/60",
+                            ].join(" ")}
+                          >
+                            <span className="flex items-center gap-2">
+                              <span aria-hidden>{getFlagEmoji(c.code)}</span>
+                              <span className="font-medium">{c.name}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3">
+                  <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    Results
+                  </p>
+                  <div className="space-y-1">
+                    {filteredCountries.map((c) => {
+                      const selected = data.country === c.code;
+                      return (
+                        <button
+                          key={c.code}
+                          type="button"
+                          onClick={() => {
+                            haptic();
+                            setData((prev) => ({ ...prev, country: c.code }));
+                          }}
+                          className={[
+                            "tap-feedback flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition-colors",
+                            selected
+                              ? "bg-amber-500/20 text-amber-300"
+                              : "text-zinc-200 hover:bg-zinc-900/60",
+                          ].join(" ")}
+                        >
+                          <span className="flex items-center gap-2">
+                            <span aria-hidden>{getFlagEmoji(c.code)}</span>
+                            <span className="font-medium">{c.name}</span>
+                          </span>
+                          {selected ? (
+                            <span className="text-xs font-semibold text-amber-300">Selected</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                    {filteredCountries.length === 0 ? (
+                      <p className="px-3 py-6 text-center text-sm text-zinc-500">
+                        No countries match.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
-      </div>
 
-      {!isWelcome && error && (
-        <p className="px-4 pb-2 text-center text-sm text-red-400">{error}</p>
-      )}
+            {step === 5 && (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                {rankSubStep === 3 ? null : (
+                  <div className="px-5 pt-4 pb-3.5">
+                    <h2 className="text-xl font-semibold text-zinc-100 sm:text-2xl">
+                      Log your first workout
+                    </h2>
+                    <p className="mt-1.5 text-sm text-zinc-400">
+                      Log one lift and we&apos;ll calculate your strength level.
+                    </p>
+                  </div>
+                )}
 
-      {/* Continue button - fixed bottom (form steps only) */}
-      {!isWelcome && (
-        <div className="fixed bottom-0 left-0 right-0 border-t border-zinc-800 bg-zinc-950 px-4 pb-[env(safe-area-inset-bottom)] pt-4">
-          <button
-            type="button"
-            onClick={handleContinue}
-            disabled={!canContinue || submitting}
-            className="tap-feedback w-full rounded-2xl bg-amber-500 py-4 text-base font-semibold text-zinc-950 shadow-lg shadow-amber-500/20 transition disabled:opacity-50 disabled:shadow-none hover:bg-amber-400 active:scale-[0.99]"
+                {rankSubStep === 0 && (
+                  <div className="flex min-h-0 flex-1 flex-col justify-center px-5 pb-1">
+                    <div className="mx-auto w-full max-w-md space-y-1.5">
+                      {(
+                        [
+                          { key: "chest" as const, title: "Chest", subtitle: "Bench Press · Incline Bench" },
+                          { key: "back" as const, title: "Back", subtitle: "Deadlift · Barbell Row" },
+                          { key: "shoulders" as const, title: "Shoulders", subtitle: "Overhead Press · Lateral Raise" },
+                          { key: "arms" as const, title: "Arms", subtitle: "Bicep Curl · Tricep Pushdown" },
+                          { key: "legs" as const, title: "Legs", subtitle: "Squat · Leg Press" },
+                        ] as const
+                      ).map((c) => {
+                        const selected = rankCategory === c.key;
+                        return (
+                          <button
+                            key={c.key}
+                            type="button"
+                            onClick={() => {
+                              haptic();
+                              setRankCategory(c.key);
+                              setRankExercise(null);
+                                  setRankCustomOpen(false);
+                                  setRankCustomName("");
+                            }}
+                            className={[
+                              "tap-feedback flex min-h-[74px] flex-col justify-center rounded-[14px] px-4 py-3.5 text-left transition-colors",
+                              selected
+                                ? "border-2 border-[#F5A623] bg-[rgba(245,166,35,0.08)]"
+                                : "border border-white/[0.08] bg-zinc-900/40 hover:border-white/[0.12]",
+                            ].join(" ")}
+                          >
+                            <p className="text-base font-semibold text-zinc-100">{c.title}</p>
+                            <p
+                              className="mt-1 text-[12px] leading-[1.3] text-zinc-400/70"
+                              style={{
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                                overflow: "hidden",
+                              }}
+                            >
+                              {c.subtitle}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {rankSubStep === 1 && (
+                  <StrengthRankLogLiftStep
+                    rankCategory={rankCategory}
+                    exercisesForCategory={exercisesForCategory}
+                    rankExercise={rankExercise}
+                    setRankExercise={setRankExercise}
+                    rankCustomOpen={rankCustomOpen}
+                    setRankCustomOpen={setRankCustomOpen}
+                    rankCustomName={rankCustomName}
+                    setRankCustomName={setRankCustomName}
+                    rankWeight={rankWeight}
+                    setRankWeight={setRankWeight}
+                    rankReps={rankReps}
+                    setRankReps={setRankReps}
+                    units={data.units}
+                  />
+                )}
+
+                {isStrengthReveal && (
+                  <div className="flex min-h-0 flex-1 flex-col items-center justify-center text-center">
+                    {rankSubStep === 2 ? (
+                      <div className="space-y-2">
+                        <p className="text-sm font-semibold text-zinc-300">
+                          {rankRevealPhase === 0
+                            ? "Logging your first workout..."
+                            : rankRevealPhase === 1
+                              ? "Calculating your strength..."
+                              : rankRevealPhase === 2
+                                ? "Comparing with lifters at your bodyweight..."
+                                : "Finding your rank..."}
+                        </p>
+                        <div className="mx-auto mt-4 h-2 w-48 overflow-hidden rounded-full bg-zinc-800">
+                          <div
+                            className="h-full rounded-full bg-amber-500 transition-all duration-700"
+                            style={{
+                              width: `${rankRevealPhase === 0 ? 25 : rankRevealPhase === 1 ? 50 : rankRevealPhase === 2 ? 75 : 100}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full max-w-sm">
+                        <p className="text-xl font-semibold text-zinc-100">
+                          Your Strength Level
+                        </p>
+                        <div
+                          className="mx-auto"
+                          style={{
+                            transform: "scale(1.25)",
+                            filter: "drop-shadow(0 0 20px rgba(80,160,255,0.5))",
+                          }}
+                        >
+                          <RankBadge
+                            rank={(rankResult?.rankSlug ?? "newbie") as RankSlug}
+                            tier={rankResult?.tier ?? "I"}
+                            size={96}
+                            showTierLabel={false}
+                          />
+                        </div>
+                        <p className="mt-4 text-2xl font-bold text-zinc-100">{rankResult?.rankLabel ?? "—"}</p>
+                        <p className="mt-1 text-sm text-zinc-400">
+                          {(rankResult?.topPercentileLabel ?? "Top —%") + " of lifters"}
+                        </p>
+                        <p className="mt-3 text-xs font-medium text-zinc-400">
+                          Strength relative to your bodyweight
+                        </p>
+
+                        {rankResult?.nextRankLabel ? (
+                          <div className="mt-4 text-sm text-zinc-300">
+                            <p>
+                              <span className="text-zinc-500">Next rank:</span>{" "}
+                              <span className="font-semibold text-zinc-100">{rankResult.nextRankLabel}</span>
+                            </p>
+                            {rankResult.weightIncreaseLabel ? (
+                              <p className="mt-1 text-zinc-400">{rankResult.weightIncreaseLabel}</p>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 text-left">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                            Based on your first workout
+                          </p>
+                          <p className="mt-1 font-semibold text-zinc-100">{rankResult?.exercise ?? "—"}</p>
+                          <p className="mt-1 text-sm text-zinc-400">
+                            {(rankResult?.weightDisplay ?? "—") + " × " + String(rankResult?.reps ?? "—") + " reps"}
+                          </p>
+                          <p className="mt-2 text-sm text-zinc-400">
+                            Estimated 1RM:{" "}
+                            <span className="font-semibold text-zinc-200">
+                              {rankResult?.estimated1RMDisplay ?? "—"}
+                            </span>
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Bottom action bar (form steps) */}
+          <div
+            className={[
+              "mt-auto w-full border-t border-zinc-800 px-5 pt-4",
+              isStrengthRankStep && rankSubStep === 1
+                ? "relative bg-zinc-950 pb-4"
+                : "relative bg-zinc-950 pb-5",
+            ].join(" ")}
+            style={{
+              paddingBottom:
+                isStrengthRankStep && rankSubStep === 0
+                  ? "calc(18px + env(safe-area-inset-bottom))"
+                  : isStrengthRankStep && rankSubStep === 1
+                    ? "calc(16px + env(safe-area-inset-bottom))"
+                    : "calc(20px + env(safe-area-inset-bottom))",
+            }}
           >
-            {submitting ? "Saving…" : step === TOTAL_STEPS ? "Finish" : "Continue"}
-          </button>
-        </div>
-      )}
+            {error ? (
+              <p className="mb-3 text-center text-sm text-red-400">{error}</p>
+            ) : null}
+            <button
+              type="button"
+              onClick={async () => {
+                if (!isStrengthRankStep) {
+                  await handleContinue();
+                  return;
+                }
+
+                if (rankSubStep === 0) {
+                  if (!rankCategory) return;
+                  haptic();
+                  setRankSubStep(1);
+                  return;
+                }
+                if (rankSubStep === 1) {
+                  const w = Number(rankWeight);
+                  const r = Math.floor(Number(rankReps));
+                  if (!rankExercise || !Number.isFinite(w) || w <= 0 || !Number.isFinite(r) || r <= 0) return;
+
+                  const weightKg = data.units === "imperial" ? lbsToKg(w) : w;
+                  const bodyweightKg = Math.max(1, data.weightKg);
+                  const oneRmKg = epleyEstimated1RM(weightKg, r);
+                  const ratio = oneRmKg / bodyweightKg;
+                  const muscle = strengthCategoryToMuscle(rankCategory ?? "chest");
+                  const info = strengthScoreToRank(ratio, muscle);
+
+                  setRankResult({
+                    rankLabel: info.rankLabel,
+                    rankSlug: info.rankSlug as RankSlug,
+                    tier: info.tier,
+                    topPercentileLabel: info.topPercentileLabel,
+                    nextRankLabel: info.nextRankLabel,
+                    weightIncreaseLabel: (() => {
+                      if (!info.nextThreshold) return null;
+                      const required1RM = info.nextThreshold * bodyweightKg;
+                      const requiredWeightKg = required1RM / (1 + r / 30);
+                      const addKg = requiredWeightKg - weightKg;
+                      if (!Number.isFinite(addKg) || addKg <= 0) return null;
+                      const addRoundedKg = Math.max(0.5, Math.round(addKg * 2) / 2);
+                      const display = data.units === "imperial" ? Math.round(kgToLbs(addRoundedKg)) : addRoundedKg;
+                      const unit = data.units === "imperial" ? "lb" : "kg";
+                      return `+${display} ${unit} ${rankExercise.toLowerCase()} needed`;
+                    })(),
+                    exercise: rankExercise,
+                    weightDisplay: `${Math.round((data.units === "imperial" ? w : weightKg) * 10) / 10} ${data.units === "imperial" ? "lb" : "kg"}`,
+                    reps: r,
+                    estimated1RMDisplay: `${Math.round((data.units === "imperial" ? kgToLbs(oneRmKg) : oneRmKg) * 10) / 10} ${data.units === "imperial" ? "lb" : "kg"}`,
+                  });
+
+                  // Persist this lift to power the strength map (best effort).
+                  const logResult = await logOnboardingStrengthLift({
+                    category: rankCategory ?? "chest",
+                    exerciseName: rankExercise,
+                    date: localCalendarDateYYYYMMDD(),
+                    weightKg,
+                    reps: r,
+                  });
+                  if (!logResult.ok) {
+                    // Don't block the reveal; show a non-fatal message if needed.
+                    setError(logResult.error);
+                  }
+
+                  haptic();
+                  setRankSubStep(2);
+                  return;
+                }
+                if (rankSubStep === 3) {
+                  await handleContinue();
+                }
+              }}
+              disabled={isStrengthRankStep ? strengthPrimaryButtonDisabled : !canContinue || submitting}
+              className={[
+                "tap-feedback w-full rounded-[14px] bg-amber-500 text-base font-semibold text-zinc-950 shadow-lg shadow-amber-500/20 transition disabled:opacity-50 disabled:shadow-none hover:bg-amber-400 active:scale-[0.97] active:brightness-95",
+                isStrengthRankStep && rankSubStep === 0 ? "h-[54px]" : isStrengthRankStep && rankSubStep === 1 ? "h-[50px]" : "h-14",
+              ].join(" ")}
+            >
+              {isStrengthRankStep && rankSubStep === 2 ? (
+                <span className="mr-2 inline-flex align-middle" aria-hidden>
+                  <svg className="h-5 w-5 animate-spin text-zinc-950" viewBox="0 0 24 24" fill="none">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                    />
+                  </svg>
+                </span>
+              ) : null}
+              {submitting
+                ? "Saving…"
+                : isStrengthRankStep
+                  ? rankSubStep === 0
+                    ? "Continue"
+                    : rankSubStep === 1
+                      ? "Log Workout"
+                      : rankSubStep === 2
+                        ? "Calculating…"
+                        : "Start Training"
+                  : step === TOTAL_STEPS
+                    ? "Finish"
+                    : "Continue"}
+            </button>
+          </div>
         </>
       )}
     </div>
   );
 }
 
-// ----- Country search step -----
-function CountryStep({
-  value,
-  onChange,
-}: {
-  value: string;
-  onChange: (code: string) => void;
+// CountryStep removed (inlined in step 4 for exact layout control).
+
+function StrengthRankLogLiftStep(props: {
+  rankCategory: StrengthCategory | null;
+  exercisesForCategory: Record<StrengthCategory, string[]>;
+  rankExercise: string | null;
+  setRankExercise: (v: string | null) => void;
+  rankCustomOpen: boolean;
+  setRankCustomOpen: (v: boolean | ((prev: boolean) => boolean)) => void;
+  rankCustomName: string;
+  setRankCustomName: (v: string) => void;
+  rankWeight: string;
+  setRankWeight: (v: string) => void;
+  rankReps: string;
+  setRankReps: (v: string) => void;
+  units: "metric" | "imperial";
 }) {
-  const [search, setSearch] = useState("");
-  const filtered = search.trim()
-    ? COUNTRIES.filter((c) =>
-        c.name.toLowerCase().includes(search.trim().toLowerCase())
-      )
-    : COUNTRIES;
+  const [isTallScreen, setIsTallScreen] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsTallScreen(window.innerHeight > 750);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
+
+  const list = props.rankCategory ? props.exercisesForCategory[props.rankCategory] : [];
 
   return (
-    <div className="mt-6">
-      <input
-        type="search"
-        placeholder="Search countries…"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full rounded-2xl border-2 border-zinc-700 bg-zinc-800/80 px-4 py-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
-        autoComplete="off"
-      />
-      <div className="mt-3 max-h-72 overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-900/95">
-        {filtered.map((c) => (
+    <div
+      className="min-h-0 flex-1 px-5"
+      style={{
+        overflowY: props.rankCustomOpen ? "auto" : "hidden",
+        paddingBottom: props.rankCustomOpen ? "90px" : undefined,
+      }}
+    >
+      <div className="pt-3">
+        <p className="mb-4 text-sm font-semibold text-zinc-400">Choose your first lift</p>
+        <div className="space-y-1.5">
+          {list.map((ex) => {
+            const selected = props.rankExercise === ex;
+            return (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => {
+                  haptic();
+                  props.setRankExercise(ex);
+                  props.setRankCustomOpen(false);
+                  props.setRankCustomName("");
+                }}
+                className={[
+                  "tap-feedback flex h-[46px] w-full items-center rounded-[12px] px-3 py-2 text-left transition-colors",
+                  selected
+                    ? "border-2 border-[#F5A623] bg-[rgba(245,166,35,0.08)] text-amber-200"
+                    : "border border-white/[0.08] bg-zinc-900/40 text-zinc-200 hover:border-white/[0.12]",
+                ].join(" ")}
+              >
+                <span className="text-sm font-semibold leading-none">{ex}</span>
+              </button>
+            );
+          })}
+
           <button
-            key={c.code}
             type="button"
-            onClick={() => onChange(c.code)}
-            className={`tap-feedback flex w-full items-center gap-2 px-4 py-3 text-left ${
-              c.code === value
-                ? "bg-amber-500/20 text-amber-400"
-                : "text-zinc-300 hover:bg-zinc-800"
-            }`}
+            onClick={() => {
+              haptic();
+              props.setRankCustomOpen((v) => !v);
+              props.setRankCustomName("");
+              props.setRankExercise(null);
+            }}
+            className={[
+              "tap-feedback flex h-[46px] w-full items-center rounded-[12px] px-3 py-2 text-left transition-colors",
+              props.rankCustomOpen
+                ? "border-2 border-[#F5A623] bg-[rgba(245,166,35,0.08)] text-amber-200"
+                : "border border-white/[0.08] bg-zinc-900/40 text-zinc-200 hover:border-white/[0.12]",
+            ].join(" ")}
           >
-            <span>{getFlagEmoji(c.code)}</span>
-            <span>{c.name}</span>
+            <span className="text-sm font-semibold">+ Add your exercise</span>
           </button>
-        ))}
-        {filtered.length === 0 && (
-          <p className="px-4 py-4 text-zinc-500">No countries match.</p>
-        )}
+
+          <div
+            className="overflow-hidden"
+            style={{
+              maxHeight: props.rankCustomOpen ? "140px" : "0px",
+              opacity: props.rankCustomOpen ? 1 : 0,
+              transition: "max-height 0.25s ease, opacity 0.25s ease",
+            }}
+            aria-hidden={!props.rankCustomOpen}
+          >
+            <div className="rounded-[12px] border border-white/[0.08] bg-zinc-900/30 p-3">
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-zinc-400">
+                  Custom Exercise Name
+                </span>
+                <input
+                  type="text"
+                  value={props.rankCustomName}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    props.setRankCustomName(v);
+                    props.setRankExercise(v.trim() ? v.trim() : null);
+                  }}
+                  placeholder="Type your own exercise name"
+                  className="h-11 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                  autoComplete="off"
+                />
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div className="mt-3.5">
+        <p className="mb-4 text-sm font-semibold text-zinc-400">Enter Lift</p>
+        <div className="space-y-2">
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-zinc-400">
+              Weight lifted ({props.units === "imperial" ? "lb" : "kg"})
+            </span>
+            <input
+              inputMode="decimal"
+              type="number"
+              value={props.rankWeight}
+              onChange={(e) => props.setRankWeight(e.target.value)}
+              placeholder={props.units === "imperial" ? "lb" : "kg"}
+              className="h-11 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            />
+            <p className="my-1.5 text-xs text-zinc-500">
+              Your rank is calculated relative to your bodyweight.
+            </p>
+          </label>
+
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-zinc-400">Reps</span>
+            <input
+              inputMode="numeric"
+              type="number"
+              value={props.rankReps}
+              onChange={(e) => props.setRankReps(e.target.value)}
+              placeholder="e.g. 5"
+              className="h-11 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+            />
+          </label>
+        </div>
+      </div>
+
+      {isTallScreen ? (
+        <p className="mt-4 text-center text-xs text-zinc-500">
+          We’ll estimate your 1RM using the Epley formula.
+        </p>
+      ) : null}
     </div>
   );
 }

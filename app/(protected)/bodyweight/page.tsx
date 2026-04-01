@@ -61,6 +61,7 @@ export default async function BodyweightPage() {
           weightKg={stats.latest?.weight ?? profile?.body_weight ?? null}
           heightCm={profile?.height ?? null}
           ffmi={profile?.ffmi ?? null}
+          gender={profile?.gender ?? null}
         />
 
         {chartData.length > 0 && (

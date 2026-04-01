@@ -7,6 +7,8 @@ export type FFMICategory = {
   color: string;
 };
 
+type FFMIGender = "male" | "female" | "other" | "prefer_not_to_say" | null | undefined;
+
 export function calculateFFMI(
   weightKg: number,
   heightCm: number,
@@ -31,7 +33,17 @@ export function calculateFFMI(
 }
 
 /** Muscularity bands for natural-lifter-oriented interpretation. */
-export function getFFMICategory(ffmi: number): FFMICategory {
+export function getFFMICategory(ffmi: number, gender?: FFMIGender): FFMICategory {
+  if (gender === "female") {
+    if (ffmi < 14) return { label: "Very low", color: "#9CA3AF" };
+    if (ffmi < 16) return { label: "Average", color: "#93C5FD" };
+    if (ffmi < 18) return { label: "Trained", color: "#34D399" };
+    if (ffmi < 20) return { label: "Muscular", color: "#FBBF24" };
+    if (ffmi < 21) return { label: "Elite natural", color: "#F59E0B" };
+    return { label: "Extremely muscular", color: "#EF4444" };
+  }
+
+  // Default to the existing (male) scale for non-female genders.
   if (ffmi < 18) return { label: "Very low", color: "#9CA3AF" };
   if (ffmi < 20) return { label: "Average", color: "#93C5FD" };
   if (ffmi < 22) return { label: "Trained", color: "#34D399" };
