@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { buttonClass } from "@/app/components/Button";
@@ -12,6 +12,22 @@ function normalizeNext(next: string | null): string {
 }
 
 export default function VerifyEmailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[100dvh] items-center justify-center bg-zinc-950 px-4 py-6 text-zinc-100">
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-zinc-900/20 p-5 text-sm text-zinc-400">
+            Loading…
+          </div>
+        </div>
+      }
+    >
+      <VerifyEmailInner />
+    </Suspense>
+  );
+}
+
+function VerifyEmailInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = useMemo(() => normalizeNext(searchParams.get("next")), [searchParams]);
