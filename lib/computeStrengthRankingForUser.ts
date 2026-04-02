@@ -3,7 +3,13 @@
  * Used by rankings persistence and the Insights server action.
  */
 
-import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
+import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
+import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
+import {
+  bodyweightStrengthSessionContext,
+  sessionEstimated1RMFromSets,
+  type SessionSetRow,
+} from "@/lib/sessionStrength";
 import {
   computeStrengthRanking,
   categoryToStrengthMuscles,
@@ -149,7 +155,7 @@ export type StrengthRankingComputeBundle = {
   exerciseDataPoints: ExerciseDataPoint[];
   exerciseCountByMuscle: Record<StrengthRankMuscle, number>;
   categoryByExercise: Record<string, string>;
-  loadTypeByExercise: Record<string, "bilateral" | "unilateral">;
+  loadTypeByExercise: Record<string, LoadType>;
   allExercises: { id: string; name: string; category_id: string; load_type?: unknown }[];
   coreImprovementSuggestions: CoreImprovementSuggestion[];
 };
@@ -220,7 +226,7 @@ export async function computeStrengthRankingBundleForUser(
 
   const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
   const categoryByExercise: Record<string, string> = {};
-  const loadTypeByExercise: Record<string, "bilateral" | "unilateral"> = {};
+  const loadTypeByExercise: Record<string, LoadType> = {};
   for (const e of allExercises ?? []) {
     const catName = categoryNameById.get(e.category_id);
     if (catName != null) categoryByExercise[e.id] = catName;
@@ -250,6 +256,10 @@ export async function computeStrengthRankingBundleForUser(
 
   const exerciseNameById = new Map((allExercises ?? []).map((e) => [e.id, e.name]));
 
+  const bwSeries = await loadBodyweightSeriesForUser(supabase, userId, {
+    logsEndDateInclusive: endDate,
+  });
+
   const exerciseDataPoints: ExerciseDataPoint[] = [];
   const bwForRatio = bodyweightKgRaw > 0 ? bodyweightKgRaw : 0;
   for (const w of workouts ?? []) {
@@ -258,7 +268,7 @@ export async function computeStrengthRankingBundleForUser(
     const muscles = getEffectiveMusclesForExercise(categoryName, name);
     if (muscles.includes("core")) continue;
 
-    const loadType = loadTypeByExercise[w.exercise_id] ?? "bilateral";
+    const loadType = loadTypeByExercise[w.exercise_id] ?? "weight";
     const storedBest =
       (w as { estimated_1rm?: number | null }).estimated_1rm != null
         ? Number((w as { estimated_1rm?: number | null }).estimated_1rm)
@@ -267,20 +277,18 @@ export async function computeStrengthRankingBundleForUser(
 
     // Use advanced session average when present, otherwise keep legacy best-set tracking.
     // Final fallback (older schema): best-set computed from sets.
-    const computedBest = (() => {
-      const vals: number[] = [];
-      for (const s of workoutSets) {
-        const weightKg =
-          s.weight != null && Number.isFinite(Number(s.weight)) ? Number(s.weight) : Number(w.weight) || 0;
-        if (weightKg <= 0) continue;
-        const reps = Number(s.reps) || 0;
-        const effective = getEffectiveWeight(weightKg, loadType);
-        const oneRm = epleyEstimated1RM(effective, reps);
-        if (oneRm > 0) vals.push(oneRm);
-      }
-      if (vals.length === 0) return 0;
-      return Math.max(...vals);
-    })();
+    const bwAt =
+      loadType === "bodyweight"
+        ? resolveBodyweightKgFromLogs(w.date, bwSeries.logsAsc, bwSeries.profileKg)
+        : 0;
+    const computedBest = sessionEstimated1RMFromSets(
+      workoutSets as SessionSetRow[],
+      Number(w.weight) || 0,
+      loadType,
+      loadType === "bodyweight"
+        ? bodyweightStrengthSessionContext(bwAt, categoryName)
+        : undefined
+    );
 
     const session1RM =
       storedBest != null && Number.isFinite(storedBest) && storedBest > 0 ? storedBest : computedBest;
@@ -293,17 +301,25 @@ export async function computeStrengthRankingBundleForUser(
       // Farmer carry rule applies only to forearms scoring.
       let avgForMuscle = session1RM;
       if (m === "forearms" && name.trim().toLowerCase().includes("farmer")) {
-        const vals: number[] = [];
+        const fallback = Number(w.weight) || 0;
+        let maxKg = 0;
         for (const s of workoutSets) {
           const baseW =
-            s.weight != null && Number.isFinite(Number(s.weight)) ? Number(s.weight) : Number(w.weight) || 0;
-          if (baseW <= 0) continue;
-          const reps = Number(s.reps) || 0;
-          const effective = baseW * 2;
-          const oneRm = epleyEstimated1RM(effective, reps);
-          if (oneRm > 0) vals.push(oneRm);
+            s.weight != null && Number.isFinite(Number(s.weight)) ? Number(s.weight) : fallback;
+          if (baseW > maxKg) maxKg = baseW;
         }
-        if (vals.length > 0) avgForMuscle = vals.reduce((a, b) => a + b, 0) / vals.length;
+        if (maxKg > 0) {
+          const effective = maxKg * 2;
+          let bestRm = 0;
+          for (const s of workoutSets) {
+            const baseW =
+              s.weight != null && Number.isFinite(Number(s.weight)) ? Number(s.weight) : fallback;
+            if (baseW !== maxKg) continue;
+            const oneRm = epleyEstimated1RM(effective, Number(s.reps) || 0);
+            if (oneRm > bestRm) bestRm = oneRm;
+          }
+          avgForMuscle = bestRm;
+        }
       }
 
       exerciseDataPoints.push({
@@ -394,7 +410,7 @@ export async function computeStrengthRankingBundleForUser(
       const repsList = coreSetsByWorkout.get(w.id) ?? [];
       const bestSet = repsList.length ? Math.max(...repsList) : 0;
       const weightKg = Number(w.weight) || 0;
-      const loadType = loadTypeByExercise[w.exercise_id] ?? "bilateral";
+      const loadType = loadTypeByExercise[w.exercise_id] ?? "weight";
       const effectiveWeightKg = getEffectiveWeight(weightKg, loadType);
       current.bestRepsOrSeconds = Math.max(current.bestRepsOrSeconds, bestSet);
       current.bestWeightKg = Math.max(current.bestWeightKg, effectiveWeightKg);

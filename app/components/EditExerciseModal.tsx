@@ -1,10 +1,11 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { updateExercise } from "@/app/actions/exercises";
 import { useLockBodyScroll } from "@/app/lib/useLockBodyScroll";
 import type { Exercise } from "@/lib/types";
+import { normalizeLoadType, type LoadType } from "@/lib/loadType";
 
 function formAction(_: { error?: string } | undefined, formData: FormData) {
   const id = formData.get("id") as string;
@@ -23,6 +24,9 @@ export function EditExerciseModal({
 }) {
   const [state, action] = useActionState(formAction, undefined);
   const formRef = useRef<HTMLFormElement>(null);
+  const [loadType, setLoadType] = useState<LoadType>(() =>
+    normalizeLoadType(exercise.load_type)
+  );
 
   useEffect(() => {
     if (state && !state.error) {
@@ -59,36 +63,6 @@ export function EditExerciseModal({
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
             />
           </div>
-          <div className="flex gap-3">
-            <div className="flex-1 space-y-1">
-              <label htmlFor="edit-rep_min" className="block text-xs text-zinc-500">
-                Rep min
-              </label>
-              <input
-                id="edit-rep_min"
-                name="rep_min"
-                type="number"
-                min={1}
-                required
-                defaultValue={exercise.rep_min}
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-            </div>
-            <div className="flex-1 space-y-1">
-              <label htmlFor="edit-rep_max" className="block text-xs text-zinc-500">
-                Rep max
-              </label>
-              <input
-                id="edit-rep_max"
-                name="rep_max"
-                type="number"
-                min={1}
-                required
-                defaultValue={exercise.rep_max}
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              />
-            </div>
-          </div>
           <div className="space-y-1">
             <label htmlFor="edit-load_type" className="block text-xs text-zinc-500">
               Load Type
@@ -96,13 +70,47 @@ export function EditExerciseModal({
             <select
               id="edit-load_type"
               name="load_type"
-              defaultValue={exercise.load_type ?? "bilateral"}
+              value={loadType}
+              onChange={(e) => setLoadType(normalizeLoadType(e.target.value))}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
             >
-              <option value="bilateral">Both arms / total weight</option>
+              <option value="weight">Both arms / total weight</option>
               <option value="unilateral">One arm / per side</option>
+              <option value="bodyweight">Bodyweight</option>
             </select>
           </div>
+          {loadType !== "bodyweight" && (
+            <div className="flex gap-3">
+              <div className="flex-1 space-y-1">
+                <label htmlFor="edit-rep_min" className="block text-xs text-zinc-500">
+                  Rep min
+                </label>
+                <input
+                  id="edit-rep_min"
+                  name="rep_min"
+                  type="number"
+                  min={1}
+                  required
+                  defaultValue={exercise.rep_min}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+              <div className="flex-1 space-y-1">
+                <label htmlFor="edit-rep_max" className="block text-xs text-zinc-500">
+                  Rep max
+                </label>
+                <input
+                  id="edit-rep_max"
+                  name="rep_max"
+                  type="number"
+                  min={1}
+                  required
+                  defaultValue={exercise.rep_max}
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+          )}
           {state?.error && (
             <p className="text-sm text-red-400">{state.error}</p>
           )}

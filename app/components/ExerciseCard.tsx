@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { deleteExercise } from "@/app/actions/exercises";
 import { useLockBodyScroll } from "@/app/lib/useLockBodyScroll";
 import type { Exercise } from "@/lib/types";
+import { normalizeLoadType } from "@/lib/loadType";
 import { EditExerciseModal } from "@/app/components/EditExerciseModal";
 import { buttonClass } from "@/app/components/Button";
 
@@ -59,7 +60,9 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
         >
           <span className="font-medium text-zinc-100">{exercise.name}</span>
           <span className="ml-2 text-zinc-500">
-            {exercise.rep_min}–{exercise.rep_max} reps
+            {normalizeLoadType(exercise.load_type) === "bodyweight"
+              ? "Bodyweight"
+              : `${exercise.rep_min}–${exercise.rep_max} reps`}
           </span>
         </Link>
         <div

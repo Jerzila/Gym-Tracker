@@ -42,13 +42,33 @@ export function StrengthRecommendationCard({ recommendation }: Props) {
         ) : (
           <>
             <p className="text-sm font-medium text-zinc-200">{recommendation.subtitle}</p>
-            <p className="mt-1 text-base font-semibold text-zinc-100">
-              {targetWeightLabel} × {recommendation.targetRep} reps
-            </p>
-            <p className="mt-1.5 text-sm text-zinc-200">
-              {recommendation.action === "increase" ? increaseText : primaryText}
-            </p>
-            <p className="text-sm text-zinc-400">{recommendation.secondaryText}</p>
+            {recommendation.bodyweightRepProgression && recommendation.targetRep != null ? (
+              <p className="mt-1 text-base font-semibold text-zinc-100">
+                {recommendation.targetRep} reps
+              </p>
+            ) : recommendation.bodyweightExtraMode &&
+              recommendation.nextWeightKg != null &&
+              recommendation.targetRep != null ? (
+              <p className="mt-1 text-base font-semibold text-zinc-100">
+                {recommendation.nextWeightKg > 0
+                  ? `${formatWeight(recommendation.nextWeightKg, { units, signed: true })} ${weightLabel}`
+                  : "Bodyweight"}
+                {" × "}
+                {recommendation.targetRep} reps
+              </p>
+            ) : (
+              <p className="mt-1 text-base font-semibold text-zinc-100">
+                {targetWeightLabel} × {recommendation.targetRep} reps
+              </p>
+            )}
+            {(recommendation.action === "increase" ? increaseText : primaryText) !== "" && (
+              <p className="mt-1.5 text-sm text-zinc-200">
+                {recommendation.action === "increase" ? increaseText : primaryText}
+              </p>
+            )}
+            {recommendation.secondaryText !== "" && (
+              <p className="text-sm text-zinc-400">{recommendation.secondaryText}</p>
+            )}
           </>
         )}
       </div>

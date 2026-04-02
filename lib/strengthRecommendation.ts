@@ -1,9 +1,15 @@
-import { getEffectiveWeight } from "@/lib/loadType";
+import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
+
+type StrengthRecOpts = {
+  userBodyweightKg?: number;
+  /** Fraction of bodyweight for effective load (bodyweight exercises). Default 1. */
+  bodyweightLoadFraction?: number;
+};
 
 type WorkoutHistoryEntry = {
   weight: number;
-  load_type?: "bilateral" | "unilateral";
-  sets: { reps: number }[];
+  load_type?: LoadType;
+  sets: { reps: number; weight?: number | null }[];
 };
 
 type RepRange = {
@@ -22,6 +28,10 @@ export type StrengthRecommendation = {
   primaryText: string;
   secondaryText: string;
   emptyStateText: string;
+  /** When set, the card uses extra-weight copy instead of total bar load. */
+  bodyweightExtraMode?: boolean;
+  /** Bodyweight: reps-only target (no automatic weight progression). */
+  bodyweightRepProgression?: boolean;
 };
 
 function roundToTenth(value: number): number {
@@ -29,15 +39,18 @@ function roundToTenth(value: number): number {
 }
 
 /**
- * Uses latest workout set reps and rep range to suggest next session load.
+ * Suggests next session targets from the most recent workout.
+ * Weighted exercises use rep range + load; bodyweight uses max reps only (no auto weight bump).
  */
 export function getStrengthRecommendation(
   exerciseHistory: WorkoutHistoryEntry[],
   repRange: RepRange,
-  loadType: WorkoutHistoryEntry["load_type"] | undefined = "bilateral"
+  loadType: LoadType | undefined = "weight",
+  _opts?: StrengthRecOpts
 ): StrengthRecommendation {
   const fallbackMin = Number.isFinite(repRange.minRep) && repRange.minRep > 0 ? repRange.minRep : 6;
   const fallbackMax = Number.isFinite(repRange.maxRep) && repRange.maxRep >= fallbackMin ? repRange.maxRep : 10;
+  const lt = normalizeLoadType(loadType);
 
   const latest = exerciseHistory[0];
   if (!latest) {
@@ -55,11 +68,62 @@ export function getStrengthRecommendation(
     };
   }
 
+  if (lt === "bodyweight") {
+    let bestRep = 0;
+    for (const set of latest.sets) {
+      const r = Number(set.reps);
+      if (Number.isFinite(r) && r > bestRep) bestRep = r;
+    }
+    if (bestRep <= 0) {
+      return {
+        action: "no_data",
+        title: "Strength Recommendation",
+        subtitle: "Next workout target",
+        nextWeightKg: null,
+        currentWeightKg: null,
+        targetRep: null,
+        bestRep: null,
+        primaryText: "",
+        secondaryText: "",
+        emptyStateText: "Log your first workout to receive strength recommendations.",
+      };
+    }
+
+    const targetReps = bestRep + 1;
+    return {
+      action: "keep",
+      title: "Strength Recommendation",
+      subtitle: "Next workout target",
+      nextWeightKg: null,
+      currentWeightKg: null,
+      targetRep: targetReps,
+      bestRep,
+      primaryText: "",
+      secondaryText: `Try to beat your best set of ${bestRep} reps.`,
+      emptyStateText: "",
+      bodyweightRepProgression: true,
+    };
+  }
+
   const loggedWeight = Number(latest.weight);
-  const factor = loadType === "unilateral" ? 2 : 1;
-  const effectiveWeight = getEffectiveWeight(loggedWeight, loadType);
-  const reps = latest.sets.map((set) => Number(set.reps)).filter((rep) => Number.isFinite(rep) && rep > 0);
-  if (reps.length === 0 || !Number.isFinite(loggedWeight) || loggedWeight <= 0) {
+  const factor = lt === "unilateral" ? 2 : 1;
+  const fallbackW = Number.isFinite(loggedWeight) && loggedWeight > 0 ? loggedWeight : 0;
+  let maxKg = 0;
+  for (const set of latest.sets) {
+    const kg =
+      set.weight != null && Number.isFinite(Number(set.weight)) ? Number(set.weight) : fallbackW;
+    if (kg > maxKg) maxKg = kg;
+  }
+  const effectiveWeight = getEffectiveWeight(maxKg, lt);
+  let bestRep = 0;
+  for (const set of latest.sets) {
+    const kg =
+      set.weight != null && Number.isFinite(Number(set.weight)) ? Number(set.weight) : fallbackW;
+    if (kg !== maxKg) continue;
+    const r = Number(set.reps);
+    if (Number.isFinite(r) && r > bestRep) bestRep = r;
+  }
+  if (bestRep <= 0 || maxKg <= 0) {
     return {
       action: "no_data",
       title: "Strength Recommendation",
@@ -73,8 +137,6 @@ export function getStrengthRecommendation(
       emptyStateText: "Log your first workout to receive strength recommendations.",
     };
   }
-
-  const bestRep = Math.max(...reps);
 
   if (bestRep >= fallbackMax) {
     return {

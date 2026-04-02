@@ -24,3 +24,11 @@ export function getProgressiveOverloadMessage(
   if (anyBelowMin) return "Weight too heavy or stay at this weight";
   return "Stay at this weight until you hit the top of the range";
 }
+
+/** After logging bodyweight sets: rep-based encouragement (no rep-range / weight auto-suggestions). */
+export function getBodyweightProgressMessage(setReps: number[]): string {
+  if (setReps.length === 0) return "";
+  const best = Math.max(...setReps);
+  const next = best + 1;
+  return `Next workout, aim for ${next} reps or more on your best set.`;
+}

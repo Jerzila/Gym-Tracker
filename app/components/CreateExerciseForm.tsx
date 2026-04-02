@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createExercise } from "@/app/actions/exercises";
 import type { Category } from "@/lib/types";
 import { buttonClass } from "@/app/components/Button";
+import { normalizeLoadType, type LoadType } from "@/lib/loadType";
 import { useToast } from "@/app/components/Toast";
 
 function formAction(_: { error?: string } | undefined, formData: FormData) {
@@ -22,6 +23,7 @@ export function CreateExerciseForm({
   const toast = useToast();
   const [state, action] = useActionState(formAction, undefined);
   const [isOpen, setIsOpen] = useState(false);
+  const [loadType, setLoadType] = useState<LoadType>("weight");
   const formRef = useRef<HTMLFormElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -30,6 +32,7 @@ export function CreateExerciseForm({
       const t = setTimeout(() => nameInputRef.current?.focus(), 100);
       return () => clearTimeout(t);
     }
+    setLoadType("weight");
   }, [isOpen]);
 
   useEffect(() => {
@@ -114,46 +117,54 @@ export function CreateExerciseForm({
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                 </div>
-                <div className="w-20 space-y-1">
-                  <label htmlFor="rep_min" className="block text-xs text-zinc-500">
-                    Rep min
-                  </label>
-                  <input
-                    id="rep_min"
-                    name="rep_min"
-                    type="number"
-                    min={1}
-                    defaultValue={6}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-                <div className="w-20 space-y-1">
-                  <label htmlFor="rep_max" className="block text-xs text-zinc-500">
-                    Rep max
-                  </label>
-                  <input
-                    id="rep_max"
-                    name="rep_max"
-                    type="number"
-                    min={1}
-                    defaultValue={12}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                  />
-                </div>
-                <div className="w-full space-y-1 sm:w-44">
+                <div className="w-full shrink-0 space-y-1 sm:w-44">
                   <label htmlFor="load_type" className="block text-xs text-zinc-500">
                     Load Type
                   </label>
                   <select
                     id="load_type"
                     name="load_type"
-                    defaultValue="bilateral"
+                    value={loadType}
+                    onChange={(e) => setLoadType(normalizeLoadType(e.target.value))}
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   >
-                    <option value="bilateral">Both arms / total weight</option>
-                    <option value="unilateral">One arm / per arm</option>
+                    <option value="weight">Both arms / total weight</option>
+                    <option value="unilateral">One arm / per side</option>
+                    <option value="bodyweight">Bodyweight</option>
                   </select>
                 </div>
+                {loadType !== "bodyweight" && (
+                  <>
+                    <div className="w-20 space-y-1">
+                      <label htmlFor="rep_min" className="block text-xs text-zinc-500">
+                        Rep min
+                      </label>
+                      <input
+                        id="rep_min"
+                        name="rep_min"
+                        type="number"
+                        min={1}
+                        defaultValue={6}
+                        required
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                    </div>
+                    <div className="w-20 space-y-1">
+                      <label htmlFor="rep_max" className="block text-xs text-zinc-500">
+                        Rep max
+                      </label>
+                      <input
+                        id="rep_max"
+                        name="rep_max"
+                        type="number"
+                        min={1}
+                        defaultValue={12}
+                        required
+                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="flex gap-2 sm:items-end">
                   <button
                     type="submit"

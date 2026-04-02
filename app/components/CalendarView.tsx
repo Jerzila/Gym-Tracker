@@ -8,8 +8,14 @@ import {
   getPRsForDate,
   type CalendarWorkout,
 } from "@/app/actions/workouts";
-import { epley1RM } from "@/lib/progression";
-import { getEffectiveWeight } from "@/lib/loadType";
+import { resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
+import { formatLoggedSetsSummary } from "@/lib/formatBodyweightSets";
+import {
+  sessionEstimated1RMFromSets,
+  sessionVolumeKgFromSets,
+  type SessionSetRow,
+} from "@/lib/sessionStrength";
+import { normalizeLoadType } from "@/lib/loadType";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { SkeletonCalendarGrid } from "@/app/components/Skeleton";
@@ -43,6 +49,13 @@ function isFuture(d: Date): boolean {
   return toDateKey(d) > today;
 }
 
+type BodyweightCalendarContext = {
+  profileKg: number;
+  logsAsc: { date: string; weight: number }[];
+};
+
+const emptyBwContext: BodyweightCalendarContext = { profileKg: 0, logsAsc: [] };
+
 export function CalendarView() {
   const router = useRouter();
   const pathname = usePathname();
@@ -53,6 +66,8 @@ export function CalendarView() {
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [workouts, setWorkouts] = useState<CalendarWorkout[]>([]);
+  const [bodyweightContext, setBodyweightContext] =
+    useState<BodyweightCalendarContext>(emptyBwContext);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -85,7 +100,8 @@ export function CalendarView() {
     });
     getWorkoutsByMonth(year, month).then(({ data, error: err }) => {
       if (!cancelled) {
-        setWorkouts(data ?? []);
+        setWorkouts(data?.workouts ?? []);
+        setBodyweightContext(data?.bodyweightContext ?? emptyBwContext);
         setError(err ?? null);
         setLoading(false);
       }
@@ -120,10 +136,28 @@ export function CalendarView() {
       return;
     }
     const sessions = dayWorkouts.map((w) => {
-      const bestReps = Math.max(...w.sets.map((s) => s.reps), 0);
+      const stored = w.estimated_1rm;
+      if (stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0) {
+        return { exercise_id: w.exercise_id, estimated1RM: Number(stored) };
+      }
+      const lt = normalizeLoadType(w.load_type);
+      const bwAt =
+        lt === "bodyweight"
+          ? resolveBodyweightKgFromLogs(dateKey, bodyweightContext.logsAsc, bodyweightContext.profileKg)
+          : 0;
       return {
         exercise_id: w.exercise_id,
-        estimated1RM: epley1RM(getEffectiveWeight(w.weight, w.load_type), bestReps),
+        estimated1RM: sessionEstimated1RMFromSets(
+          w.sets as SessionSetRow[],
+          Number(w.weight) || 0,
+          lt,
+          lt === "bodyweight"
+            ? {
+                userBodyweightKg: bwAt,
+                bodyweightLoadFraction: w.bodyweight_load_fraction ?? 1,
+              }
+            : undefined
+        ),
       };
     });
     getPRsForDate(dateKey, sessions).then(({ prExerciseIds }) => {
@@ -343,6 +377,7 @@ export function CalendarView() {
               workouts={workoutsByDate.get(selectedDate) ?? []}
               prExerciseIds={prIds}
               onClose={handleClosePanel}
+              bodyweightContext={bodyweightContext}
             />
           )}
         </aside>
@@ -356,11 +391,13 @@ function CalendarDayPanel({
   workouts,
   prExerciseIds,
   onClose,
+  bodyweightContext,
 }: {
   dateKey: string;
   workouts: CalendarWorkout[];
   prExerciseIds: Set<string>;
   onClose: () => void;
+  bodyweightContext: BodyweightCalendarContext;
 }) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
@@ -374,8 +411,25 @@ function CalendarDayPanel({
 
   const totalSets = workouts.reduce((acc, w) => acc + w.sets.length, 0);
   const totalVolume = workouts.reduce((acc, w) => {
-    const setVolume = w.sets.reduce((s, set) => s + w.weight * set.reps, 0);
-    return acc + setVolume;
+    const lt = normalizeLoadType(w.load_type);
+    const bwAt =
+      lt === "bodyweight"
+        ? resolveBodyweightKgFromLogs(dateKey, bodyweightContext.logsAsc, bodyweightContext.profileKg)
+        : 0;
+    return (
+      acc +
+      sessionVolumeKgFromSets(
+        w.sets as SessionSetRow[],
+        Number(w.weight) || 0,
+        lt,
+        lt === "bodyweight"
+          ? {
+              userBodyweightKg: bwAt,
+              bodyweightLoadFraction: w.bodyweight_load_fraction ?? 1,
+            }
+          : undefined
+      )
+    );
   }, 0);
 
   return (
@@ -451,9 +505,40 @@ function CalendarDayPanel({
               </h3>
               <ul className="space-y-3">
                 {workouts.map((w) => {
-                  const repStr = w.sets.map((s) => s.reps).join(" / ");
-                  const bestReps = Math.max(...w.sets.map((s) => s.reps), 0);
-                  const est1RM = epley1RM(w.weight, bestReps);
+                  const fallbackW = Number(w.weight) || 0;
+                  const lt = normalizeLoadType(w.load_type);
+                  const bwSummary = formatLoggedSetsSummary(w.sets, lt, units, weightLabel);
+                  const setSummary =
+                    bwSummary ||
+                    w.sets
+                      .map((s) => {
+                        const wKg = s.weight != null ? Number(s.weight) : fallbackW;
+                        return `${formatWeight(Number(wKg), { units })} ${weightLabel} × ${Number(s.reps) || 0}`;
+                      })
+                      .join(" · ");
+                  const stored = w.estimated_1rm;
+                  const bwAt =
+                    lt === "bodyweight"
+                      ? resolveBodyweightKgFromLogs(
+                          dateKey,
+                          bodyweightContext.logsAsc,
+                          bodyweightContext.profileKg
+                        )
+                      : 0;
+                  const est1RM =
+                    stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0
+                      ? Number(stored)
+                      : sessionEstimated1RMFromSets(
+                          w.sets as SessionSetRow[],
+                          fallbackW,
+                          lt,
+                          lt === "bodyweight"
+                            ? {
+                                userBodyweightKg: bwAt,
+                                bodyweightLoadFraction: w.bodyweight_load_fraction ?? 1,
+                              }
+                            : undefined
+                        );
                   const isPR = prExerciseIds.has(w.exercise_id);
 
                   return (
@@ -469,9 +554,7 @@ function CalendarDayPanel({
                           </span>
                         )}
                       </div>
-                      <p className="mt-1 text-sm text-zinc-400">
-                        {formatWeight(w.weight, { units })} {weightLabel} × {repStr}
-                      </p>
+                      <p className="mt-1 text-sm text-zinc-400">{setSummary}</p>
                       <p className="mt-0.5 text-xs text-zinc-500">
                         Est. 1RM: {formatWeight(est1RM, { units })} {weightLabel}
                       </p>

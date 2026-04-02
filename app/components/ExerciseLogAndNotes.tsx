@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { LogWorkoutForm } from "@/app/components/LogWorkoutForm";
 import { ExerciseNotesSection } from "@/app/components/ExerciseNotesSection";
+import type { LoadType } from "@/lib/loadType";
 
 type Props = {
   exerciseId: string;
   repMin: number;
   repMax: number;
   initialNotes: string | null;
-  loadType?: "bilateral" | "unilateral";
+  loadType?: LoadType;
 };
 
 export function ExerciseLogAndNotes({ exerciseId, repMin, repMax, initialNotes, loadType }: Props) {

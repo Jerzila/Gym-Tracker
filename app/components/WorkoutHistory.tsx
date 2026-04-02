@@ -8,6 +8,8 @@ import { useLockBodyScroll } from "@/app/lib/useLockBodyScroll";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { buttonClass } from "@/app/components/Button";
+import { formatLoggedSetsSummary } from "@/lib/formatBodyweightSets";
+import { normalizeLoadType, type LoadType } from "@/lib/loadType";
 
 type WorkoutItem = {
   id: string;
@@ -21,13 +23,16 @@ type WorkoutItem = {
 export function WorkoutHistory({
   workouts,
   exerciseId,
+  loadType = "weight",
 }: {
   workouts: WorkoutItem[];
   exerciseId: string;
+  loadType?: LoadType;
 }) {
   const router = useRouter();
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
+  const isBodyweight = normalizeLoadType(loadType) === "bodyweight";
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -67,6 +72,10 @@ export function WorkoutHistory({
               <span className="text-zinc-500">{w.date}</span>
               <span className="mx-2">·</span>
               {(() => {
+                if (isBodyweight) {
+                  const line = formatLoggedSetsSummary(w.sets, loadType, units, weightLabel);
+                  return <span className="font-medium">{line}</span>;
+                }
                 const fallbackWeight = Number(w.weight) || 0;
                 const weights = (w.sets ?? [])
                   .map((s) => (s.weight != null ? Number(s.weight) : fallbackWeight))
@@ -122,6 +131,11 @@ export function WorkoutHistory({
           const weights = (w.sets ?? [])
             .map((s) => (s.weight != null ? Number(s.weight) : fallbackWeight))
             .filter((x) => Number.isFinite(x) && x > 0);
+          const extras = (w.sets ?? []).map((s) =>
+            s.weight != null && Number.isFinite(Number(s.weight)) ? Math.max(0, Number(s.weight)) : 0
+          );
+          const avgExtra =
+            extras.length > 0 ? extras.reduce((a, b) => a + b, 0) / extras.length : 0;
           const avgW =
             w.average_weight != null && Number.isFinite(Number(w.average_weight)) && Number(w.average_weight) > 0
               ? Number(w.average_weight)
@@ -149,27 +163,54 @@ export function WorkoutHistory({
                 <div className="mt-4 space-y-2">
                   <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">Sets</p>
                   <div className="space-y-1">
-                    {(w.sets ?? []).map((s, idx) => {
-                      const wKg = s.weight != null ? Number(s.weight) : fallbackWeight;
-                      return (
-                        <div key={idx} className="flex items-center justify-between text-sm">
-                          <span className="text-zinc-300">
-                            {formatWeight(Number(wKg), { units })} {weightLabel}
-                          </span>
-                          <span className="text-zinc-400">× {Number(s.reps) || 0}</span>
-                        </div>
-                      );
-                    })}
+                    {isBodyweight
+                      ? (w.sets ?? []).map((s, idx) => {
+                          const r = Number(s.reps) || 0;
+                          const ex =
+                            s.weight != null && Number.isFinite(Number(s.weight))
+                              ? Math.max(0, Number(s.weight))
+                              : 0;
+                          return (
+                            <div key={idx} className="flex items-center justify-between text-sm">
+                              <span className="text-zinc-300">
+                                {ex > 0
+                                  ? `${formatWeight(ex, { units, signed: true })} ${weightLabel} × ${r}`
+                                  : `${r} reps`}
+                              </span>
+                            </div>
+                          );
+                        })
+                      : (w.sets ?? []).map((s, idx) => {
+                          const wKg = s.weight != null ? Number(s.weight) : fallbackWeight;
+                          return (
+                            <div key={idx} className="flex items-center justify-between text-sm">
+                              <span className="text-zinc-300">
+                                {formatWeight(Number(wKg), { units })} {weightLabel}
+                              </span>
+                              <span className="text-zinc-400">× {Number(s.reps) || 0}</span>
+                            </div>
+                          );
+                        })}
                   </div>
                 </div>
 
                 <div className="mt-4 space-y-1 text-sm text-zinc-300">
-                  <div className="flex items-center justify-between">
-                    <span className="text-zinc-500">Avg weight</span>
-                    <span>
-                      {formatWeight(Number(avgW), { units })} {weightLabel}
-                    </span>
-                  </div>
+                  {!isBodyweight && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-500">Avg weight</span>
+                      <span>
+                        {formatWeight(Number(avgW), { units })} {weightLabel}
+                      </span>
+                    </div>
+                  )}
+                  {isBodyweight && extras.some((e) => e > 0) && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-zinc-500">Avg extra weight</span>
+                      <span>
+                        {formatWeight(Number(avgExtra), { units })} {weightLabel}
+                      </span>
+                    </div>
+                  )}
                   {avg1 != null && (
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-500">Est. 1RM</span>

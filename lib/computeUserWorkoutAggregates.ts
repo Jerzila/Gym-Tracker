@@ -1,6 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { epley1RM } from "@/lib/progression";
-import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
+import { fetchCategoryNameByExerciseId } from "@/lib/exerciseCategoryMeta";
+import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
+import { normalizeLoadType } from "@/lib/loadType";
+import {
+  bodyweightStrengthSessionContext,
+  sessionEstimated1RMFromSets,
+  sessionVolumeKgFromSets,
+  type SessionSetRow,
+} from "@/lib/sessionStrength";
 
 export type UserLifetimeWorkoutAggregates = {
   workoutCount: number;
@@ -50,7 +57,8 @@ type WorkoutRow = {
  */
 async function computeAggregatesFromWorkoutRows(
   supabase: SupabaseClient,
-  list: WorkoutRow[]
+  list: WorkoutRow[],
+  userId: string
 ): Promise<{ data: UserLifetimeWorkoutAggregates | null; error?: string }> {
   const sorted = list.slice().sort((a, b) => {
     const da = String(a.date).localeCompare(String(b.date));
@@ -75,6 +83,9 @@ async function computeAggregatesFromWorkoutRows(
   const loadTypeByExerciseId = new Map(
     (exercises ?? []).map((e) => [e.id as string, normalizeLoadType((e as { load_type?: unknown }).load_type)])
   );
+
+  const bwSeries = await loadBodyweightSeriesForUser(supabase, userId);
+  const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(supabase, exerciseIds, userId);
 
   const workoutIds = sorted.map((w) => w.id as string);
   const CHUNK = 200;
@@ -109,11 +120,22 @@ async function computeAggregatesFromWorkoutRows(
   let totalVolumeKg = 0;
   for (const w of sorted) {
     const wid = w.id as string;
+    const eid = w.exercise_id as string;
+    const lt = loadTypeByExerciseId.get(eid) ?? "weight";
     const workoutFallbackWeight = Number(w.weight) || 0;
-    for (const s of setsByWorkout.get(wid) ?? []) {
-      const weight = s.weight != null ? Number(s.weight) : workoutFallbackWeight;
-      totalVolumeKg += (Number(weight) || 0) * Math.max(0, Number(s.reps) || 0);
-    }
+    const bwAt =
+      lt === "bodyweight"
+        ? resolveBodyweightKgFromLogs(String(w.date), bwSeries.logsAsc, bwSeries.profileKg)
+        : 0;
+    const setList = setsByWorkout.get(wid) ?? [];
+    totalVolumeKg += sessionVolumeKgFromSets(
+      setList as SessionSetRow[],
+      workoutFallbackWeight,
+      lt,
+      lt === "bodyweight"
+        ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(eid))
+        : undefined
+    );
   }
 
   let prCount = 0;
@@ -123,15 +145,19 @@ async function computeAggregatesFromWorkoutRows(
     const eid = w.exercise_id as string;
     const list = setsByWorkout.get(wid) ?? [];
     const workoutFallbackWeight = Number(w.weight) || 0;
-    const vals: number[] = [];
-    for (const s of list) {
-      const weight = s.weight != null ? Number(s.weight) : workoutFallbackWeight;
-      const reps = Number(s.reps) || 0;
-      const effectiveWeight = getEffectiveWeight(Number(weight) || 0, loadTypeByExerciseId.get(eid));
-      const est = epley1RM(effectiveWeight, reps);
-      if (est > 0) vals.push(est);
-    }
-    const est = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    const lt = loadTypeByExerciseId.get(eid) ?? "weight";
+    const bwAt =
+      lt === "bodyweight"
+        ? resolveBodyweightKgFromLogs(String(w.date), bwSeries.logsAsc, bwSeries.profileKg)
+        : 0;
+    const est = sessionEstimated1RMFromSets(
+      list as SessionSetRow[],
+      workoutFallbackWeight,
+      lt,
+      lt === "bodyweight"
+        ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(eid))
+        : undefined
+    );
     const prev = bestByExercise.get(eid) ?? 0;
     if (est >= prev) {
       prCount += 1;
@@ -183,6 +209,9 @@ async function countProfileStylePrsInWeek(
     (exercises ?? []).map((e) => [e.id as string, normalizeLoadType((e as { load_type?: unknown }).load_type)])
   );
 
+  const bwSeries = await loadBodyweightSeriesForUser(supabase, userId);
+  const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(supabase, exerciseIds, userId);
+
   const workoutIds = list.map((w) => w.id as string);
   const CHUNK = 200;
   const setsByWorkout = new Map<string, { reps: number; weight?: number | null }[]>();
@@ -216,15 +245,19 @@ async function countProfileStylePrsInWeek(
     const inWeek = d >= startInclusive && d <= endInclusive;
     const listSets = setsByWorkout.get(wid) ?? [];
     const workoutFallbackWeight = Number(w.weight) || 0;
-    const vals: number[] = [];
-    for (const s of listSets) {
-      const weight = s.weight != null ? Number(s.weight) : workoutFallbackWeight;
-      const reps = Number(s.reps) || 0;
-      const effectiveWeight = getEffectiveWeight(Number(weight) || 0, loadTypeByExerciseId.get(eid));
-      const est = epley1RM(effectiveWeight, reps);
-      if (est > 0) vals.push(est);
-    }
-    const est = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    const lt = loadTypeByExerciseId.get(eid) ?? "weight";
+    const bwAt =
+      lt === "bodyweight"
+        ? resolveBodyweightKgFromLogs(String(w.date), bwSeries.logsAsc, bwSeries.profileKg)
+        : 0;
+    const est = sessionEstimated1RMFromSets(
+      listSets as SessionSetRow[],
+      workoutFallbackWeight,
+      lt,
+      lt === "bodyweight"
+        ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(eid))
+        : undefined
+    );
     const prev = bestByExercise.get(eid) ?? 0;
     if (inWeek && est >= prev) {
       prCount += 1;
@@ -251,7 +284,7 @@ export async function computeUserLifetimeWorkoutAggregatesForUser(
 
     if (wError) return { data: null, error: wError.message };
 
-    return computeAggregatesFromWorkoutRows(supabase, (workouts ?? []) as WorkoutRow[]);
+    return computeAggregatesFromWorkoutRows(supabase, (workouts ?? []) as WorkoutRow[], userId);
   } catch (e) {
     if (isConnectionError(e)) {
       return { data: null, error: "Can't connect to Supabase. Check your .env.local." };
@@ -285,7 +318,7 @@ export async function computeUserWorkoutAggregatesForUserInDateRange(
     if (wError) return { data: null, error: wError.message };
 
     const weekList = (workouts ?? []) as WorkoutRow[];
-    const base = await computeAggregatesFromWorkoutRows(supabase, weekList);
+    const base = await computeAggregatesFromWorkoutRows(supabase, weekList, userId);
     if (base.error || !base.data) return base;
 
     const exerciseIds = [...new Set(weekList.map((w) => w.exercise_id as string))];

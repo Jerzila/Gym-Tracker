@@ -1,8 +1,14 @@
 "use server";
 
 import { createServerClient } from "@/lib/supabase/server";
+import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
+import { fetchCategoryNameByExerciseId } from "@/lib/exerciseCategoryMeta";
 import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
-import { epley1RM } from "@/lib/progression";
+import {
+  bodyweightStrengthSessionContext,
+  sessionEstimated1RMFromSets,
+  type SessionSetRow,
+} from "@/lib/sessionStrength";
 
 type RecalcResult = { updatedWorkouts: number; updatedPrRow: boolean };
 
@@ -20,7 +26,7 @@ export async function recalculateExerciseMetricsForLoadTypeChange(
 
   const { data: workouts, error: wErr } = await supabase
     .from("workouts")
-    .select("id, weight")
+    .select("id, weight, date")
     .eq("user_id", userId)
     .eq("exercise_id", exerciseId);
 
@@ -47,28 +53,47 @@ export async function recalculateExerciseMetricsForLoadTypeChange(
   const workoutIds = workouts.map((w) => w.id as string);
   const { data: sets, error: sErr } = await supabase
     .from("sets")
-    .select("workout_id, reps")
+    .select("workout_id, reps, weight")
     .in("workout_id", workoutIds);
   if (sErr) throw new Error(sErr.message);
 
-  const bestRepsByWorkout = new Map<string, number>();
+  const setsByWorkout = new Map<string, SessionSetRow[]>();
   for (const s of sets ?? []) {
     const wid = s.workout_id as string;
-    const reps = Number(s.reps) || 0;
-    const cur = bestRepsByWorkout.get(wid) ?? 0;
-    if (reps > cur) bestRepsByWorkout.set(wid, reps);
+    const list = setsByWorkout.get(wid) ?? [];
+    list.push({
+      reps: Number(s.reps) || 0,
+      weight: (s as { weight?: number | null }).weight ?? null,
+    });
+    setsByWorkout.set(wid, list);
   }
 
   const normalizedLoadType = normalizeLoadType(loadType);
+  const { profileKg, logsAsc } = await loadBodyweightSeriesForUser(supabase, userId);
+  const categoryNameByExerciseId =
+    normalizedLoadType === "bodyweight"
+      ? await fetchCategoryNameByExerciseId(supabase, [exerciseId], userId)
+      : new Map<string, string>();
   let heaviestLogged = 0;
   let bestEstimated = 0;
 
   const payload = workouts.map((w) => {
     const id = w.id as string;
     const loggedWeight = Number(w.weight) || 0;
-    const bestReps = bestRepsByWorkout.get(id) ?? 0;
+    const list = setsByWorkout.get(id) ?? [];
     const effectiveWeight = getEffectiveWeight(loggedWeight, normalizedLoadType);
-    const est = bestReps > 0 ? epley1RM(effectiveWeight, bestReps) : 0;
+    const bwAt =
+      normalizedLoadType === "bodyweight"
+        ? resolveBodyweightKgFromLogs(String((w as { date?: string }).date ?? ""), logsAsc, profileKg)
+        : 0;
+    const est = sessionEstimated1RMFromSets(
+      list,
+      loggedWeight,
+      normalizedLoadType,
+      normalizedLoadType === "bodyweight"
+        ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(exerciseId))
+        : undefined
+    );
     heaviestLogged = Math.max(heaviestLogged, loggedWeight);
     bestEstimated = Math.max(bestEstimated, est);
     return {

@@ -62,14 +62,27 @@ export async function getExercises(): Promise<Exercise[]> {
   }
 }
 
+/** Stored for schema compatibility; bodyweight UX does not use rep range. */
+const BODYWEIGHT_REP_PLACEHOLDER = { min: 1, max: 999 } as const;
+
 export async function createExercise(formData: FormData): Promise<{ error?: string }> {
   const name = (formData.get("name") as string)?.trim();
-  const repMin = Number(formData.get("rep_min"));
-  const repMax = Number(formData.get("rep_max"));
   const categoryId = (formData.get("category_id") as string)?.trim();
   const loadType = normalizeLoadType(formData.get("load_type"));
+  const repMinRaw = Number(formData.get("rep_min"));
+  const repMaxRaw = Number(formData.get("rep_max"));
+  const repMin =
+    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.min : repMinRaw;
+  const repMax =
+    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.max : repMaxRaw;
 
-  if (!name || repMin < 1 || repMax < repMin) {
+  if (!name) {
+    return { error: "Invalid: name required, rep_min ≥ 1, rep_max ≥ rep_min" };
+  }
+  if (
+    loadType !== "bodyweight" &&
+    (repMinRaw < 1 || repMaxRaw < repMinRaw || Number.isNaN(repMinRaw) || Number.isNaN(repMaxRaw))
+  ) {
     return { error: "Invalid: name required, rep_min ≥ 1, rep_max ≥ rep_min" };
   }
   if (!categoryId) {
@@ -142,15 +155,21 @@ export async function updateExercise(
   formData: FormData
 ): Promise<{ error?: string }> {
   const name = (formData.get("name") as string)?.trim();
-  const repMin = Number(formData.get("rep_min"));
-  const repMax = Number(formData.get("rep_max"));
   const loadType = normalizeLoadType(formData.get("load_type"));
+  const repMinRaw = Number(formData.get("rep_min"));
+  const repMaxRaw = Number(formData.get("rep_max"));
+  const repMin =
+    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.min : repMinRaw;
+  const repMax =
+    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.max : repMaxRaw;
 
   if (!name || name.length === 0) return { error: "Name is required" };
-  if (Number.isNaN(repMin) || Number.isNaN(repMax) || repMin < 1 || repMax < 1) {
-    return { error: "Rep min and rep max must be positive numbers" };
+  if (loadType !== "bodyweight") {
+    if (Number.isNaN(repMinRaw) || Number.isNaN(repMaxRaw) || repMinRaw < 1 || repMaxRaw < 1) {
+      return { error: "Rep min and rep max must be positive numbers" };
+    }
+    if (repMinRaw >= repMaxRaw) return { error: "Rep min must be less than rep max" };
   }
-  if (repMin >= repMax) return { error: "Rep min must be less than rep max" };
 
   try {
     const supabase = await createServerClient();

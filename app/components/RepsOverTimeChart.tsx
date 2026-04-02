@@ -1,0 +1,102 @@
+"use client";
+
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+
+type Point = {
+  date: string;
+  /** Highest reps in any set for this workout */
+  reps: number;
+};
+
+type Props = { data: Point[] };
+
+function formatTooltipDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+const seriesData = (data: Point[]) => data.filter((d) => d.reps > 0);
+
+export function RepsOverTimeChart({ data }: Props) {
+  const series = seriesData(data);
+  if (series.length === 0) return null;
+
+  return (
+    <div className="h-56 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3" style={{ minHeight: 224 }}>
+      <ResponsiveContainer width="100%" height={224}>
+        <LineChart data={series} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
+          <XAxis
+            dataKey="date"
+            tick={{ fill: "#71717a", fontSize: 11 }}
+            tickFormatter={(v) => (v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "")}
+          />
+          <YAxis
+            tick={{ fill: "#71717a", fontSize: 11 }}
+            domain={["auto", "auto"]}
+            allowDecimals={false}
+            tickFormatter={(v) => String(Math.round(Number(v)))}
+          />
+          <Tooltip
+            contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: "8px" }}
+            labelStyle={{ color: "#a1a1aa" }}
+            cursor={{ stroke: "#71717a", strokeWidth: 1, strokeOpacity: 0.3 }}
+            content={({ active, payload, label, coordinate }) => {
+              const raw = (payload?.[0] as { value?: unknown } | undefined)?.value;
+              const value = raw != null && Number.isFinite(Number(raw)) ? Math.round(Number(raw)) : null;
+              if (!active || value == null) return null;
+              const x = coordinate?.x;
+              const y = coordinate?.y;
+              if (x == null || y == null) return null;
+              return (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: x,
+                    top: y - 45,
+                    transform: "translate(-50%, -100%)",
+                    backgroundColor: "#18181b",
+                    border: "1px solid #3f3f46",
+                    borderRadius: "8px",
+                    padding: "8px 10px",
+                    textAlign: "center",
+                    pointerEvents: "none",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <div style={{ color: "#a1a1aa", fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                    {label ? formatTooltipDate(String(label)) : ""}
+                  </div>
+                  <div style={{ color: "#e4e4e7", fontSize: 16, fontWeight: 700 }}>
+                    {value} {value === 1 ? "rep" : "reps"}
+                  </div>
+                </div>
+              );
+            }}
+          />
+          <Line
+            type="monotone"
+            dataKey="reps"
+            stroke="#22c55e"
+            strokeWidth={2}
+            dot={{ fill: "#22c55e", r: 4 }}
+            activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: "#22c55e" }}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}

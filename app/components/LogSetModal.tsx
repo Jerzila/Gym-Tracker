@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useActionState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { createWorkout } from "@/app/actions/workouts";
 import { DatePicker } from "@/app/components/DatePicker";
 import { buttonClass } from "@/app/components/Button";
@@ -10,6 +11,7 @@ import { useUnits } from "@/app/components/UnitsContext";
 import { lbToKg } from "@/lib/units";
 import { weightUnitLabel } from "@/lib/formatWeight";
 import type { Exercise } from "@/lib/types";
+import { normalizeLoadType } from "@/lib/loadType";
 
 type State = { message?: string; error?: string } | undefined;
 
@@ -23,7 +25,6 @@ function formAction(exerciseId: string) {
   return (_: State, formData: FormData) => createWorkout(exerciseId, formData);
 }
 
-const SHOW_SPINNER_AFTER_MS = 300;
 const initialSetValues = { weight: "", reps: ["", "", "", "", ""] as string[] };
 const initialAdvancedValues = {
   weights: ["", "", "", "", ""] as string[],
@@ -31,44 +32,45 @@ const initialAdvancedValues = {
 };
 
 export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
+  const router = useRouter();
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
-  const [state, action] = useActionState(formAction(exercise.id), undefined);
+  const lt = normalizeLoadType(exercise.load_type);
+  const isBodyweight = lt === "bodyweight";
+  const isUnilateral = lt === "unilateral";
+  const [state, action, isPending] = useActionState(formAction(exercise.id), undefined);
   const [setValues, setSetValues] = useState(initialSetValues);
   const [advancedLogging, setAdvancedLogging] = useState(false);
   const [advancedValues, setAdvancedValues] = useState(initialAdvancedValues);
-  const [showSpinner, setShowSpinner] = useState(false);
-  const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toast = useToast();
   const cache = useWorkoutDataCache();
   const lastShownRef = useRef<string | null>(null);
+  const onCloseRef = useRef(onClose);
+  const onSuccessRef = useRef(onSuccess);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+    onSuccessRef.current = onSuccess;
+  }, [onClose, onSuccess]);
 
   useEffect(() => {
     if (state?.message) {
-      setSetValues(initialSetValues);
-      setAdvancedValues(initialAdvancedValues);
+      queueMicrotask(() => {
+        setSetValues(initialSetValues);
+        setAdvancedValues(initialAdvancedValues);
+      });
       cache?.invalidate?.();
+      router.refresh();
       if (lastShownRef.current !== state.message) {
         lastShownRef.current = state.message;
         toast.show(state.message);
       }
-      onClose();
-      onSuccess?.();
+      onCloseRef.current();
+      onSuccessRef.current?.();
     }
-    if (state?.message || state?.error) {
-      setShowSpinner(false);
-      if (spinnerTimerRef.current) {
-        clearTimeout(spinnerTimerRef.current);
-        spinnerTimerRef.current = null;
-      }
-    }
-  }, [state?.message, state?.error, toast, onClose, onSuccess]);
+  }, [state, toast, cache, router]);
 
   function handleSubmit() {
     lastShownRef.current = null;
-    setShowSpinner(false);
-    if (spinnerTimerRef.current) clearTimeout(spinnerTimerRef.current);
-    spinnerTimerRef.current = setTimeout(() => setShowSpinner(true), SHOW_SPINNER_AFTER_MS);
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -77,10 +79,12 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
     if (!advancedLogging) return;
     const w = setValues.weight;
     if (String(w ?? "").trim() === "") return;
-    setAdvancedValues((prev) => {
-      const hasAnyWeight = prev.weights.some((x) => String(x).trim() !== "");
-      if (hasAnyWeight) return prev;
-      return { ...prev, weights: prev.weights.map(() => w) };
+    queueMicrotask(() => {
+      setAdvancedValues((prev) => {
+        const hasAnyWeight = prev.weights.some((x) => String(x).trim() !== "");
+        if (hasAnyWeight) return prev;
+        return { ...prev, weights: prev.weights.map(() => w) };
+      });
     });
   }, [advancedLogging, setValues.weight]);
 
@@ -99,9 +103,11 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
         <h2 id="log-set-modal-title" className="text-lg font-semibold text-zinc-100">
           Log set — {exercise.name}
         </h2>
-        <p className="mt-0.5 text-sm text-zinc-500">
-          {exercise.rep_min}–{exercise.rep_max} reps target
-        </p>
+        {!isBodyweight && (
+          <p className="mt-0.5 text-sm text-zinc-500">
+            {exercise.rep_min}–{exercise.rep_max} reps target
+          </p>
+        )}
 
         <form
           action={action}
@@ -127,35 +133,111 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
           <div>
             <div className="flex items-start justify-between gap-3">
               <p className="mb-2 text-xs text-zinc-500">
-                Sets ({exercise.rep_min}–{exercise.rep_max} reps target). Log 1–5 sets; only fill the sets you did.
+                {isBodyweight
+                  ? "Log 1–5 sets; only fill the sets you did."
+                  : `Sets (${exercise.rep_min}–${exercise.rep_max} reps target). Log 1–5 sets; only fill the sets you did.`}
               </p>
-              <div className="flex items-center gap-2 pt-0.5">
-                <span className="text-xs text-zinc-500">Advanced</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={advancedLogging}
-                  onClick={() => setAdvancedLogging((v) => !v)}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors ${
-                    advancedLogging
-                      ? "border-amber-500 bg-amber-500/30"
-                      : "border-zinc-700 bg-zinc-900"
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-5 w-5 transform rounded-full bg-zinc-100 transition-transform ${
-                      advancedLogging ? "translate-x-5" : "translate-x-0.5"
+              {!isBodyweight && (
+                <div className="flex items-center gap-2 pt-0.5">
+                  <span className="text-xs text-zinc-500">Advanced</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={advancedLogging}
+                    onClick={() => setAdvancedLogging((v) => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full border transition-colors ${
+                      advancedLogging
+                        ? "border-amber-500 bg-amber-500/30"
+                        : "border-zinc-700 bg-zinc-900"
                     }`}
-                  />
-                </button>
-              </div>
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-zinc-100 transition-transform ${
+                        advancedLogging ? "translate-x-5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
+              )}
             </div>
 
-            {!advancedLogging ? (
+            {isBodyweight ? (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-xs font-medium text-zinc-600">Reps</p>
+                  <div className="mt-1 flex flex-wrap items-end gap-3">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div key={i} className="w-14">
+                        <label htmlFor={`log-modal-reps_${i}`} className="block text-xs text-zinc-600">
+                          Set {i}
+                        </label>
+                        <input
+                          id={`log-modal-reps_${i}`}
+                          name={`reps_${i}`}
+                          type="number"
+                          min="0"
+                          placeholder="—"
+                          value={setValues.reps[i - 1]}
+                          onChange={(e) =>
+                            setSetValues((prev) => ({
+                              ...prev,
+                              reps: prev.reps.map((r, j) => (j === i - 1 ? e.target.value : r)),
+                            }))
+                          }
+                          className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="log-modal-weight" className="block text-xs text-zinc-600">
+                    Extra Weight (optional)
+                    <span className="font-normal text-zinc-500"> (+{weightLabel})</span>
+                  </label>
+                  {units === "imperial" && (
+                    <input
+                      type="hidden"
+                      name="weight"
+                      value={
+                        setValues.weight !== "" && Number.isFinite(Number(setValues.weight))
+                          ? String(lbToKg(Number(setValues.weight)))
+                          : ""
+                      }
+                    />
+                  )}
+                  <input
+                    id="log-modal-weight"
+                    name={units === "metric" ? "weight" : undefined}
+                    type="number"
+                    min="0"
+                    step={units === "metric" ? "0.5" : "1"}
+                    placeholder="0"
+                    value={setValues.weight}
+                    onChange={(e) => setSetValues((prev) => ({ ...prev, weight: e.target.value }))}
+                    className="mt-1 w-28 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                  <p className="mt-1 text-[11px] text-zinc-500">
+                    Added load only; leave empty or 0 for bodyweight only
+                  </p>
+                </div>
+                {(() => {
+                  const weightKg =
+                    units === "metric"
+                      ? setValues.weight
+                      : setValues.weight !== "" && Number.isFinite(Number(setValues.weight))
+                        ? String(lbToKg(Number(setValues.weight)))
+                        : "";
+                  return [1, 2, 3, 4, 5].map((i) => (
+                    <input key={i} type="hidden" name={`weight_${i}`} value={weightKg} />
+                  ));
+                })()}
+              </div>
+            ) : !advancedLogging ? (
               <div className="flex flex-wrap items-end gap-3">
                 <div>
                   <label htmlFor="log-modal-weight" className="block text-xs text-zinc-600">
-                    Weight ({weightLabel})
+                    {`Weight (${weightLabel})`}
                   </label>
                   {units === "imperial" && (
                     <input
@@ -179,6 +261,9 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
                     onChange={(e) => setSetValues((prev) => ({ ...prev, weight: e.target.value }))}
                     className="mt-1 w-20 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-center text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
+                  {isUnilateral && (
+                    <p className="mt-1 text-[11px] text-zinc-500">One arm weight</p>
+                  )}
                 </div>
                 {[1, 2, 3, 4, 5].map((i) => (
                   <div key={i} className="w-14">
@@ -220,7 +305,9 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
               <div className="space-y-2">
                 <div className="grid grid-cols-[3.5rem_1fr_3.5rem] gap-2 text-xs text-zinc-500">
                   <span />
-                  <span>Weight ({weightLabel})</span>
+                  <span>
+                    {isBodyweight ? `Extra (${weightLabel}, optional)` : `Weight (${weightLabel})`}
+                  </span>
                   <span className="text-right">Reps</span>
                 </div>
                 {[1, 2, 3, 4, 5].map((i) => (
@@ -296,9 +383,9 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
             <button
               type="submit"
               className={buttonClass.primary}
-              disabled={showSpinner}
+              disabled={isPending}
             >
-              {showSpinner ? "Saving…" : "Save workout"}
+              {isPending ? "Saving..." : "Save workout"}
             </button>
           </div>
         </form>

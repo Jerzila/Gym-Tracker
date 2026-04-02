@@ -1,15 +1,26 @@
 "use server";
 
 import { createServerClient } from "@/lib/supabase/server";
-import { getProgressiveOverloadMessage } from "@/lib/progression";
-import { epley1RM } from "@/lib/progression";
-import { getEffectiveWeight, normalizeLoadType } from "@/lib/loadType";
+import { bodyweightLoadFractionFromCategoryName } from "@/lib/bodyweightCategoryFraction";
+import {
+  getBodyweightProgressMessage,
+  getProgressiveOverloadMessage,
+} from "@/lib/progression";
+import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
+import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
+import { fetchCategoryNameByExerciseId } from "@/lib/exerciseCategoryMeta";
+import {
+  bodyweightStrengthSessionContext,
+  sessionEstimated1RMFromSets,
+  type SessionSetRow,
+} from "@/lib/sessionStrength";
 import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
 import {
   computeUserLifetimeWorkoutAggregatesForUser,
   type UserLifetimeWorkoutAggregates,
 } from "@/lib/computeUserWorkoutAggregates";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 
 export type { UserLifetimeWorkoutAggregates };
 
@@ -18,10 +29,18 @@ export type CalendarWorkout = {
   id: string;
   date: string;
   weight: number;
-  load_type: "bilateral" | "unilateral";
+  estimated_1rm?: number | null;
+  load_type: LoadType;
   exercise_id: string;
   exercise_name: string;
+  /** Bodyweight exercises: fraction of BW used for strength math (from category). */
+  bodyweight_load_fraction?: number;
   sets: { reps: number; weight?: number | null }[];
+};
+
+export type CalendarMonthPayload = {
+  workouts: CalendarWorkout[];
+  bodyweightContext: { profileKg: number; logsAsc: { date: string; weight: number }[] };
 };
 
 type CreateResult = { message?: string; error?: string; hitPr?: boolean };
@@ -36,28 +55,6 @@ export async function createWorkout(
   formData: FormData
 ): Promise<CreateResult> {
   const date = (formData.get("date") as string)?.trim() || new Date().toISOString().slice(0, 10);
-  // Support both simple logging (global weight) and advanced logging (weight per set).
-  // Internally we always normalize to per-set objects.
-  const globalWeightRaw = formData.get("weight");
-  const hasGlobalWeight = globalWeightRaw != null && String(globalWeightRaw).trim() !== "";
-  const globalWeight = Number(globalWeightRaw);
-  const sets: { weight: number; reps: number }[] = [];
-  for (let i = 1; i <= 5; i++) {
-    const raw = formData.get(`reps_${i}`);
-    if (raw === null || raw === undefined || String(raw).trim() === "") continue;
-    const r = Number(raw);
-    if (Number.isNaN(r) || r < 0) continue;
-    const rawW = formData.get(`weight_${i}`);
-    const w = rawW == null || String(rawW).trim() === "" ? globalWeight : Number(rawW);
-    if (!Number.isFinite(w) || w <= 0) {
-      return { error: "Weight must be greater than 0." };
-    }
-    sets.push({ weight: w, reps: r });
-  }
-
-  if (sets.length === 0) {
-    return { error: "Please log at least one set." };
-  }
 
   try {
     const supabase = await createServerClient();
@@ -66,7 +63,7 @@ export async function createWorkout(
 
     const { data: exercise, error: exError } = await supabase
       .from("exercises")
-      .select("rep_min, rep_max, load_type")
+      .select("rep_min, rep_max, load_type, category_id")
       .eq("id", exerciseId)
       .single();
 
@@ -74,26 +71,80 @@ export async function createWorkout(
       return { error: "Exercise not found" };
     }
 
-    const loadType = normalizeLoadType(
-      (exercise as { load_type?: unknown }).load_type
-    );
+    const loadType = normalizeLoadType((exercise as { load_type?: unknown }).load_type);
 
-    // workouts.weight is kept for legacy displays; in advanced mode it becomes the heaviest set weight.
-    // In simple mode it equals the global weight (same as before).
-    // For graphs: weight over time should plot max(weight) in the workout.
-    const workoutWeight = Math.max(...sets.map((s) => s.weight));
-
-    // Strength: best-set estimated 1RM across all sets (Epley), using effective weight rules.
-    let bestSetEstimated1RM = 0;
-    for (const s of sets) {
-      const effective = getEffectiveWeight(s.weight, loadType);
-      const rm = epley1RM(effective, s.reps);
-      if (Number.isFinite(rm) && rm > bestSetEstimated1RM) bestSetEstimated1RM = rm;
+    const globalWeightRaw = formData.get("weight");
+    const hasGlobalWeight = globalWeightRaw != null && String(globalWeightRaw).trim() !== "";
+    const globalWeight = Number(globalWeightRaw);
+    const sets: { weight: number; reps: number }[] = [];
+    for (let i = 1; i <= 5; i++) {
+      const raw = formData.get(`reps_${i}`);
+      if (raw === null || raw === undefined || String(raw).trim() === "") continue;
+      const r = Number(raw);
+      if (Number.isNaN(r) || r < 0) continue;
+      const rawW = formData.get(`weight_${i}`);
+      let w: number;
+      if (loadType === "bodyweight") {
+        const parsed =
+          rawW == null || String(rawW).trim() === ""
+            ? hasGlobalWeight
+              ? globalWeight
+              : 0
+            : Number(rawW);
+        w = parsed;
+        if (!Number.isFinite(w) || w < 0) {
+          return { error: "Extra weight must be zero or positive." };
+        }
+      } else {
+        w = rawW == null || String(rawW).trim() === "" ? globalWeight : Number(rawW);
+        if (!Number.isFinite(w) || w <= 0) {
+          return { error: "Weight must be greater than 0." };
+        }
+      }
+      sets.push({ weight: w, reps: r });
     }
+
+    if (sets.length === 0) {
+      return { error: "Please log at least one set." };
+    }
+
+    const { profileKg, logsAsc } = await loadBodyweightSeriesForUser(supabase, user.id);
+    const userBwForDate = resolveBodyweightKgFromLogs(date, logsAsc, profileKg);
+
+    let categoryNameForBw = "";
+    if (loadType === "bodyweight" && (exercise as { category_id?: string }).category_id) {
+      const { data: catRow } = await supabase
+        .from("categories")
+        .select("name")
+        .eq("id", (exercise as { category_id: string }).category_id)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      categoryNameForBw = (catRow as { name?: string } | null)?.name ?? "";
+    }
+
+    const bwStrengthCtx =
+      loadType === "bodyweight"
+        ? bodyweightStrengthSessionContext(userBwForDate, categoryNameForBw)
+        : undefined;
+    const bwFrac = bwStrengthCtx?.bodyweightLoadFraction ?? 1;
+
+    const workoutWeight =
+      loadType === "bodyweight"
+        ? Math.max(...sets.map((s) => userBwForDate * bwFrac + s.weight), 0)
+        : Math.max(...sets.map((s) => s.weight));
+
+    const strengthCtx = bwStrengthCtx;
+
+    const bestSetEstimated1RM = sessionEstimated1RMFromSets(
+      sets as SessionSetRow[],
+      workoutWeight,
+      loadType,
+      strengthCtx
+    );
 
     const { data: priorWorkouts, error: pwError } = await supabase
       .from("workouts")
-      .select("id, weight")
+      .select("id, weight, date, estimated_1rm")
       .eq("user_id", user.id)
       .eq("exercise_id", exerciseId);
 
@@ -106,27 +157,45 @@ export async function createWorkout(
       const priorIds = priorList.map((w) => w.id as string);
       const { data: priorSets, error: psError } = await supabase
         .from("sets")
-        .select("workout_id, reps")
+        .select("workout_id, reps, weight")
         .in("workout_id", priorIds);
 
       if (psError) return { error: psError.message };
 
-      const setsByWorkout = new Map<string, number[]>();
+      const setsByWorkout = new Map<string, SessionSetRow[]>();
       for (const s of priorSets ?? []) {
         const wid = s.workout_id as string;
         const list = setsByWorkout.get(wid) ?? [];
-        list.push(Number(s.reps) || 0);
+        list.push({
+          reps: Number(s.reps) || 0,
+          weight: (s as { weight?: number | null }).weight ?? null,
+        });
         setsByWorkout.set(wid, list);
       }
 
       for (const w of priorList) {
         const wid = w.id as string;
-        const repsList = setsByWorkout.get(wid) ?? [];
-        const loggedWeight = Number(w.weight) || 0;
-        for (const r of repsList) {
-          const rm = epley1RM(getEffectiveWeight(loggedWeight, loadType), r);
-          if (rm > bestBefore) bestBefore = rm;
+        const list = setsByWorkout.get(wid) ?? [];
+        const stored = (w as { estimated_1rm?: number | null }).estimated_1rm;
+        let rm: number;
+        if (stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0) {
+          rm = Number(stored);
+        } else {
+          const loggedWeight = Number(w.weight) || 0;
+          const bwAt =
+            loadType === "bodyweight"
+              ? resolveBodyweightKgFromLogs(String(w.date), logsAsc, profileKg)
+              : 0;
+          rm = sessionEstimated1RMFromSets(
+            list,
+            loggedWeight,
+            loadType,
+            loadType === "bodyweight"
+              ? bodyweightStrengthSessionContext(bwAt, categoryNameForBw)
+              : undefined
+          );
         }
+        if (rm > bestBefore) bestBefore = rm;
       }
     }
 
@@ -161,18 +230,23 @@ export async function createWorkout(
 
     if (sError) return { error: sError.message };
 
-    await refreshUserRankingsSafe(user.id);
-
-    const message = getProgressiveOverloadMessage(
-      exercise.rep_min,
-      exercise.rep_max,
-      sets.map((s) => s.reps)
-    );
-
     revalidatePath("/");
     revalidatePath("/account");
     revalidatePath("/exercises");
     revalidatePath(`/exercise/${exerciseId}`);
+
+    after(async () => {
+      await refreshUserRankingsSafe(user.id);
+    });
+
+    const message =
+      loadType === "bodyweight"
+        ? getBodyweightProgressMessage(sets.map((s) => s.reps))
+        : getProgressiveOverloadMessage(
+            exercise.rep_min,
+            exercise.rep_max,
+            sets.map((s) => s.reps)
+          );
     return { message, hitPr };
   } catch (e) {
     if (isConnectionError(e)) {
@@ -208,11 +282,13 @@ export async function deleteWorkout(
 
     if (workoutError) return { error: workoutError.message };
 
-    await refreshUserRankingsSafe(user.id);
-
     revalidatePath("/");
     revalidatePath("/account");
     revalidatePath(`/exercise/${exerciseId}`);
+
+    after(async () => {
+      await refreshUserRankingsSafe(user.id);
+    });
     return {};
   } catch (e) {
     if (isConnectionError(e)) {
@@ -336,7 +412,7 @@ export async function getWorkoutCountsByPeriod(): Promise<{
 export async function getWorkoutsByMonth(
   year: number,
   month: number
-): Promise<{ data: CalendarWorkout[]; error?: string }> {
+): Promise<{ data: CalendarMonthPayload | null; error?: string }> {
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const lastDay = new Date(year, month, 0).getDate();
   const end = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
@@ -346,30 +422,37 @@ export async function getWorkoutsByMonth(
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return { data: [], error: "Not authenticated" };
+    if (!user) return { data: null, error: "Not authenticated" };
+
+    const bodyweightContext = await loadBodyweightSeriesForUser(supabase, user.id);
+    const bwPayload = {
+      profileKg: bodyweightContext.profileKg,
+      logsAsc: bodyweightContext.logsAsc,
+    };
 
     const { data: workouts, error: wError } = await supabase
       .from("workouts")
-      .select("id, date, weight, exercise_id")
+      .select("id, date, weight, estimated_1rm, exercise_id")
       .eq("user_id", user.id)
       .gte("date", start)
       .lte("date", end)
       .order("date", { ascending: true });
 
-    if (wError) return { data: [], error: wError.message };
-    if (!workouts?.length) return { data: [] };
+    if (wError) return { data: null, error: wError.message };
+    if (!workouts?.length) return { data: { workouts: [], bodyweightContext: bwPayload } };
 
     const exerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
     const { data: exercises, error: exError } = await supabase
       .from("exercises")
-      .select("id, name, load_type")
+      .select("id, name, load_type, category_id")
       .in("id", exerciseIds);
 
-    if (exError) return { data: [], error: exError.message };
+    if (exError) return { data: null, error: exError.message };
     const nameById = new Map((exercises ?? []).map((e) => [e.id, e.name]));
     const loadTypeById = new Map(
       (exercises ?? []).map((e) => [e.id, normalizeLoadType((e as { load_type?: unknown }).load_type)])
     );
+    const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(supabase, exerciseIds, user.id);
 
     const workoutIds = workouts.map((w) => w.id);
     const { data: sets, error: sError } = await supabase
@@ -377,7 +460,7 @@ export async function getWorkoutsByMonth(
       .select("workout_id, reps, weight")
       .in("workout_id", workoutIds);
 
-    if (sError) return { data: [], error: sError.message };
+    if (sError) return { data: null, error: sError.message };
     const setsByWorkout = new Map<string, { reps: number; weight?: number | null }[]>();
     for (const s of sets ?? []) {
       const list = setsByWorkout.get(s.workout_id) ?? [];
@@ -385,22 +468,30 @@ export async function getWorkoutsByMonth(
       setsByWorkout.set(s.workout_id, list);
     }
 
-    const data: CalendarWorkout[] = workouts.map((w) => ({
-      id: w.id,
-      date: w.date,
-      weight: w.weight,
-      load_type: loadTypeById.get(w.exercise_id) ?? "bilateral",
-      exercise_id: w.exercise_id,
-      exercise_name: nameById.get(w.exercise_id) ?? "Unknown",
-      sets: setsByWorkout.get(w.id) ?? [],
-    }));
+    const list: CalendarWorkout[] = workouts.map((w) => {
+      const lt = loadTypeById.get(w.exercise_id) ?? "weight";
+      const cat = categoryNameByExerciseId.get(w.exercise_id);
+      return {
+        id: w.id,
+        date: w.date,
+        weight: w.weight,
+        estimated_1rm: (w as { estimated_1rm?: number | null }).estimated_1rm ?? null,
+        load_type: lt,
+        exercise_id: w.exercise_id,
+        exercise_name: nameById.get(w.exercise_id) ?? "Unknown",
+        ...(lt === "bodyweight"
+          ? { bodyweight_load_fraction: bodyweightLoadFractionFromCategoryName(cat ?? "") }
+          : {}),
+        sets: setsByWorkout.get(w.id) ?? [],
+      };
+    });
 
-    return { data };
+    return { data: { workouts: list, bodyweightContext: bwPayload } };
   } catch (e) {
     if (isConnectionError(e)) {
-      return { data: [], error: "Can't connect to Supabase. Check your .env.local." };
+      return { data: null, error: "Can't connect to Supabase. Check your .env.local." };
     }
-    return { data: [], error: e instanceof Error ? e.message : "Something went wrong." };
+    return { data: null, error: e instanceof Error ? e.message : "Something went wrong." };
   }
 }
 
@@ -444,7 +535,7 @@ export async function getLastWorkoutSummary(): Promise<{
 
     const { data: dayWorkouts, error: wError } = await supabase
       .from("workouts")
-      .select("id, exercise_id, weight")
+      .select("id, exercise_id, weight, estimated_1rm")
       .eq("user_id", user.id)
       .eq("date", date)
       .order("exercise_id");
@@ -491,6 +582,12 @@ export async function getLastWorkoutSummary(): Promise<{
       .in("id", categoryIds);
 
     const catNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+    const categoryNameByExerciseId = new Map(
+      (exercises as { id: string; category_id: string }[]).map((e) => [
+        e.id,
+        catNameById.get(e.category_id) ?? "",
+      ])
+    );
     const categoryNames = [...new Set(exercises.map((e) => catNameById.get(e.category_id) ?? "Other"))].filter(Boolean);
     const title = categoryNames.length > 0 ? categoryNames.join(" + ") : "Workout";
 
@@ -507,19 +604,31 @@ export async function getLastWorkoutSummary(): Promise<{
       setsByW.set(s.workout_id, list);
     }
 
+    const { profileKg, logsAsc } = await loadBodyweightSeriesForUser(supabase, user.id);
+
     const sessions: Session1RM[] = dayWorkouts.map((w) => {
-      const list = setsByW.get(w.id) ?? [];
-      const vals: number[] = [];
-      for (const s of list) {
-        const weightKg = s.weight != null ? Number(s.weight) : Number(w.weight) || 0;
-        const reps = Number(s.reps) || 0;
-        const rm = epley1RM(getEffectiveWeight(weightKg, loadTypeByExerciseId.get(w.exercise_id)), reps);
-        if (rm > 0) vals.push(rm);
+      const stored = (w as { estimated_1rm?: number | null }).estimated_1rm;
+      if (stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0) {
+        return { exercise_id: w.exercise_id, estimated1RM: Number(stored) };
       }
-      const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+      const list = setsByW.get(w.id) ?? [];
+      const loggedWeight = Number(w.weight) || 0;
+      const lt = loadTypeByExerciseId.get(w.exercise_id) ?? "weight";
+      const bwAt =
+        lt === "bodyweight"
+          ? resolveBodyweightKgFromLogs(date, logsAsc, profileKg)
+          : 0;
+      const estimated1RM = sessionEstimated1RMFromSets(
+        list as SessionSetRow[],
+        loggedWeight,
+        lt,
+        lt === "bodyweight"
+          ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(w.exercise_id))
+          : undefined
+      );
       return {
         exercise_id: w.exercise_id,
-        estimated1RM: avg,
+        estimated1RM,
       };
     });
 
@@ -570,10 +679,18 @@ export async function getPRsForDate(
       (exerciseRows ?? []).map((e) => [e.id, normalizeLoadType((e as { load_type?: unknown }).load_type)])
     );
 
+    const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(
+      supabase,
+      sessionExerciseIds,
+      user.id
+    );
+
+    const { profileKg, logsAsc } = await loadBodyweightSeriesForUser(supabase, user.id);
+
     for (const { exercise_id, estimated1RM } of sessions) {
       const { data: workouts, error } = await supabase
         .from("workouts")
-        .select("id, weight")
+        .select("id, weight, date, estimated_1rm")
         .eq("user_id", user.id)
         .eq("exercise_id", exercise_id)
         .lt("date", date)
@@ -599,20 +716,29 @@ export async function getPRsForDate(
       }
 
       let bestBefore = 0;
+      const lt = loadTypeByExerciseId.get(exercise_id) ?? "weight";
       for (const w of workouts) {
         const list = setsByWorkout.get(w.id) ?? [];
-        const vals: number[] = [];
-        for (const s of list) {
-          const weightKg = s.weight != null ? Number(s.weight) : Number(w.weight) || 0;
-          const reps = Number(s.reps) || 0;
-          const rm = epley1RM(
-            getEffectiveWeight(weightKg, loadTypeByExerciseId.get(exercise_id)),
-            reps
+        const stored = (w as { estimated_1rm?: number | null }).estimated_1rm;
+        let rm: number;
+        if (stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0) {
+          rm = Number(stored);
+        } else {
+          const loggedWeight = Number(w.weight) || 0;
+          const bwAt =
+            lt === "bodyweight"
+              ? resolveBodyweightKgFromLogs(String(w.date), logsAsc, profileKg)
+              : 0;
+          rm = sessionEstimated1RMFromSets(
+            list as SessionSetRow[],
+            loggedWeight,
+            lt,
+            lt === "bodyweight"
+              ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(exercise_id))
+              : undefined
           );
-          if (rm > 0) vals.push(rm);
         }
-        const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-        if (avg > bestBefore) bestBefore = avg;
+        if (rm > bestBefore) bestBefore = rm;
       }
       if (estimated1RM >= bestBefore) prExerciseIds.push(exercise_id);
     }

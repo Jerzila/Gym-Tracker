@@ -40,7 +40,7 @@ export type Exercise = {
   user_id: string;
   category_id: string;
   name: string;
-  load_type: "bilateral" | "unilateral";
+  load_type: "weight" | "unilateral" | "bodyweight";
   rep_min: number;
   rep_max: number;
   notes: string | null;
