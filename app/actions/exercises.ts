@@ -310,7 +310,7 @@ export async function getExerciseById(id: string): Promise<{
         ? await workoutsFallbackQuery
         : { data: null as typeof workouts | null, error: null as typeof wError | null };
 
-    const workoutsList = (workouts ?? workouts2 ?? []) as typeof workouts;
+    const workoutsList = (workouts ?? workouts2 ?? []) as NonNullable<typeof workouts>;
     const workoutsErr = wError2 ?? wError;
     if (workoutsErr && workoutsList.length === 0) {
       // Don't 404 the whole exercise page on schema mismatch; render exercise with empty workouts.
@@ -348,7 +348,7 @@ export async function getExerciseById(id: string): Promise<{
         ? await setsFallbackQuery
         : { data: null as typeof sets | null, error: null as typeof sError | null };
 
-    const setsList = (sets ?? sets2 ?? []) as typeof sets;
+    const setsList = (sets ?? sets2 ?? []) as NonNullable<typeof sets>;
     const setsErr = sError2 ?? sError;
     if (setsErr && setsList.length === 0) {
       return { exercise: { ...(exercise as Exercise), workouts: [] } };
