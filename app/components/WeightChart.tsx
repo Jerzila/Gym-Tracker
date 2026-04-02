@@ -46,28 +46,18 @@ export function WeightChart({ data }: Props) {
             contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: "8px" }}
             labelStyle={{ color: "#a1a1aa" }}
             cursor={{ stroke: "#71717a", strokeWidth: 1, strokeOpacity: 0.3 }}
-            content={({ active, payload, label, coordinate, viewBox }) => {
+            content={({ active, payload, label, coordinate }) => {
               const raw = (payload?.[0] as { value?: unknown } | undefined)?.value;
               const value = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
               if (!active || value == null) return null;
               const x = coordinate?.x;
               const y = coordinate?.y;
               if (x == null || y == null) return null;
-              const vbWidth =
-                (viewBox as { width?: number } | undefined)?.width != null
-                  ? Number((viewBox as { width?: number }).width)
-                  : null;
-              // Keep tooltip inside chart bounds so it doesn't get clipped on edge points.
-              const paddingX = 72;
-              const xClamped =
-                vbWidth != null && Number.isFinite(vbWidth)
-                  ? Math.min(Math.max(x, paddingX), vbWidth - paddingX)
-                  : x;
               return (
                 <div
                   style={{
                     position: "absolute",
-                    left: xClamped,
+                    left: x,
                     top: y - 45,
                     transform: "translate(-50%, -100%)",
                     backgroundColor: "#18181b",
