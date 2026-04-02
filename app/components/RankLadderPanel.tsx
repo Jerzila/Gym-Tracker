@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import { RANK_LADDER } from "@/lib/rankBadges";
 import type { OverallRankDisplaySnapshot } from "@/lib/strengthRanking";
 import type { RankSlug } from "@/lib/rankBadges";
+import { useLockBodyScroll } from "@/app/lib/useLockBodyScroll";
 
 type Props = {
   isOpen: boolean;
@@ -16,6 +18,8 @@ type Props = {
 export function RankLadderPanel({ isOpen, onClose, display }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const [touchStartY, setTouchStartY] = useState<number | null>(null);
+
+  useLockBodyScroll(isOpen);
 
   const rankLabel = display.rankLabel;
   const rank = display.rankSlug as RankSlug;
@@ -51,18 +55,17 @@ export function RankLadderPanel({ isOpen, onClose, display }: Props) {
       if (e.key === "Escape") onClose();
     };
     document.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
     };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
+  if (typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:bg-black/50"
+      className="fixed inset-0 z-[220] flex items-end justify-center sm:items-center sm:bg-black/50"
       role="dialog"
       aria-modal="true"
       aria-labelledby="rank-ladder-title"
@@ -77,6 +80,7 @@ export function RankLadderPanel({ isOpen, onClose, display }: Props) {
         className="relative w-full max-h-[85vh] overflow-hidden rounded-t-2xl border border-zinc-800 border-b-0 bg-zinc-900 shadow-xl sm:max-w-md sm:rounded-2xl sm:border-b sm:max-h-[80vh]"
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
+        onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-900 px-4 py-3">
           <h2 id="rank-ladder-title" className="text-lg font-semibold text-zinc-100">
@@ -147,6 +151,7 @@ export function RankLadderPanel({ isOpen, onClose, display }: Props) {
           </ul>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { removeFriend } from "@/app/actions/social";
+import { EllipsisIcon } from "@/components/icons";
 
 type Props = {
   friendId: string;
@@ -46,7 +47,7 @@ export function FriendListRowWithMenu({ friendId, username, onRemoved }: Props) 
       <div className="relative shrink-0">
         <button
           type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-lg text-lg leading-none text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 tap-feedback"
+          className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:bg-zinc-800/80 hover:text-zinc-100 tap-feedback"
           aria-expanded={open}
           aria-haspopup="menu"
           aria-label="Friend options"
@@ -55,7 +56,7 @@ export function FriendListRowWithMenu({ friendId, username, onRemoved }: Props) 
             setOpen((o) => !o);
           }}
         >
-          ⋯
+          <EllipsisIcon size={18} aria-hidden="true" />
         </button>
         {open ? (
           <div

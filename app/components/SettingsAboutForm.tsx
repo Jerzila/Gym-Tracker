@@ -4,9 +4,10 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { updateProfileField } from "@/app/actions/profile";
 import { buttonClass } from "@/app/components/Button";
-import { COUNTRIES, getFlagEmoji } from "@/lib/countries";
+import { COUNTRIES } from "@/lib/countries";
 import { getAgeFromBirthday } from "@/lib/age";
 import type { Profile } from "@/lib/types";
+import { FlagIcon } from "@/app/components/FlagIcon";
 
 const GENDER_OPTIONS = [
   { value: "", label: "Select…" },
@@ -155,19 +156,24 @@ export function SettingsAboutForm({ profile }: { profile: Profile | null }) {
           <label htmlFor="settings-about-country" className={labelClass}>
             Country
           </label>
+        <div className="relative">
+          <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2">
+            <FlagIcon code={country} />
+          </div>
           <select
             id="settings-about-country"
-            className={inputClass}
+            className={`${inputClass} pl-11`}
             value={country}
             onChange={(e) => setCountry(e.target.value)}
           >
             <option value="">Select…</option>
             {COUNTRIES.map((c) => (
               <option key={c.code} value={c.code}>
-                {getFlagEmoji(c.code)} {c.name}
+                {c.name}
               </option>
             ))}
           </select>
+        </div>
         </div>
       </div>
 

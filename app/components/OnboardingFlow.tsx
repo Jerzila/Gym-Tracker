@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { completeOnboarding } from "@/app/actions/profile";
-import { COUNTRIES, getFlagEmoji } from "@/lib/countries";
+import { COUNTRIES } from "@/lib/countries";
 import { haptic } from "@/lib/haptic";
 import { getAgeFromBirthday } from "@/lib/age";
 import { cmToFtIn, ftInToCm, kgToLbs, lbsToKg } from "@/lib/units";
@@ -12,6 +12,8 @@ import { localCalendarDateYYYYMMDD } from "@/lib/localCalendarDate";
 import { epleyEstimated1RM, strengthScoreToRank, type StrengthRankMuscle } from "@/lib/strengthRanking";
 import { RankBadge } from "@/app/components/RankBadge";
 import type { RankSlug } from "@/lib/rankBadges";
+import { FemaleIcon, MaleIcon, PreferNotToSayIcon } from "@/components/icons";
+import { FlagIcon } from "@/app/components/FlagIcon";
 
 const TOTAL_STEPS = 5; // name+DOB+gender, units, height&weight, country, strength-rank (welcome is step 0)
 const STEP_TITLES = [
@@ -264,12 +266,12 @@ function UnitsKettlebellVisual({ unit }: { unit: "metric" | "imperial" }) {
       <div className="relative flex h-[320px] w-[320px] flex-shrink-0 items-center justify-center rounded-2xl bg-zinc-950 p-6">
         <div className="relative h-[260px] w-[260px] flex-shrink-0 overflow-hidden rounded-xl bg-amber-500">
           <img
-            src="/kg.png"
+            src="/kg.svg"
             alt="Metric (kg)"
             className={`absolute inset-0 h-full w-full object-cover object-center invert mix-blend-multiply transition-opacity duration-200 ${unit === "metric" ? "opacity-100" : "opacity-0"}`}
           />
           <img
-            src="/lbs.png"
+            src="/lbs.svg"
             alt="Imperial (lbs)"
             className={`absolute inset-0 h-full w-full object-cover object-center invert mix-blend-multiply transition-opacity duration-200 ${unit === "imperial" ? "opacity-100" : "opacity-0"}`}
           />
@@ -729,10 +731,10 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                   <span className="mb-1 block text-sm font-medium text-zinc-400">Gender</span>
                   <div className="grid grid-cols-3 gap-2">
                     {[
-                      { value: "male" as const, label: "Male", emoji: "👨" },
-                      { value: "female" as const, label: "Female", emoji: "👩" },
-                      { value: "prefer_not_to_say" as const, label: "Prefer not to say", emoji: "❌" },
-                    ].map(({ value, label, emoji }) => (
+                      { value: "male" as const, label: "Male", Icon: MaleIcon },
+                      { value: "female" as const, label: "Female", Icon: FemaleIcon },
+                      { value: "prefer_not_to_say" as const, label: "Prefer not to say", Icon: PreferNotToSayIcon },
+                    ].map(({ value, label, Icon }) => (
                       <button
                         key={value}
                         type="button"
@@ -746,7 +748,15 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                             : "border-zinc-700 bg-zinc-800/80 text-zinc-400 hover:border-zinc-600"
                         }`}
                       >
-                        <span className="text-xl" aria-hidden>{emoji}</span>
+                        <Icon
+                          size={32}
+                          aria-hidden
+                          className={
+                            data.gender === value
+                              ? "shrink-0 text-amber-400"
+                              : "shrink-0 text-zinc-300"
+                          }
+                        />
                         <span className="text-xs font-medium leading-tight">{label}</span>
                       </button>
                     ))}
@@ -906,7 +916,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                           ].join(" ")}
                         >
                           <span className="flex items-center gap-2">
-                            <span aria-hidden>{getFlagEmoji(c.code)}</span>
+                            <FlagIcon code={c.code} />
                             <span className="font-medium">{c.name}</span>
                           </span>
                           {selected ? (
@@ -940,7 +950,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                             ].join(" ")}
                           >
                             <span className="flex items-center gap-2">
-                              <span aria-hidden>{getFlagEmoji(c.code)}</span>
+                              <FlagIcon code={c.code} />
                               <span className="font-medium">{c.name}</span>
                             </span>
                           </button>
@@ -973,7 +983,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                           ].join(" ")}
                         >
                           <span className="flex items-center gap-2">
-                            <span aria-hidden>{getFlagEmoji(c.code)}</span>
+                            <FlagIcon code={c.code} />
                             <span className="font-medium">{c.name}</span>
                           </span>
                           {selected ? (

@@ -3,10 +3,11 @@
 import { useActionState, useState } from "react";
 import { completeProfileSetup } from "@/app/actions/profile";
 import { buttonClass } from "@/app/components/Button";
-import { COUNTRIES, getFlagEmoji } from "@/lib/countries";
+import { COUNTRIES } from "@/lib/countries";
 import { getAgeFromBirthday } from "@/lib/age";
 import type { Profile } from "@/lib/types";
 import { localCalendarDateYYYYMMDD } from "@/lib/localCalendarDate";
+import { FlagIcon } from "@/app/components/FlagIcon";
 
 const GENDER_OPTIONS = [
   { value: "", label: "Select…" },
@@ -25,6 +26,7 @@ type ProfileSetupFormProps = { profile: Profile | null };
 
 export function ProfileSetupForm({ profile }: ProfileSetupFormProps) {
   const [birthday, setBirthday] = useState<string>(profile?.birthday ?? "");
+  const [country, setCountry] = useState<string>(profile?.country ?? "");
   const [state, formAction] = useActionState(
     async (_: unknown, formData: FormData) => completeProfileSetup(formData),
     null as { error?: string; fieldErrors?: Record<string, string> } | null
@@ -104,19 +106,25 @@ export function ProfileSetupForm({ profile }: ProfileSetupFormProps) {
         <label htmlFor="country" className={labelClass}>
           Country
         </label>
-        <select
-          id="country"
-          name="country"
-          className={inputClass}
-          defaultValue={profile?.country ?? ""}
-        >
-          <option value="">Select…</option>
-          {COUNTRIES.map((c) => (
-            <option key={c.code} value={c.code}>
-              {getFlagEmoji(c.code)} {c.name}
-            </option>
-          ))}
-        </select>
+        <div className="relative">
+          <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2">
+            <FlagIcon code={country} />
+          </div>
+          <select
+            id="country"
+            name="country"
+            className={`${inputClass} pl-11`}
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+          >
+            <option value="">Select…</option>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div>

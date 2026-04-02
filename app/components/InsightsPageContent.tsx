@@ -46,6 +46,7 @@ import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { InstallPromptOnNewRank } from "@/app/components/InstallPromptOnNewRank";
 import { MuscleProgressCompareModal } from "@/app/components/MuscleProgressCompareModal";
+import { AlertTriangleIcon, FireIcon, ScaleIcon, SwapHorizontalIcon, TrendingDownIcon, TrendingUpIcon } from "@/components/icons";
 
 const MuscleRadarChart = dynamic(
   () => import("@/app/components/MuscleRadarChart").then((m) => ({ default: m.MuscleRadarChart })),
@@ -365,9 +366,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
             onClick={() => setShowCompareModal(true)}
             className="flex w-full items-center justify-center gap-2 rounded-xl border border-[rgba(255,170,40,0.4)] bg-[rgba(255,170,40,0.12)] px-[18px] py-[14px] text-sm font-semibold text-[#FFAA28] transition-[transform,background-color,border-color] duration-150 ease-out hover:border-[rgba(255,170,40,0.55)] hover:bg-[rgba(255,170,40,0.18)] active:scale-[0.97]"
           >
-            <span className="text-base leading-none" aria-hidden>
-              ⇄
-            </span>
+            <SwapHorizontalIcon size={18} className="shrink-0" aria-hidden="true" />
             Compare Progress
           </button>
         </section>
@@ -521,8 +520,8 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
           <ul className="space-y-2.5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4">
             {(currentRangeData?.insightItems ?? []).map((item, i) => (
               <li key={i} className="flex items-start gap-2.5 text-sm text-zinc-300">
-                <span className="mt-0.5 shrink-0 text-base" aria-hidden>
-                  {item.icon}
+                <span className="mt-0.5">
+                  <InsightIcon icon={item.icon} />
                 </span>
                 <span>{item.text}</span>
               </li>
@@ -893,4 +892,18 @@ const MonthlyDonutChart = memo(function MonthlyDonutChart({
     </div>
   );
 });
+
+function InsightIcon({ icon }: { icon: string }) {
+  const common = { size: 18, className: "text-zinc-400 shrink-0", "aria-hidden": "true" as const };
+  if (icon === "📈") return <TrendingUpIcon {...common} />;
+  if (icon === "📉") return <TrendingDownIcon {...common} />;
+  if (icon === "⚖") return <ScaleIcon {...common} />;
+  if (icon === "⚠") return <AlertTriangleIcon {...common} />;
+  if (icon === "fire") return <FireIcon {...common} />;
+  return (
+    <span className="text-base text-zinc-400 leading-none" aria-hidden>
+      {icon}
+    </span>
+  );
+}
 

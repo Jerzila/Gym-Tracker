@@ -1,120 +1,208 @@
-import type { SVGProps } from "react";
+import type { ComponentProps, ComponentType } from "react";
+import {
+  AlertTriangle,
+  BarChart3,
+  Bolt,
+  Calculator,
+  Calendar,
+  Ellipsis,
+  Flame,
+  HelpCircle,
+  Home,
+  Scale,
+  Search,
+  Settings,
+  Star,
+  TrendingDown,
+  TrendingUp,
+  Trophy,
+  User,
+  UserPlus,
+  Dumbbell,
+  ArrowLeftRight,
+} from "lucide-react";
 
-type IconProps = SVGProps<SVGSVGElement> & {
+export type IconProps = Omit<ComponentProps<"svg">, "color"> & {
   size?: number;
 };
 
-function withDefaults(size: number | undefined, props: IconProps) {
-  const { className, ...rest } = props;
-  return {
-    width: size ?? 20,
-    height: size ?? 20,
-    viewBox: "0 0 24 24",
-    fill: "none",
-    xmlns: "http://www.w3.org/2000/svg",
-    className,
-    ...rest,
+type LucideIcon = ComponentType<Record<string, unknown>>;
+
+const DEFAULT_SIZE = 22;
+const DEFAULT_STROKE_WIDTH = 1.8;
+
+function wrapLucide(Icon: LucideIcon) {
+  return function LiftlyIcon({ size, className, ...props }: IconProps) {
+    return (
+      <Icon
+        size={size ?? DEFAULT_SIZE}
+        color="currentColor"
+        strokeWidth={DEFAULT_STROKE_WIDTH}
+        className={className}
+        {...props}
+      />
+    );
   };
 }
 
-export function TrophyIcon({ size, ...props }: IconProps) {
+export const TrophyIcon = wrapLucide(Trophy);
+export const FireIcon = wrapLucide(Flame);
+export const CalendarIcon = wrapLucide(Calendar);
+export const HomeIcon = wrapLucide(Home);
+export const UserIcon = wrapLucide(User);
+export const SearchIcon = wrapLucide(Search);
+export const UserPlusIcon = wrapLucide(UserPlus);
+export const StrengthIcon = wrapLucide(Dumbbell);
+export const ChartIcon = wrapLucide(BarChart3);
+export function MaleIcon({ size, className, ...props }: IconProps) {
+  const s = size ?? DEFAULT_SIZE;
   return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 4h8v3a4 4 0 0 1-8 0V4Z" />
-      <path d="M6 6H4a2 2 0 0 0 2 3h2" />
-      <path d="M18 6h2a2 2 0 0 1-2 3h-2" />
-      <path d="M12 11v4" />
-      <path d="M9 19h6" />
-      <path d="M10 15h4v4h-4z" />
+    <svg
+      width={s}
+      height={s}
+      viewBox="0 0 768 768"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      {...props}
+    >
+      <defs>
+        <clipPath id="male-b3d575b206">
+          <path d="M 220 362.785156 L 548 362.785156 L 548 661 L 220 661 Z M 220 362.785156 " clipRule="nonzero" />
+        </clipPath>
+        <clipPath id="male-741335f479">
+          <path d="M 268.800781 100.886719 L 499.199219 100.886719 L 499.199219 331.285156 L 268.800781 331.285156 Z M 268.800781 100.886719 " clipRule="nonzero" />
+        </clipPath>
+        <clipPath id="male-67d3aa5788">
+          <path
+            d="M 384 100.886719 C 320.375 100.886719 268.800781 152.460938 268.800781 216.085938 C 268.800781 279.710938 320.375 331.285156 384 331.285156 C 447.625 331.285156 499.199219 279.710938 499.199219 216.085938 C 499.199219 152.460938 447.625 100.886719 384 100.886719 Z M 384 100.886719 "
+            clipRule="nonzero"
+          />
+        </clipPath>
+        <clipPath id="male-09105e7f27">
+          <path d="M 0.800781 0.886719 L 231.199219 0.886719 L 231.199219 231.285156 L 0.800781 231.285156 Z M 0.800781 0.886719 " clipRule="nonzero" />
+        </clipPath>
+        <clipPath id="male-3d9d9d7262">
+          <path
+            d="M 116 0.886719 C 52.375 0.886719 0.800781 52.460938 0.800781 116.085938 C 0.800781 179.710938 52.375 231.285156 116 231.285156 C 179.625 231.285156 231.199219 179.710938 231.199219 116.085938 C 231.199219 52.460938 179.625 0.886719 116 0.886719 Z M 116 0.886719 "
+            clipRule="nonzero"
+          />
+        </clipPath>
+        <clipPath id="male-5c5323881e">
+          <rect x="0" width="232" y="0" height="232" />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#male-b3d575b206)">
+        <path
+          fill="currentColor"
+          d="M 433.167969 631.640625 C 411.300781 669.519531 356.628906 669.519531 334.761719 631.640625 L 281.675781 539.695312 L 228.585938 447.746094 C 206.71875 409.867188 234.054688 362.523438 277.792969 362.523438 L 490.136719 362.523438 C 533.875 362.523438 561.207031 409.867188 539.339844 447.746094 L 486.253906 539.695312 Z M 433.167969 631.640625 "
+          fillOpacity="1"
+          fillRule="nonzero"
+        />
+      </g>
+      <g clipPath="url(#male-741335f479)">
+        <g clipPath="url(#male-67d3aa5788)">
+          <g transform="matrix(1, 0, 0, 1, 268, 100)">
+            <g clipPath="url(#male-5c5323881e)">
+              <g clipPath="url(#male-09105e7f27)">
+                <g clipPath="url(#male-3d9d9d7262)">
+                  <path
+                    fill="#f59e0b"
+                    d="M 0.800781 0.886719 L 231.199219 0.886719 L 231.199219 231.285156 L 0.800781 231.285156 Z M 0.800781 0.886719 "
+                    fillOpacity="1"
+                    fillRule="nonzero"
+                  />
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
     </svg>
   );
 }
 
-export function FireIcon({ size, ...props }: IconProps) {
+export function FemaleIcon({ size, className, ...props }: IconProps) {
+  const s = size ?? DEFAULT_SIZE;
   return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3c1 3-1 4-1 6 0 1.8 1.5 3 3 3 2.3 0 4-1.9 4-4.2 0-3.1-2.4-5-4-6.8C13 2.4 12.5 2.8 12 3Z" />
-      <path d="M10.6 11.5c-2 1-3.6 3-3.6 5.4A5 5 0 0 0 12 22a5 5 0 0 0 5-5.1c0-2.2-1.1-3.9-2.9-5.1-.4 2-1.7 3.2-3.1 3.2-1.4 0-2.4-1-2.4-2.5 0-.4 0-.7.1-1Z" />
+    <svg
+      width={s}
+      height={s}
+      viewBox="0 0 768 768"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      {...props}
+    >
+      <defs>
+        <clipPath id="female-5b266f4981">
+          <path d="M 220 372 L 548 372 L 548 669.300781 L 220 669.300781 Z M 220 372 " clipRule="nonzero" />
+        </clipPath>
+        <clipPath id="female-7e96f406f2">
+          <path d="M 268.800781 100.886719 L 499.199219 100.886719 L 499.199219 331.285156 L 268.800781 331.285156 Z M 268.800781 100.886719 " clipRule="nonzero" />
+        </clipPath>
+        <clipPath id="female-299b4e003c">
+          <path
+            d="M 384 100.886719 C 320.375 100.886719 268.800781 152.460938 268.800781 216.085938 C 268.800781 279.710938 320.375 331.285156 384 331.285156 C 447.625 331.285156 499.199219 279.710938 499.199219 216.085938 C 499.199219 152.460938 447.625 100.886719 384 100.886719 Z M 384 100.886719 "
+            clipRule="nonzero"
+          />
+        </clipPath>
+        <clipPath id="female-1ea70e7dc7">
+          <path d="M 0.800781 0.886719 L 231.199219 0.886719 L 231.199219 231.285156 L 0.800781 231.285156 Z M 0.800781 0.886719 " clipRule="nonzero" />
+        </clipPath>
+        <clipPath id="female-50640852f2">
+          <path
+            d="M 116 0.886719 C 52.375 0.886719 0.800781 52.460938 0.800781 116.085938 C 0.800781 179.710938 52.375 231.285156 116 231.285156 C 179.625 231.285156 231.199219 179.710938 231.199219 116.085938 C 231.199219 52.460938 179.625 0.886719 116 0.886719 Z M 116 0.886719 "
+            clipRule="nonzero"
+          />
+        </clipPath>
+        <clipPath id="female-17d7e9e361">
+          <rect x="0" width="232" y="0" height="232" />
+        </clipPath>
+      </defs>
+      <g clipPath="url(#female-5b266f4981)">
+        <path
+          fill="currentColor"
+          d="M 334.828125 400.441406 C 356.695312 362.566406 411.367188 362.566406 433.234375 400.441406 L 539.40625 584.339844 C 561.277344 622.214844 533.941406 669.5625 490.203125 669.5625 L 277.859375 669.5625 C 234.121094 669.5625 206.789062 622.214844 228.65625 584.339844 Z M 334.828125 400.441406 "
+          fillOpacity="1"
+          fillRule="nonzero"
+        />
+      </g>
+      <g clipPath="url(#female-7e96f406f2)">
+        <g clipPath="url(#female-299b4e003c)">
+          <g transform="matrix(1, 0, 0, 1, 268, 100)">
+            <g clipPath="url(#female-17d7e9e361)">
+              <g clipPath="url(#female-1ea70e7dc7)">
+                <g clipPath="url(#female-50640852f2)">
+                  <path
+                    fill="#f59e0b"
+                    d="M 0.800781 0.886719 L 231.199219 0.886719 L 231.199219 231.285156 L 0.800781 231.285156 Z M 0.800781 0.886719 "
+                    fillOpacity="1"
+                    fillRule="nonzero"
+                  />
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </g>
     </svg>
   );
 }
-
-export function CalendarIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3.5" y="5" width="17" height="15.5" rx="2" />
-      <path d="M7.5 3.5v3" />
-      <path d="M16.5 3.5v3" />
-      <path d="M3.5 9.5h17" />
-    </svg>
-  );
-}
-
-export function HomeIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3.5 11.5 12 4.75l8.5 6.75" />
-      <path d="M6 10.5V20a1.75 1.75 0 0 0 1.75 1.75h8.5A1.75 1.75 0 0 0 18 20v-9.5" />
-      <path d="M10 21.75V15.5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v6.25" />
-    </svg>
-  );
-}
-
-export function UserIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" />
-      <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
-    </svg>
-  );
-}
-
-export function SearchIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="11" cy="11" r="6.5" />
-      <path d="m16 16 4.5 4.5" />
-    </svg>
-  );
-}
-
-export function UserPlusIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M16 8a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" />
-      <path d="M4.5 20a7.5 7.5 0 0 1 11.7-6" />
-      <path d="M19 14v6" />
-      <path d="M16 17h6" />
-    </svg>
-  );
-}
-
-export function StrengthIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 10v4" />
-      <path d="M7 9v6" />
-      <path d="M17 9v6" />
-      <path d="M20 10v4" />
-      <path d="M7 12h10" />
-    </svg>
-  );
-}
-
-export function ChartIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 19.5h16" />
-      <path d="M7 16v-4" />
-      <path d="M12 16V8" />
-      <path d="M17 16v-6.5" />
-    </svg>
-  );
-}
+export const PreferNotToSayIcon = wrapLucide(HelpCircle);
 
 export function GoatIcon({ size, ...props }: IconProps) {
   return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+    <svg
+      width={size ?? DEFAULT_SIZE}
+      height={size ?? DEFAULT_SIZE}
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      stroke="currentColor"
+      strokeWidth={DEFAULT_STROKE_WIDTH}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
       <path d="M7 16c0-3.2 2.5-5.5 5.5-5.5S18 12.8 18 16" />
       <path d="M9.5 10c-.8-1.6-2-2.5-3.5-3" />
       <path d="M14.5 10c.8-1.6 2-2.5 3.5-3" />
@@ -125,45 +213,13 @@ export function GoatIcon({ size, ...props }: IconProps) {
   );
 }
 
-export function StarIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="m12 3 2.6 5.2 5.7.8-4.1 4 1 5.6L12 16l-5.2 2.6 1-5.6-4.1-4 5.7-.8L12 3Z" />
-    </svg>
-  );
-}
-
-export function BoltIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M13.5 2.5 6 13h5l-1 8.5L18 11h-5l.5-8.5Z" />
-    </svg>
-  );
-}
-
-export function SettingsIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="3.1" />
-      <path d="M19.2 14.2a7.8 7.8 0 0 0 .1-1.2 7.8 7.8 0 0 0-.1-1.2l2-1.5-2-3.5-2.4 1a7.1 7.1 0 0 0-2-1.2l-.3-2.5h-4l-.3 2.5a7.1 7.1 0 0 0-2 1.2l-2.4-1-2 3.5 2 1.5a7.8 7.8 0 0 0-.1 1.2 7.8 7.8 0 0 0 .1 1.2l-2 1.5 2 3.5 2.4-1a7.1 7.1 0 0 0 2 1.2l.3 2.5h4l.3-2.5a7.1 7.1 0 0 0 2-1.2l2.4 1 2-3.5-2-1.5Z" />
-    </svg>
-  );
-}
-
-export function CalculatorIcon({ size, ...props }: IconProps) {
-  return (
-    <svg {...withDefaults(size, props)} stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round">
-      <rect x="5" y="3" width="14" height="18" rx="2" />
-      <path d="M7.5 6.5h9" />
-      <circle cx="8" cy="10.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="10.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="16" cy="10.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="8" cy="14.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="14.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="16" cy="14.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="8" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
-      <circle cx="16" cy="18.5" r="1.15" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
+export const StarIcon = wrapLucide(Star);
+export const BoltIcon = wrapLucide(Bolt);
+export const SettingsIcon = wrapLucide(Settings);
+export const EllipsisIcon = wrapLucide(Ellipsis);
+export const SwapHorizontalIcon = wrapLucide(ArrowLeftRight);
+export const TrendingUpIcon = wrapLucide(TrendingUp);
+export const TrendingDownIcon = wrapLucide(TrendingDown);
+export const ScaleIcon = wrapLucide(Scale);
+export const AlertTriangleIcon = wrapLucide(AlertTriangle);
+export const CalculatorIcon = wrapLucide(Calculator);
