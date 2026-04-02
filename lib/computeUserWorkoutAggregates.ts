@@ -78,25 +78,29 @@ async function computeAggregatesFromWorkoutRows(
 
   const workoutIds = sorted.map((w) => w.id as string);
   const CHUNK = 200;
-  const allSets: { workout_id: string; reps: number }[] = [];
+  const allSets: { workout_id: string; reps: number; weight?: number | null }[] = [];
 
   for (let i = 0; i < workoutIds.length; i += CHUNK) {
     const chunk = workoutIds.slice(i, i + CHUNK);
     const { data: sets, error: sError } = await supabase
       .from("sets")
-      .select("workout_id, reps")
+      .select("workout_id, reps, weight")
       .in("workout_id", chunk);
 
     if (sError) return { data: null, error: sError.message };
     for (const s of sets ?? []) {
-      allSets.push({ workout_id: s.workout_id as string, reps: Number(s.reps) });
+      allSets.push({
+        workout_id: s.workout_id as string,
+        reps: Number(s.reps),
+        weight: (s as { weight?: number | null }).weight ?? null,
+      });
     }
   }
 
-  const setsByWorkout = new Map<string, number[]>();
+  const setsByWorkout = new Map<string, { reps: number; weight?: number | null }[]>();
   for (const s of allSets) {
     const arr = setsByWorkout.get(s.workout_id) ?? [];
-    arr.push(s.reps);
+    arr.push({ reps: s.reps, weight: s.weight ?? null });
     setsByWorkout.set(s.workout_id, arr);
   }
 
@@ -105,9 +109,10 @@ async function computeAggregatesFromWorkoutRows(
   let totalVolumeKg = 0;
   for (const w of sorted) {
     const wid = w.id as string;
-    const weight = Number(w.weight) || 0;
-    for (const reps of setsByWorkout.get(wid) ?? []) {
-      totalVolumeKg += weight * Math.max(0, reps);
+    const workoutFallbackWeight = Number(w.weight) || 0;
+    for (const s of setsByWorkout.get(wid) ?? []) {
+      const weight = s.weight != null ? Number(s.weight) : workoutFallbackWeight;
+      totalVolumeKg += (Number(weight) || 0) * Math.max(0, Number(s.reps) || 0);
     }
   }
 
@@ -116,11 +121,17 @@ async function computeAggregatesFromWorkoutRows(
   for (const w of sorted) {
     const wid = w.id as string;
     const eid = w.exercise_id as string;
-    const repsList = setsByWorkout.get(wid) ?? [];
-    const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
-    const weight = Number(w.weight) || 0;
-    const effectiveWeight = getEffectiveWeight(weight, loadTypeByExerciseId.get(eid));
-    const est = epley1RM(effectiveWeight, bestReps);
+    const list = setsByWorkout.get(wid) ?? [];
+    const workoutFallbackWeight = Number(w.weight) || 0;
+    const vals: number[] = [];
+    for (const s of list) {
+      const weight = s.weight != null ? Number(s.weight) : workoutFallbackWeight;
+      const reps = Number(s.reps) || 0;
+      const effectiveWeight = getEffectiveWeight(Number(weight) || 0, loadTypeByExerciseId.get(eid));
+      const est = epley1RM(effectiveWeight, reps);
+      if (est > 0) vals.push(est);
+    }
+    const est = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     const prev = bestByExercise.get(eid) ?? 0;
     if (est >= prev) {
       prCount += 1;
@@ -174,20 +185,23 @@ async function countProfileStylePrsInWeek(
 
   const workoutIds = list.map((w) => w.id as string);
   const CHUNK = 200;
-  const setsByWorkout = new Map<string, number[]>();
+  const setsByWorkout = new Map<string, { reps: number; weight?: number | null }[]>();
 
   for (let i = 0; i < workoutIds.length; i += CHUNK) {
     const chunk = workoutIds.slice(i, i + CHUNK);
     const { data: sets, error: sError } = await supabase
       .from("sets")
-      .select("workout_id, reps")
+      .select("workout_id, reps, weight")
       .in("workout_id", chunk);
 
     if (sError) return { count: 0, error: sError.message };
     for (const s of sets ?? []) {
       const wid = s.workout_id as string;
       const arr = setsByWorkout.get(wid) ?? [];
-      arr.push(Number(s.reps));
+      arr.push({
+        reps: Number(s.reps),
+        weight: (s as { weight?: number | null }).weight ?? null,
+      });
       setsByWorkout.set(wid, arr);
     }
   }
@@ -200,11 +214,17 @@ async function countProfileStylePrsInWeek(
     const eid = w.exercise_id as string;
     const d = String(w.date);
     const inWeek = d >= startInclusive && d <= endInclusive;
-    const repsList = setsByWorkout.get(wid) ?? [];
-    const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
-    const weight = Number(w.weight) || 0;
-    const effectiveWeight = getEffectiveWeight(weight, loadTypeByExerciseId.get(eid));
-    const est = epley1RM(effectiveWeight, bestReps);
+    const listSets = setsByWorkout.get(wid) ?? [];
+    const workoutFallbackWeight = Number(w.weight) || 0;
+    const vals: number[] = [];
+    for (const s of listSets) {
+      const weight = s.weight != null ? Number(s.weight) : workoutFallbackWeight;
+      const reps = Number(s.reps) || 0;
+      const effectiveWeight = getEffectiveWeight(Number(weight) || 0, loadTypeByExerciseId.get(eid));
+      const est = epley1RM(effectiveWeight, reps);
+      if (est > 0) vals.push(est);
+    }
+    const est = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     const prev = bestByExercise.get(eid) ?? 0;
     if (inWeek && est >= prev) {
       prCount += 1;

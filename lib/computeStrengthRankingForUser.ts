@@ -143,32 +143,6 @@ function formatCoreImprovement(
   return `+${rounded} kg`;
 }
 
-function ratioAnd1RmForSet(
-  weightKg: number,
-  reps: number,
-  bodyweightKg: number,
-  exerciseName: string,
-  targetMuscle: StrengthRankMuscle,
-  loadType: unknown
-): { ratio: number; estimated1RM: number } | null {
-  const bw = bodyweightKg > 0 ? bodyweightKg : 0;
-  if (bw <= 0) return null;
-  const n = exerciseName.trim().toLowerCase();
-  const useFarmerRule = targetMuscle === "forearms" && n.includes("farmer");
-  if (useFarmerRule) {
-    const effective = weightKg * 2;
-    if (reps <= 0) {
-      return { ratio: effective / bw, estimated1RM: Math.round(effective * 10) / 10 };
-    }
-    const oneRm = epleyEstimated1RM(effective, reps);
-    return { ratio: oneRm / bw, estimated1RM: Math.round(oneRm * 10) / 10 };
-  }
-  const effective = getEffectiveWeight(weightKg, loadType);
-  const oneRm = epleyEstimated1RM(effective, reps);
-  if (oneRm <= 0) return null;
-  return { ratio: oneRm / bw, estimated1RM: Math.round(oneRm * 10) / 10 };
-}
-
 export type StrengthRankingComputeBundle = {
   bodyweightKg: number;
   output: StrengthRankingOutput;
@@ -255,7 +229,7 @@ export async function computeStrengthRankingBundleForUser(
 
   const workoutsQ = supabase
     .from("workouts")
-    .select("id, exercise_id, date, weight")
+    .select("id, exercise_id, date, weight, estimated_1rm, average_estimated_1rm")
     .eq("user_id", userId)
     .order("date", { ascending: true });
   if (endDate) workoutsQ.lte("date", endDate);
@@ -264,13 +238,13 @@ export async function computeStrengthRankingBundleForUser(
   const workoutIds = (workouts ?? []).map((w) => w.id);
   const { data: sets } =
     workoutIds.length > 0
-      ? await supabase.from("sets").select("workout_id, reps").in("workout_id", workoutIds)
-      : { data: [] as { workout_id: string; reps: number }[] };
+      ? await supabase.from("sets").select("workout_id, reps, weight").in("workout_id", workoutIds)
+      : { data: [] as { workout_id: string; reps: number; weight?: number | null }[] };
 
-  const setsByWorkout = new Map<string, number[]>();
+  const setsByWorkout = new Map<string, { reps: number; weight?: number | null }[]>();
   for (const s of sets ?? []) {
     const list = setsByWorkout.get(s.workout_id) ?? [];
-    list.push(s.reps);
+    list.push({ reps: s.reps, weight: (s as { weight?: number | null }).weight ?? null });
     setsByWorkout.set(s.workout_id, list);
   }
 
@@ -284,25 +258,63 @@ export async function computeStrengthRankingBundleForUser(
     const muscles = getEffectiveMusclesForExercise(categoryName, name);
     if (muscles.includes("core")) continue;
 
-    const weightKg = Number(w.weight) || 0;
-    const repsList = setsByWorkout.get(w.id) ?? [];
     const loadType = loadTypeByExercise[w.exercise_id] ?? "bilateral";
-    for (const reps of repsList) {
-      if (bwForRatio <= 0) continue;
-      for (const m of muscles) {
-        if (m === "core") continue;
-        const pair = ratioAnd1RmForSet(weightKg, reps, bwForRatio, name, m, loadType);
-        if (!pair) continue;
-        exerciseDataPoints.push({
-          exerciseId: w.exercise_id,
-          exerciseName: name,
-          categoryName,
-          forMuscle: m,
-          estimated1RM: pair.estimated1RM,
-          strengthRatio: pair.ratio,
-          date: w.date,
-        });
+    const storedBest =
+      (w as { estimated_1rm?: number | null }).estimated_1rm != null
+        ? Number((w as { estimated_1rm?: number | null }).estimated_1rm)
+        : null;
+    const workoutSets = setsByWorkout.get(w.id) ?? [];
+
+    // Use advanced session average when present, otherwise keep legacy best-set tracking.
+    // Final fallback (older schema): best-set computed from sets.
+    const computedBest = (() => {
+      const vals: number[] = [];
+      for (const s of workoutSets) {
+        const weightKg =
+          s.weight != null && Number.isFinite(Number(s.weight)) ? Number(s.weight) : Number(w.weight) || 0;
+        if (weightKg <= 0) continue;
+        const reps = Number(s.reps) || 0;
+        const effective = getEffectiveWeight(weightKg, loadType);
+        const oneRm = epleyEstimated1RM(effective, reps);
+        if (oneRm > 0) vals.push(oneRm);
       }
+      if (vals.length === 0) return 0;
+      return Math.max(...vals);
+    })();
+
+    const session1RM =
+      storedBest != null && Number.isFinite(storedBest) && storedBest > 0 ? storedBest : computedBest;
+
+    if (bwForRatio <= 0 || session1RM <= 0) continue;
+
+    for (const m of muscles) {
+      if (m === "core") continue;
+
+      // Farmer carry rule applies only to forearms scoring.
+      let avgForMuscle = session1RM;
+      if (m === "forearms" && name.trim().toLowerCase().includes("farmer")) {
+        const vals: number[] = [];
+        for (const s of workoutSets) {
+          const baseW =
+            s.weight != null && Number.isFinite(Number(s.weight)) ? Number(s.weight) : Number(w.weight) || 0;
+          if (baseW <= 0) continue;
+          const reps = Number(s.reps) || 0;
+          const effective = baseW * 2;
+          const oneRm = epleyEstimated1RM(effective, reps);
+          if (oneRm > 0) vals.push(oneRm);
+        }
+        if (vals.length > 0) avgForMuscle = vals.reduce((a, b) => a + b, 0) / vals.length;
+      }
+
+      exerciseDataPoints.push({
+        exerciseId: w.exercise_id,
+        exerciseName: name,
+        categoryName,
+        forMuscle: m,
+        estimated1RM: Math.round(avgForMuscle * 10) / 10,
+        strengthRatio: avgForMuscle / bwForRatio,
+        date: w.date,
+      });
     }
   }
 

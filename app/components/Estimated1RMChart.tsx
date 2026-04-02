@@ -12,7 +12,15 @@ import {
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 
-type Point = { date: string; weight: number; estimated1RM: number | null };
+type Point = {
+  date: string;
+  /** Max set weight in workout (kg) */
+  weight: number;
+  estimated1RM: number | null;
+  bestSetWeight?: number | null;
+  bestSetReps?: number | null;
+  setsInline?: string;
+};
 
 type Props = { data: Point[] };
 
@@ -43,16 +51,56 @@ export function Estimated1RMChart({ data }: Props) {
           <Tooltip
             contentStyle={{ backgroundColor: "#18181b", border: "1px solid #3f3f46", borderRadius: "8px" }}
             labelStyle={{ color: "#a1a1aa" }}
-            formatter={(value) => [value != null ? `${formatWeight(Number(value), { units })} ${weightLabel}` : "", "Est. 1RM"]}
-            labelFormatter={(label) => (label ? new Date(label).toLocaleDateString() : "")}
+            cursor={{ stroke: "#71717a", strokeWidth: 1, strokeOpacity: 0.3 }}
+            content={({ active, payload, label, coordinate, viewBox }) => {
+              const raw = (payload?.[0] as { value?: unknown } | undefined)?.value;
+              const value = raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null;
+              if (!active || value == null) return null;
+              const x = coordinate?.x;
+              const y = coordinate?.y;
+              if (x == null || y == null) return null;
+              const vbWidth =
+                (viewBox as { width?: number } | undefined)?.width != null
+                  ? Number((viewBox as { width?: number }).width)
+                  : null;
+              const paddingX = 72;
+              const xClamped =
+                vbWidth != null && Number.isFinite(vbWidth)
+                  ? Math.min(Math.max(x, paddingX), vbWidth - paddingX)
+                  : x;
+              return (
+                <div
+                  style={{
+                    position: "absolute",
+                    left: xClamped,
+                    top: y - 45,
+                    transform: "translate(-50%, -100%)",
+                    backgroundColor: "#18181b",
+                    border: "1px solid #3f3f46",
+                    borderRadius: "8px",
+                    padding: "8px 10px",
+                    textAlign: "center",
+                    pointerEvents: "none",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  <div style={{ color: "#a1a1aa", fontSize: 12, opacity: 0.8, marginBottom: 4 }}>
+                    {label ? new Date(label).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : ""}
+                  </div>
+                  <div style={{ color: "#e4e4e7", fontSize: 16, fontWeight: 700 }}>
+                    {formatWeight(value, { units })} {weightLabel}
+                  </div>
+                </div>
+              );
+            }}
           />
           <Line
             type="monotone"
             dataKey="estimated1RM"
             stroke="#22c55e"
             strokeWidth={2}
-            dot={{ fill: "#22c55e", r: 3 }}
-            activeDot={{ r: 4 }}
+            dot={{ fill: "#22c55e", r: 4 }}
+            activeDot={{ r: 6, stroke: "#ffffff", strokeWidth: 2, fill: "#22c55e" }}
           />
         </LineChart>
       </ResponsiveContainer>

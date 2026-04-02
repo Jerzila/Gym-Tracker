@@ -266,7 +266,16 @@ export async function updateExerciseNotes(
 export async function getExerciseById(id: string): Promise<{
   exercise:
     | (Exercise & {
-        workouts: { id: string; date: string; weight: number; load_type: Exercise["load_type"]; sets: { reps: number }[] }[];
+        workouts: {
+          id: string;
+          date: string;
+          weight: number;
+          estimated_1rm?: number | null;
+          average_estimated_1rm?: number | null;
+          average_weight?: number | null;
+          load_type: Exercise["load_type"];
+          sets: { reps: number; weight?: number | null }[];
+        }[];
       })
     | null;
   error?: string;
@@ -274,67 +283,105 @@ export async function getExerciseById(id: string): Promise<{
   try {
     const supabase = await createServerClient();
     const { data: exercise, error: exError } = await supabase
-    .from("exercises")
-    .select("*")
-    .eq("id", id)
-    .single();
+      .from("exercises")
+      .select("*")
+      .eq("id", id)
+      .single();
 
-  if (exError || !exercise) {
-    return { exercise: null, error: exError?.message ?? "Not found" };
-  }
+    if (exError || !exercise) {
+      return { exercise: null, error: exError?.message ?? "Not found" };
+    }
 
-  const { data: workouts, error: wError } = await supabase
-    .from("workouts")
-    .select("id, date, weight, created_at")
-    .eq("exercise_id", id)
-    .order("date", { ascending: false });
+    // Backwards compatible: if migrations haven't run yet, these new columns may not exist.
+    const workoutsQuery = supabase
+      .from("workouts")
+      .select("id, date, weight, estimated_1rm, average_estimated_1rm, average_weight, created_at")
+      .eq("exercise_id", id)
+      .order("date", { ascending: false });
+    const workoutsFallbackQuery = supabase
+      .from("workouts")
+      .select("id, date, weight, estimated_1rm, created_at")
+      .eq("exercise_id", id)
+      .order("date", { ascending: false });
 
-  if (wError) return { exercise: null, error: wError.message };
+    const { data: workouts, error: wError } = await workoutsQuery;
+    const { data: workouts2, error: wError2 } =
+      wError && wError.message?.toLowerCase().includes("does not exist")
+        ? await workoutsFallbackQuery
+        : { data: null as typeof workouts | null, error: null as typeof wError | null };
 
-  const workoutIds = (workouts ?? []).map((w) => w.id);
-  if (workoutIds.length === 0) {
+    const workoutsList = (workouts ?? workouts2 ?? []) as typeof workouts;
+    const workoutsErr = wError2 ?? wError;
+    if (workoutsErr && workoutsList.length === 0) {
+      // Don't 404 the whole exercise page on schema mismatch; render exercise with empty workouts.
+      return { exercise: { ...(exercise as Exercise), workouts: [] } };
+    }
+
+    const workoutIds = (workoutsList ?? []).map((w) => w.id);
+    if (workoutIds.length === 0) {
+      return {
+        exercise: {
+          ...(exercise as Exercise),
+          workouts: (workoutsList ?? []).map((w) => ({
+            ...w,
+            date: w.date,
+            weight: w.weight,
+            load_type: (exercise as Exercise).load_type,
+            sets: [],
+          })),
+        },
+      };
+    }
+
+    const setsQuery = supabase
+      .from("sets")
+      .select("workout_id, reps, weight, id")
+      .in("workout_id", workoutIds);
+    const setsFallbackQuery = supabase
+      .from("sets")
+      .select("workout_id, reps, id")
+      .in("workout_id", workoutIds);
+
+    const { data: sets, error: sError } = await setsQuery;
+    const { data: sets2, error: sError2 } =
+      sError && sError.message?.toLowerCase().includes("does not exist")
+        ? await setsFallbackQuery
+        : { data: null as typeof sets | null, error: null as typeof sError | null };
+
+    const setsList = (sets ?? sets2 ?? []) as typeof sets;
+    const setsErr = sError2 ?? sError;
+    if (setsErr && setsList.length === 0) {
+      return { exercise: { ...(exercise as Exercise), workouts: [] } };
+    }
+
+    const setsByWorkout = new Map<string, { id: string; reps: number; weight?: number | null }[]>();
+    for (const s of setsList ?? []) {
+      const list = setsByWorkout.get(s.workout_id) ?? [];
+      list.push({
+        id: (s as { id: string }).id,
+        reps: s.reps,
+        weight: (s as { weight?: number | null }).weight ?? null,
+      });
+      setsByWorkout.set(s.workout_id, list);
+    }
+
+    const workoutsWithSets = (workoutsList ?? []).map((w) => ({
+      id: w.id,
+      date: w.date,
+      weight: w.weight,
+      estimated_1rm: (w as { estimated_1rm?: number | null }).estimated_1rm ?? null,
+      average_estimated_1rm: (w as { average_estimated_1rm?: number | null }).average_estimated_1rm ?? null,
+      average_weight: (w as { average_weight?: number | null }).average_weight ?? null,
+      load_type: (exercise as Exercise).load_type,
+      sets: setsByWorkout.get(w.id) ?? [],
+    }));
+
     return {
       exercise: {
         ...(exercise as Exercise),
-        workouts: (workouts ?? []).map((w) => ({
-          ...w,
-          date: w.date,
-          weight: w.weight,
-          load_type: (exercise as Exercise).load_type,
-          sets: [],
-        })),
+        workouts: workoutsWithSets,
       },
     };
-  }
-
-  const { data: sets, error: sError } = await supabase
-    .from("sets")
-    .select("workout_id, reps, id")
-    .in("workout_id", workoutIds);
-
-  if (sError) return { exercise: null, error: sError.message };
-
-  const setsByWorkout = new Map<string, { id: string; reps: number }[]>();
-  for (const s of sets ?? []) {
-    const list = setsByWorkout.get(s.workout_id) ?? [];
-    list.push({ id: (s as { id: string }).id, reps: s.reps });
-    setsByWorkout.set(s.workout_id, list);
-  }
-
-  const workoutsWithSets = (workouts ?? []).map((w) => ({
-    id: w.id,
-    date: w.date,
-    weight: w.weight,
-    load_type: (exercise as Exercise).load_type,
-    sets: setsByWorkout.get(w.id) ?? [],
-  }));
-
-  return {
-    exercise: {
-      ...(exercise as Exercise),
-      workouts: workoutsWithSets,
-    },
-  };
   } catch (e) {
     if (isConnectionError(e)) {
       return { exercise: null, error: "Can't connect to Supabase. Check your .env.local." };

@@ -66,14 +66,47 @@ export type Database = {
         Update: { exercise_id?: string; category_id?: string; created_at?: string };
       };
       workouts: {
-        Row: { id: string; user_id: string; exercise_id: string; date: string; weight: number; created_at: string };
-        Insert: { id?: string; user_id: string; exercise_id: string; date: string; weight: number; created_at?: string };
-        Update: { id?: string; user_id?: string; exercise_id?: string; date?: string; weight?: number; created_at?: string };
+        Row: {
+          id: string;
+          user_id: string;
+          exercise_id: string;
+          date: string;
+          weight: number;
+          effective_weight?: number | null;
+          estimated_1rm?: number | null;
+          average_estimated_1rm?: number | null;
+          average_weight?: number | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          exercise_id: string;
+          date: string;
+          weight: number;
+          effective_weight?: number | null;
+          estimated_1rm?: number | null;
+          average_estimated_1rm?: number | null;
+          average_weight?: number | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          exercise_id?: string;
+          date?: string;
+          weight?: number;
+          effective_weight?: number | null;
+          estimated_1rm?: number | null;
+          average_estimated_1rm?: number | null;
+          average_weight?: number | null;
+          created_at?: string;
+        };
       };
       sets: {
-        Row: { id: string; workout_id: string; reps: number };
-        Insert: { id?: string; workout_id: string; reps: number };
-        Update: { id?: string; workout_id?: string; reps?: number };
+        Row: { id: string; workout_id: string; reps: number; weight?: number | null };
+        Insert: { id?: string; workout_id: string; reps: number; weight?: number | null };
+        Update: { id?: string; workout_id?: string; reps?: number; weight?: number | null };
       };
       bodyweight_logs: {
         Row: { id: string; user_id: string; weight: number; date: string; created_at: string };

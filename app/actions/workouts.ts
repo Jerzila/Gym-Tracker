@@ -21,7 +21,7 @@ export type CalendarWorkout = {
   load_type: "bilateral" | "unilateral";
   exercise_id: string;
   exercise_name: string;
-  sets: { reps: number }[];
+  sets: { reps: number; weight?: number | null }[];
 };
 
 type CreateResult = { message?: string; error?: string; hitPr?: boolean };
@@ -36,20 +36,27 @@ export async function createWorkout(
   formData: FormData
 ): Promise<CreateResult> {
   const date = (formData.get("date") as string)?.trim() || new Date().toISOString().slice(0, 10);
-  const weight = Number(formData.get("weight"));
-  const reps: number[] = [];
+  // Support both simple logging (global weight) and advanced logging (weight per set).
+  // Internally we always normalize to per-set objects.
+  const globalWeightRaw = formData.get("weight");
+  const hasGlobalWeight = globalWeightRaw != null && String(globalWeightRaw).trim() !== "";
+  const globalWeight = Number(globalWeightRaw);
+  const sets: { weight: number; reps: number }[] = [];
   for (let i = 1; i <= 5; i++) {
     const raw = formData.get(`reps_${i}`);
     if (raw === null || raw === undefined || String(raw).trim() === "") continue;
     const r = Number(raw);
-    if (!Number.isNaN(r) && r >= 0) reps.push(r);
+    if (Number.isNaN(r) || r < 0) continue;
+    const rawW = formData.get(`weight_${i}`);
+    const w = rawW == null || String(rawW).trim() === "" ? globalWeight : Number(rawW);
+    if (!Number.isFinite(w) || w <= 0) {
+      return { error: "Weight must be greater than 0." };
+    }
+    sets.push({ weight: w, reps: r });
   }
 
-  if (reps.length === 0) {
+  if (sets.length === 0) {
     return { error: "Please log at least one set." };
-  }
-  if (!Number.isFinite(weight) || weight <= 0) {
-    return { error: "Weight must be greater than 0." };
   }
 
   try {
@@ -70,6 +77,19 @@ export async function createWorkout(
     const loadType = normalizeLoadType(
       (exercise as { load_type?: unknown }).load_type
     );
+
+    // workouts.weight is kept for legacy displays; in advanced mode it becomes the heaviest set weight.
+    // In simple mode it equals the global weight (same as before).
+    // For graphs: weight over time should plot max(weight) in the workout.
+    const workoutWeight = Math.max(...sets.map((s) => s.weight));
+
+    // Strength: best-set estimated 1RM across all sets (Epley), using effective weight rules.
+    let bestSetEstimated1RM = 0;
+    for (const s of sets) {
+      const effective = getEffectiveWeight(s.weight, loadType);
+      const rm = epley1RM(effective, s.reps);
+      if (Number.isFinite(rm) && rm > bestSetEstimated1RM) bestSetEstimated1RM = rm;
+    }
 
     const { data: priorWorkouts, error: pwError } = await supabase
       .from("workouts")
@@ -110,17 +130,23 @@ export async function createWorkout(
       }
     }
 
-    const effectiveNew = getEffectiveWeight(weight, loadType);
-    let newSessionBest = 0;
-    for (const r of reps) {
-      const rm = epley1RM(effectiveNew, r);
-      if (rm > newSessionBest) newSessionBest = rm;
-    }
+    const newSessionBest = bestSetEstimated1RM;
     const hitPr = priorList.length > 0 && newSessionBest > bestBefore;
 
     const { data: workout, error: wError } = await supabase
       .from("workouts")
-      .insert({ user_id: user.id, exercise_id: exerciseId, date, weight } as Record<string, unknown>)
+      .insert(
+        {
+          user_id: user.id,
+          exercise_id: exerciseId,
+          date,
+          weight: workoutWeight,
+          effective_weight: getEffectiveWeight(workoutWeight, loadType),
+          estimated_1rm: newSessionBest,
+          // Deprecated by new spec; keep null to avoid confusion.
+          average_estimated_1rm: null,
+        } as Record<string, unknown>
+      )
       .select("id")
       .single();
 
@@ -130,7 +156,7 @@ export async function createWorkout(
     const { error: sError } = await supabase
       .from("sets")
       .insert(
-        reps.map((reps_count) => ({ workout_id: workout.id, reps: reps_count })) as Record<string, unknown>[]
+        sets.map((s) => ({ workout_id: workout.id, reps: s.reps, weight: s.weight })) as Record<string, unknown>[]
       );
 
     if (sError) return { error: sError.message };
@@ -140,7 +166,7 @@ export async function createWorkout(
     const message = getProgressiveOverloadMessage(
       exercise.rep_min,
       exercise.rep_max,
-      reps
+      sets.map((s) => s.reps)
     );
 
     revalidatePath("/");
@@ -348,14 +374,14 @@ export async function getWorkoutsByMonth(
     const workoutIds = workouts.map((w) => w.id);
     const { data: sets, error: sError } = await supabase
       .from("sets")
-      .select("workout_id, reps")
+      .select("workout_id, reps, weight")
       .in("workout_id", workoutIds);
 
     if (sError) return { data: [], error: sError.message };
-    const setsByWorkout = new Map<string, { reps: number }[]>();
+    const setsByWorkout = new Map<string, { reps: number; weight?: number | null }[]>();
     for (const s of sets ?? []) {
       const list = setsByWorkout.get(s.workout_id) ?? [];
-      list.push({ reps: s.reps });
+      list.push({ reps: s.reps, weight: (s as { weight?: number | null }).weight ?? null });
       setsByWorkout.set(s.workout_id, list);
     }
 
@@ -471,25 +497,29 @@ export async function getLastWorkoutSummary(): Promise<{
     const workoutIds = dayWorkouts.map((w) => w.id);
     const { data: sets } = await supabase
       .from("sets")
-      .select("workout_id, reps")
+      .select("workout_id, reps, weight")
       .in("workout_id", workoutIds);
 
-    const setsByW = new Map<string, number[]>();
+    const setsByW = new Map<string, { reps: number; weight?: number | null }[]>();
     for (const s of sets ?? []) {
       const list = setsByW.get(s.workout_id) ?? [];
-      list.push(s.reps);
+      list.push({ reps: s.reps, weight: (s as { weight?: number | null }).weight ?? null });
       setsByW.set(s.workout_id, list);
     }
 
     const sessions: Session1RM[] = dayWorkouts.map((w) => {
-      const repsList = setsByW.get(w.id) ?? [];
-      const bestReps = repsList.length > 0 ? Math.max(...repsList) : 0;
+      const list = setsByW.get(w.id) ?? [];
+      const vals: number[] = [];
+      for (const s of list) {
+        const weightKg = s.weight != null ? Number(s.weight) : Number(w.weight) || 0;
+        const reps = Number(s.reps) || 0;
+        const rm = epley1RM(getEffectiveWeight(weightKg, loadTypeByExerciseId.get(w.exercise_id)), reps);
+        if (rm > 0) vals.push(rm);
+      }
+      const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
       return {
         exercise_id: w.exercise_id,
-        estimated1RM: epley1RM(
-          getEffectiveWeight(w.weight, loadTypeByExerciseId.get(w.exercise_id)),
-          bestReps
-        ),
+        estimated1RM: avg,
       };
     });
 
@@ -558,26 +588,31 @@ export async function getPRsForDate(
       const workoutIds = workouts.map((w) => w.id);
       const { data: sets } = await supabase
         .from("sets")
-        .select("workout_id, reps")
+        .select("workout_id, reps, weight")
         .in("workout_id", workoutIds);
 
-      const setsByWorkout = new Map<string, number[]>();
+      const setsByWorkout = new Map<string, { reps: number; weight?: number | null }[]>();
       for (const s of sets ?? []) {
         const list = setsByWorkout.get(s.workout_id) ?? [];
-        list.push(s.reps);
+        list.push({ reps: s.reps, weight: (s as { weight?: number | null }).weight ?? null });
         setsByWorkout.set(s.workout_id, list);
       }
 
       let bestBefore = 0;
       for (const w of workouts) {
-        const repsList = setsByWorkout.get(w.id) ?? [];
-        for (const reps of repsList) {
+        const list = setsByWorkout.get(w.id) ?? [];
+        const vals: number[] = [];
+        for (const s of list) {
+          const weightKg = s.weight != null ? Number(s.weight) : Number(w.weight) || 0;
+          const reps = Number(s.reps) || 0;
           const rm = epley1RM(
-            getEffectiveWeight(w.weight, loadTypeByExerciseId.get(exercise_id)),
+            getEffectiveWeight(weightKg, loadTypeByExerciseId.get(exercise_id)),
             reps
           );
-          if (rm > bestBefore) bestBefore = rm;
+          if (rm > 0) vals.push(rm);
         }
+        const avg = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+        if (avg > bestBefore) bestBefore = avg;
       }
       if (estimated1RM >= bestBefore) prExerciseIds.push(exercise_id);
     }

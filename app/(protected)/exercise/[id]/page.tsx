@@ -1,6 +1,11 @@
 import { notFound } from "next/navigation";
 import { getExerciseById } from "@/app/actions/exercises";
-import { getHeaviestWeight, getBestEstimated1RM, getMaxRepsAtWeight } from "@/lib/pr";
+import {
+  getHeaviestWeight,
+  getBestEstimated1RM,
+  getMaxRepsAtWeight,
+  getStrengthProgress,
+} from "@/lib/pr";
 import { epley1RM } from "@/lib/progression";
 import { ExercisePRs } from "@/app/components/ExercisePRs";
 import { StrengthRecommendationCard } from "@/app/components/StrengthRecommendationCard";
@@ -23,6 +28,7 @@ export default async function ExercisePage({ params }: Props) {
   const best1RM = getBestEstimated1RM(workouts);
   const maxRepsAtHeaviest =
     heaviest != null ? getMaxRepsAtWeight(workouts, heaviest) : null;
+  const strengthProgress = getStrengthProgress(workouts);
   const repMin = Number.isFinite(exercise.rep_min) && exercise.rep_min > 0 ? exercise.rep_min : 6;
   const repMax = Number.isFinite(exercise.rep_max) && exercise.rep_max >= repMin ? exercise.rep_max : Math.max(10, repMin);
   const strengthRecommendation = getStrengthRecommendation(workouts, {
@@ -35,14 +41,49 @@ export default async function ExercisePage({ params }: Props) {
     .reverse()
     .map((w) => {
       const weight = Number(w.weight);
-      const bestSet = w.sets.length
-        ? w.sets.reduce((best, s) => (s.reps > (best?.reps ?? 0) ? s : best), w.sets[0])
-        : null;
-      const est1RM = bestSet ? epley1RM(weight, bestSet.reps) : null;
+      const bestSet =
+        w.sets && w.sets.length > 0
+          ? Math.max(
+              ...w.sets.map((s) => {
+                const wKg = s.weight != null ? Number(s.weight) : weight;
+                return epley1RM(Number(wKg) || 0, Number(s.reps) || 0);
+              })
+            )
+          : null;
+      const est1RM = bestSet != null && Number.isFinite(bestSet) && bestSet > 0 ? bestSet : null;
+
+      const bestSetInfo =
+        (w.sets ?? []).length > 0
+          ? (w.sets ?? []).reduce(
+              (best, s) => {
+                const wKg = s.weight != null ? Number(s.weight) : weight;
+                const reps = Number(s.reps) || 0;
+                const rm = epley1RM(Number(wKg) || 0, reps);
+                if (!best || rm > best.rm) return { weight: Number(wKg) || 0, reps, rm };
+                return best;
+              },
+              null as null | { weight: number; reps: number; rm: number }
+            )
+          : null;
+
+      const setsInline =
+        (w.sets ?? []).length > 0
+          ? (w.sets ?? [])
+              .map((s) => {
+                const wKg = s.weight != null ? Number(s.weight) : weight;
+                return `${Number(wKg) || 0}×${Number(s.reps) || 0}`;
+              })
+              .join(" • ")
+          : "";
+
       return {
         date: w.date,
+        // Weight graph should plot max set weight.
         weight,
         estimated1RM: est1RM,
+        bestSetWeight: bestSetInfo?.weight ?? null,
+        bestSetReps: bestSetInfo?.reps ?? null,
+        setsInline,
       };
     });
 
@@ -57,9 +98,6 @@ export default async function ExercisePage({ params }: Props) {
 
       <main className="mx-auto max-w-xl px-4 pt-5 sm:px-6">
         <section className="pb-6">
-          <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Log set
-          </h2>
           <ExerciseLogAndNotes
             exerciseId={id}
             repMin={exercise.rep_min}
@@ -72,12 +110,13 @@ export default async function ExercisePage({ params }: Props) {
         <div className="border-t border-zinc-800/60 pt-6" aria-hidden />
         <StrengthRecommendationCard recommendation={strengthRecommendation} />
 
-        {(heaviest != null || best1RM != null) && (
+        {(heaviest != null || best1RM != null || strengthProgress != null) && (
           <>
             <ExercisePRs
               heaviest={heaviest}
               best1RM={best1RM}
               maxRepsAtHeaviest={maxRepsAtHeaviest}
+              strengthProgress={strengthProgress}
             />
           </>
         )}
