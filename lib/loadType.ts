@@ -1,8 +1,9 @@
-export type LoadType = "weight" | "unilateral" | "bodyweight";
+export type LoadType = "weight" | "unilateral" | "bodyweight" | "timed";
 
 export function normalizeLoadType(value: unknown): LoadType {
   if (value === "unilateral") return "unilateral";
   if (value === "bodyweight") return "bodyweight";
+  if (value === "timed") return "timed";
   if (value === "weight") return "weight";
   // Legacy DB value
   if (value === "bilateral") return "weight";
@@ -19,5 +20,7 @@ export function getEffectiveWeight(weight: number, loadType: unknown): number {
   const safeWeight = Number.isFinite(numericWeight) ? numericWeight : 0;
   const t = normalizeLoadType(loadType);
   if (t === "unilateral") return safeWeight * 2;
+  /** Timed: `workouts.weight` stores session best time (seconds). */
+  if (t === "timed") return safeWeight;
   return safeWeight;
 }

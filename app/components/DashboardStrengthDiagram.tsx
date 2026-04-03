@@ -7,8 +7,10 @@ import { getRankColor, RANK_COLORS, RANK_LEGEND_ENTRIES } from "@/lib/rankBadges
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
-import { formatWeight } from "@/lib/formatWeight";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { formatDurationClock } from "@/lib/formatDuration";
 import { useUnits } from "@/app/components/UnitsContext";
+import type { BestExerciseByMuscle } from "@/app/actions/strengthRanking";
 
 const MOBILE_BREAKPOINT = 768;
 
@@ -69,8 +71,19 @@ type Props = {
   gender?: "male" | "female" | null;
 };
 
+function formatDiagramBestExercise(
+  ex: BestExerciseByMuscle,
+  units: ReturnType<typeof useUnits>,
+  weightLabel: string
+): string {
+  if (ex.isDurationSeconds) return formatDurationClock(ex.estimated1RM);
+  if (ex.isReps) return `${Math.round(ex.estimated1RM)} reps`;
+  return `${formatWeight(ex.estimated1RM, { units })} ${weightLabel} 1RM`;
+}
+
 export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
   const units = useUnits();
+  const weightLabel = weightUnitLabel(units);
   const isMobile = useIsMobile();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [view, setView] = useState<"front" | "back">("front");
@@ -80,7 +93,11 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
     const allParts: ExtendedBodyPart[] = [];
     for (const [slug, muscle] of Object.entries(slugToMuscle)) {
       const exerciseCount = data.exerciseCountByMuscle?.[muscle] ?? 0;
-      const isEmpty = (muscle === "core" || muscle === "forearms") && exerciseCount === 0;
+      const muscleScore = data.muscleScores?.[muscle] ?? 0;
+      const isEmpty =
+        (muscle === "core" || muscle === "forearms") &&
+        exerciseCount === 0 &&
+        muscleScore <= 0;
       // For core/forearms with no exercises, do not apply a rank color; use default fill.
       if (isEmpty) continue;
       const rankSlug = data.muscleRanks[muscle].rankSlug as RankSlug;
@@ -106,7 +123,11 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
   const muscleCard = useMemo(() => {
     if (!selectedMuscle) return null;
     const exerciseCount = data.exerciseCountByMuscle?.[selectedMuscle] ?? 0;
-    const isEmpty = (selectedMuscle === "core" || selectedMuscle === "forearms") && exerciseCount === 0;
+    const muscleScore = data.muscleScores?.[selectedMuscle] ?? 0;
+    const isEmpty =
+      (selectedMuscle === "core" || selectedMuscle === "forearms") &&
+      exerciseCount === 0 &&
+      muscleScore <= 0;
     const rankInfo = data.muscleRanks[selectedMuscle];
     const bestEx = data.bestExerciseByMuscle[selectedMuscle];
     const topLabel = `${rankInfo.topPercentileLabel} of lifters`;
@@ -165,9 +186,11 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
               <p className={`mt-2 border-t border-zinc-700 pt-2 text-zinc-400 ${isMobile ? "text-sm" : "text-xs"}`}>
                 <span className="font-medium text-zinc-300">Top exercise</span>
                 <br />
-                {muscleCard.muscle === "core"
-                  ? muscleCard.bestExercise.name
-                  : `${muscleCard.bestExercise.name} — ${formatWeight(muscleCard.bestExercise.estimated1RM, { units })} 1RM`}
+                {`${muscleCard.bestExercise.name} — ${formatDiagramBestExercise(
+                  muscleCard.bestExercise,
+                  units,
+                  weightLabel
+                )}`}
               </p>
             ) : (
               <p className={`mt-2 border-t border-zinc-700 pt-2 text-zinc-500 ${isMobile ? "text-sm" : "text-xs"}`}>

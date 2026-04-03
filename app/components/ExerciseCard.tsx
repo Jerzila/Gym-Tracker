@@ -62,7 +62,9 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
           <span className="ml-2 text-zinc-500">
             {normalizeLoadType(exercise.load_type) === "bodyweight"
               ? "Bodyweight"
-              : `${exercise.rep_min}–${exercise.rep_max} reps`}
+              : normalizeLoadType(exercise.load_type) === "timed"
+                ? "Timed hold"
+                : `${exercise.rep_min}–${exercise.rep_max} reps`}
           </span>
         </Link>
         <div

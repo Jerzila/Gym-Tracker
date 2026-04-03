@@ -77,9 +77,10 @@ export function EditExerciseModal({
               <option value="weight">Both arms / total weight</option>
               <option value="unilateral">One arm / per side</option>
               <option value="bodyweight">Bodyweight</option>
+              <option value="timed">Timed hold</option>
             </select>
           </div>
-          {loadType !== "bodyweight" && (
+          {loadType !== "bodyweight" && loadType !== "timed" && (
             <div className="flex gap-3">
               <div className="flex-1 space-y-1">
                 <label htmlFor="edit-rep_min" className="block text-xs text-zinc-500">

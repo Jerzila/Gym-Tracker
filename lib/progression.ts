@@ -32,3 +32,11 @@ export function getBodyweightProgressMessage(setReps: number[]): string {
   const next = best + 1;
   return `Next workout, aim for ${next} reps or more on your best set.`;
 }
+
+/** After logging timed holds: seconds per set in `setReps`. */
+export function getTimedProgressMessage(setSeconds: number[]): string {
+  if (setSeconds.length === 0) return "";
+  const best = Math.max(...setSeconds);
+  const next = best + 5;
+  return `Next workout, aim for ${next} seconds or more on your best set.`;
+}

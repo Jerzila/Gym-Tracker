@@ -3,7 +3,9 @@
 import { useMemo } from "react";
 import Image from "next/image";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
+import { formatDurationClock } from "@/lib/formatDuration";
 import { useUnits } from "@/app/components/UnitsContext";
+import type { BestExerciseByMuscle } from "@/app/actions/strengthRanking";
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
@@ -25,6 +27,16 @@ type Props = {
   data: StrengthRankingWithExercises;
 };
 
+function formatTopExerciseValue(
+  ex: BestExerciseByMuscle,
+  units: ReturnType<typeof useUnits>,
+  weightLabel: string
+): string {
+  if (ex.isDurationSeconds) return formatDurationClock(ex.estimated1RM);
+  if (ex.isReps) return `${Math.round(ex.estimated1RM)} reps`;
+  return `${formatWeight(ex.estimated1RM, { units })} ${weightLabel} 1RM`;
+}
+
 export function MuscleRankList({ data }: Props) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
@@ -37,10 +49,16 @@ export function MuscleRankList({ data }: Props) {
       ? data.visibleMuscles
       : (["chest", "back", "legs", "shoulders", "biceps", "triceps"] as StrengthRankMuscle[]));
 
-    const topByMuscle = data.topExercisesByMuscle ?? ({} as Record<StrengthRankMuscle, { name: string; estimated1RM: number }[]>);
+    const topByMuscle =
+      data.topExercisesByMuscle ??
+      ({} as Record<StrengthRankMuscle, BestExerciseByMuscle[]>);
     const rows = visible.map((muscle) => {
       const exerciseCount = data.exerciseCountByMuscle?.[muscle] ?? 0;
-      const isEmpty = (muscle === "core" || muscle === "forearms") && exerciseCount === 0;
+      const muscleScore = data.muscleScores?.[muscle] ?? 0;
+      const isEmpty =
+        (muscle === "core" || muscle === "forearms") &&
+        exerciseCount === 0 &&
+        muscleScore <= 0;
       const rankInfo = data.muscleRanks[muscle];
       const topLabel = `${rankInfo.topPercentileLabel} of lifters`;
       const isCore = muscle === "core";
@@ -129,6 +147,26 @@ export function MuscleRankList({ data }: Props) {
                       Improve any of these to climb core ranks.
                     </p>
                   </>
+                ) : row.topExercises.length > 0 ? (
+                  <>
+                    <ul className="mt-1.5 space-y-1 text-sm text-zinc-400">
+                      {row.topExercises.slice(0, 3).map((ex) => (
+                        <li key={ex.name} className="flex items-baseline justify-between gap-2">
+                          <span>Best {ex.name}</span>
+                          <span className="shrink-0 font-medium text-zinc-300">
+                            {formatTopExerciseValue(ex, units, weightLabel)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-xs text-zinc-500">
+                      Keep training core to reach {row.nextRankLabel ?? nextLabel}.
+                    </p>
+                  </>
+                ) : (data.muscleScores?.core ?? 0) > 0 ? (
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Core rank is endurance volume: best hold (seconds) + 2× best bodyweight reps, using dedicated volume tiers.
+                  </p>
                 ) : (
                   <p className="mt-1 text-sm text-zinc-500">
                     No core workouts logged yet
@@ -160,7 +198,7 @@ export function MuscleRankList({ data }: Props) {
                         <li key={ex.name} className="flex items-baseline justify-between gap-2">
                           <span>{ex.name}</span>
                           <span className="shrink-0 font-medium text-zinc-500">
-                            {formatWeight(ex.estimated1RM, { units })} {weightLabel} 1RM
+                            {formatTopExerciseValue(ex, units, weightLabel)}
                           </span>
                         </li>
                       ))}

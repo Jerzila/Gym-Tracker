@@ -4,6 +4,7 @@ import {
   computeStrengthRankingBundleForUser,
   type CoreExerciseType,
   type CoreImprovementSuggestion,
+  type CoreTopExerciseForDisplay,
 } from "@/lib/computeStrengthRankingForUser";
 import { parseStoredRankingsMusclePayload } from "@/lib/friendStrengthFromRankings";
 import { createServerClient } from "@/lib/supabase/server";
@@ -24,7 +25,20 @@ export type { CoreExerciseType, CoreImprovementSuggestion };
 export type BestExerciseByMuscle = {
   name: string;
   estimated1RM: number;
+  /** Timed holds (e.g. plank): estimated1RM is best time in seconds. */
+  isDurationSeconds?: boolean;
+  /** Rep-based core moves: estimated1RM is max reps. */
+  isReps?: boolean;
 };
+
+function bestExerciseRowsFromCoreTop(rows: CoreTopExerciseForDisplay[]): BestExerciseByMuscle[] {
+  return rows.map((x) => ({
+    name: x.name,
+    estimated1RM: x.displayEstimated1RM,
+    ...(x.isDurationSeconds ? { isDurationSeconds: true as const } : {}),
+    ...(x.isReps ? { isReps: true as const } : {}),
+  }));
+}
 
 export type TopExercisesByMuscle = Record<StrengthRankMuscle, BestExerciseByMuscle[]>;
 
@@ -148,6 +162,7 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
       categoryByExercise,
       bodyweightKg,
       coreImprovementSuggestions,
+      coreTopExercisesForDisplay,
     } = computed.bundle;
 
     const topExercisesData = getTopExercisesByMuscleForSuggestions(exerciseDataPoints);
@@ -181,16 +196,29 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
     for (const muscle of STRENGTH_RANK_MUSCLES) {
       const list = topExercisesData[muscle] ?? [];
       if (list.length > 0) {
-        bestExerciseByMuscle[muscle] = { name: list[0].name, estimated1RM: list[0].estimated1RM };
-        topExercisesByMuscle[muscle] = list.map(({ name, estimated1RM }) => ({ name, estimated1RM }));
+        bestExerciseByMuscle[muscle] = {
+          name: list[0].name,
+          estimated1RM: list[0].estimated1RM,
+          ...(list[0].isDurationSeconds ? { isDurationSeconds: true as const } : {}),
+        };
+        topExercisesByMuscle[muscle] = list.map(({ name, estimated1RM, isDurationSeconds }) => ({
+          name,
+          estimated1RM,
+          ...(isDurationSeconds ? { isDurationSeconds: true as const } : {}),
+        }));
         if (muscle !== "core") {
           const nextScore = getNextRankThreshold(output.muscleScores[muscle], muscle);
-          if (nextScore != null && nextScore > output.muscleScores[muscle]) {
+          const forKgSuggestions = list.filter((x) => !x.isDurationSeconds);
+          if (
+            nextScore != null &&
+            nextScore > output.muscleScores[muscle] &&
+            forKgSuggestions.length > 0
+          ) {
             const suggestions = getWeightIncreaseSuggestions(
               bodyweightKg > 0 ? bodyweightKg : 1,
               output.muscleScores[muscle],
               nextScore,
-              list.map(({ exerciseId, name, estimated1RM }) => ({
+              forKgSuggestions.map(({ exerciseId, name, estimated1RM }) => ({
                 exerciseId,
                 name,
                 estimated1RM,
@@ -202,13 +230,19 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
       }
     }
 
+    const coreTopRows = bestExerciseRowsFromCoreTop(coreTopExercisesForDisplay);
+    if (coreTopRows.length > 0) {
+      bestExerciseByMuscle.core = coreTopRows[0];
+      topExercisesByMuscle.core = coreTopRows;
+    }
+
     const hasExerciseFor = (muscle: StrengthRankMuscle) =>
       Object.values(categoryByExercise).some((cat) => categoryToStrengthMuscles(cat).includes(muscle));
 
     const visibleMuscles: StrengthRankMuscle[] = [
       ...PRIMARY_STRENGTH_RANK_MUSCLES,
       ...(exerciseCountByMuscle.forearms > 0 ? (["forearms"] as const) : []),
-      ...(exerciseCountByMuscle.core > 0 ? (["core"] as const) : []),
+      ...(exerciseCountByMuscle.core > 0 || output.muscleScores.core > 0 ? (["core"] as const) : []),
       ...(hasExerciseFor("traps") ? (["traps"] as const) : []),
     ];
 
@@ -288,6 +322,7 @@ export async function getStrengthRankingAtDate(endDateISO: string): Promise<GetS
       categoryByExercise,
       bodyweightKg,
       coreImprovementSuggestions,
+      coreTopExercisesForDisplay,
     } = computed.bundle;
 
     const topExercisesData = getTopExercisesByMuscleForSuggestions(exerciseDataPoints);
@@ -321,16 +356,29 @@ export async function getStrengthRankingAtDate(endDateISO: string): Promise<GetS
     for (const muscle of STRENGTH_RANK_MUSCLES) {
       const list = topExercisesData[muscle] ?? [];
       if (list.length > 0) {
-        bestExerciseByMuscle[muscle] = { name: list[0].name, estimated1RM: list[0].estimated1RM };
-        topExercisesByMuscle[muscle] = list.map(({ name, estimated1RM }) => ({ name, estimated1RM }));
+        bestExerciseByMuscle[muscle] = {
+          name: list[0].name,
+          estimated1RM: list[0].estimated1RM,
+          ...(list[0].isDurationSeconds ? { isDurationSeconds: true as const } : {}),
+        };
+        topExercisesByMuscle[muscle] = list.map(({ name, estimated1RM, isDurationSeconds }) => ({
+          name,
+          estimated1RM,
+          ...(isDurationSeconds ? { isDurationSeconds: true as const } : {}),
+        }));
         if (muscle !== "core") {
           const nextScore = getNextRankThreshold(output.muscleScores[muscle], muscle);
-          if (nextScore != null && nextScore > output.muscleScores[muscle]) {
+          const forKgSuggestions = list.filter((x) => !x.isDurationSeconds);
+          if (
+            nextScore != null &&
+            nextScore > output.muscleScores[muscle] &&
+            forKgSuggestions.length > 0
+          ) {
             const suggestions = getWeightIncreaseSuggestions(
               bodyweightKg > 0 ? bodyweightKg : 1,
               output.muscleScores[muscle],
               nextScore,
-              list.map(({ exerciseId, name, estimated1RM }) => ({
+              forKgSuggestions.map(({ exerciseId, name, estimated1RM }) => ({
                 exerciseId,
                 name,
                 estimated1RM,
@@ -342,13 +390,19 @@ export async function getStrengthRankingAtDate(endDateISO: string): Promise<GetS
       }
     }
 
+    const coreTopRowsAtDate = bestExerciseRowsFromCoreTop(coreTopExercisesForDisplay);
+    if (coreTopRowsAtDate.length > 0) {
+      bestExerciseByMuscle.core = coreTopRowsAtDate[0];
+      topExercisesByMuscle.core = coreTopRowsAtDate;
+    }
+
     const hasExerciseFor = (muscle: StrengthRankMuscle) =>
       Object.values(categoryByExercise).some((cat) => categoryToStrengthMuscles(cat).includes(muscle));
 
     const visibleMuscles: StrengthRankMuscle[] = [
       ...PRIMARY_STRENGTH_RANK_MUSCLES,
       ...(exerciseCountByMuscle.forearms > 0 ? (["forearms"] as const) : []),
-      ...(exerciseCountByMuscle.core > 0 ? (["core"] as const) : []),
+      ...(exerciseCountByMuscle.core > 0 || output.muscleScores.core > 0 ? (["core"] as const) : []),
       ...(hasExerciseFor("traps") ? (["traps"] as const) : []),
     ];
 

@@ -13,6 +13,15 @@ function isConnectionError(e: unknown): boolean {
   return msg.includes("fetch failed") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("network");
 }
 
+/** Remote DB missing migration 020+ (still only allows bilateral/unilateral) while the app sends `weight`. */
+function friendlyLoadTypeConstraintError(raw: string): string | null {
+  if (!raw.includes("exercises_load_type_check")) return null;
+  return [
+    "Your Supabase database is missing a load-type schema update.",
+    "Open Supabase → SQL Editor and run the statements in gym-app/supabase/migrations/020_load_type_weight_bodyweight.sql, then 034_exercises_load_type_timed.sql (or run `supabase db push` from the gym-app folder).",
+  ].join(" ");
+}
+
 export async function getExercises(): Promise<Exercise[]> {
   try {
     const supabase = await createServerClient();
@@ -62,7 +71,7 @@ export async function getExercises(): Promise<Exercise[]> {
   }
 }
 
-/** Stored for schema compatibility; bodyweight UX does not use rep range. */
+/** Stored for schema compatibility; bodyweight / timed UX does not use rep range. */
 const BODYWEIGHT_REP_PLACEHOLDER = { min: 1, max: 999 } as const;
 
 export async function createExercise(formData: FormData): Promise<{ error?: string }> {
@@ -72,15 +81,20 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
   const repMinRaw = Number(formData.get("rep_min"));
   const repMaxRaw = Number(formData.get("rep_max"));
   const repMin =
-    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.min : repMinRaw;
+    loadType === "bodyweight" || loadType === "timed"
+      ? BODYWEIGHT_REP_PLACEHOLDER.min
+      : repMinRaw;
   const repMax =
-    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.max : repMaxRaw;
+    loadType === "bodyweight" || loadType === "timed"
+      ? BODYWEIGHT_REP_PLACEHOLDER.max
+      : repMaxRaw;
 
   if (!name) {
     return { error: "Invalid: name required, rep_min ≥ 1, rep_max ≥ rep_min" };
   }
   if (
     loadType !== "bodyweight" &&
+    loadType !== "timed" &&
     (repMinRaw < 1 || repMaxRaw < repMinRaw || Number.isNaN(repMinRaw) || Number.isNaN(repMaxRaw))
   ) {
     return { error: "Invalid: name required, rep_min ≥ 1, rep_max ≥ rep_min" };
@@ -127,7 +141,9 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
         .select("id")
         .single();
 
-      if (createError) return { error: createError.message };
+      if (createError) {
+        return { error: friendlyLoadTypeConstraintError(createError.message) ?? createError.message };
+      }
 
       const { error: mapError } = await supabase
         .from("exercise_categories")
@@ -159,12 +175,16 @@ export async function updateExercise(
   const repMinRaw = Number(formData.get("rep_min"));
   const repMaxRaw = Number(formData.get("rep_max"));
   const repMin =
-    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.min : repMinRaw;
+    loadType === "bodyweight" || loadType === "timed"
+      ? BODYWEIGHT_REP_PLACEHOLDER.min
+      : repMinRaw;
   const repMax =
-    loadType === "bodyweight" ? BODYWEIGHT_REP_PLACEHOLDER.max : repMaxRaw;
+    loadType === "bodyweight" || loadType === "timed"
+      ? BODYWEIGHT_REP_PLACEHOLDER.max
+      : repMaxRaw;
 
   if (!name || name.length === 0) return { error: "Name is required" };
-  if (loadType !== "bodyweight") {
+  if (loadType !== "bodyweight" && loadType !== "timed") {
     if (Number.isNaN(repMinRaw) || Number.isNaN(repMaxRaw) || repMinRaw < 1 || repMaxRaw < 1) {
       return { error: "Rep min and rep max must be positive numbers" };
     }
@@ -190,7 +210,9 @@ export async function updateExercise(
       .update({ name, load_type: loadType, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
       .eq("id", id);
 
-    if (error) return { error: error.message };
+    if (error) {
+      return { error: friendlyLoadTypeConstraintError(error.message) ?? error.message };
+    }
 
     // Targeted recomputation: only when load_type changes.
     if (previousLoadType !== loadType) {

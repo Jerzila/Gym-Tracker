@@ -16,6 +16,7 @@ import { StrengthRecommendationCard } from "@/app/components/StrengthRecommendat
 import { WeightChart } from "@/app/components/WeightChart";
 import { Estimated1RMChart } from "@/app/components/Estimated1RMChart";
 import { RepsOverTimeChart } from "@/app/components/RepsOverTimeChart";
+import { TimeOverTimeChart } from "@/app/components/TimeOverTimeChart";
 import { WorkoutHistory } from "@/app/components/WorkoutHistory";
 import { getStrengthRecommendation } from "@/lib/strengthRecommendation";
 import { ExerciseLogAndNotes } from "@/app/components/ExerciseLogAndNotes";
@@ -24,6 +25,7 @@ import { bodyweightLoadFractionFromCategoryName } from "@/lib/bodyweightCategory
 import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
 import { normalizeLoadType } from "@/lib/loadType";
 import { formatLoggedSetsSummary } from "@/lib/formatBodyweightSets";
+import { formatDurationTooltip } from "@/lib/formatDuration";
 import { weightUnitLabel } from "@/lib/formatWeight";
 
 type Props = { params: Promise<{ id: string }> };
@@ -79,14 +81,19 @@ export default async function ExercisePage({ params }: Props) {
   }));
 
   const isBodyweight = normalizeLoadType(exercise.load_type) === "bodyweight";
+  const isTimed = normalizeLoadType(exercise.load_type) === "timed";
 
-  const heaviest = getHeaviestWeight(prWorkouts);
-  const best1RM = getBestEstimated1RM(prWorkouts, bwFor);
+  const heaviest = isTimed ? null : getHeaviestWeight(prWorkouts);
+  const best1RM = isTimed ? null : getBestEstimated1RM(prWorkouts, bwFor);
   const maxRepsAtHeaviest =
-    heaviest != null ? getMaxRepsAtWeight(prWorkouts, heaviest, exercise.load_type, bwFor) : null;
-  const strengthProgress = getStrengthProgress(prWorkouts);
+    !isTimed && heaviest != null
+      ? getMaxRepsAtWeight(prWorkouts, heaviest, exercise.load_type, bwFor)
+      : null;
+  const strengthProgress = isTimed ? null : getStrengthProgress(prWorkouts);
   const bestReps = isBodyweight ? getBestReps(prWorkouts) : null;
   const repsStrengthProgress = isBodyweight ? getRepsStrengthProgress(prWorkouts) : null;
+  const bestTimedSec = isTimed ? getBestReps(prWorkouts) : null;
+  const timedStrengthProgress = isTimed ? getRepsStrengthProgress(prWorkouts) : null;
   const repMin = Number.isFinite(exercise.rep_min) && exercise.rep_min > 0 ? exercise.rep_min : 6;
   const repMax = Number.isFinite(exercise.rep_max) && exercise.rep_max >= repMin ? exercise.rep_max : Math.max(10, repMin);
   const strengthRecommendation = getStrengthRecommendation(
@@ -130,16 +137,21 @@ export default async function ExercisePage({ params }: Props) {
           : null);
 
       const bwSummary = formatLoggedSetsSummary(w.sets, exercise.load_type, units, unitLabel);
-      const setsInline =
-        bwSummary ||
-        ((w.sets ?? []).length > 0
+      const setsInline = isTimed
+        ? (w.sets ?? []).length > 0
           ? (w.sets ?? [])
-              .map((s) => {
-                const wKg = s.weight != null ? Number(s.weight) : weight;
-                return `${Number(wKg) || 0}×${Number(s.reps) || 0}`;
-              })
+              .map((s) => formatDurationTooltip(Number(s.reps) || 0))
               .join(" • ")
-          : "");
+          : ""
+        : bwSummary ||
+          ((w.sets ?? []).length > 0
+            ? (w.sets ?? [])
+                .map((s) => {
+                  const wKg = s.weight != null ? Number(s.weight) : weight;
+                  return `${Number(wKg) || 0}×${Number(s.reps) || 0}`;
+                })
+                .join(" • ")
+            : "");
 
       const sessionReps = sessionMaxRepsInWorkout({
         weight,
@@ -162,12 +174,14 @@ export default async function ExercisePage({ params }: Props) {
 
   const showRepsOverTimeChart =
     isBodyweight && chartData.some((d) => (d.sessionMaxReps ?? 0) > 0);
+  const showTimeOverTimeChart =
+    isTimed && chartData.some((d) => (d.sessionMaxReps ?? 0) > 0);
 
   return (
     <>
       <div className="px-4 pt-4 sm:px-6">
         <h2 className="text-lg font-semibold tracking-tight">{exercise.name}</h2>
-        {!isBodyweight && (
+        {!isBodyweight && !isTimed && (
           <p className="mt-1 text-sm text-zinc-500">
             Target: {exercise.rep_min}–{exercise.rep_max} reps
           </p>
@@ -188,22 +202,30 @@ export default async function ExercisePage({ params }: Props) {
         <div className="border-t border-zinc-800/60 pt-6" aria-hidden />
         <StrengthRecommendationCard recommendation={strengthRecommendation} />
 
-        {isBodyweight
-          ? (bestReps != null || repsStrengthProgress != null) && (
+        {isTimed
+          ? (bestTimedSec != null || timedStrengthProgress != null) && (
               <ExercisePRs
-                variant="bodyweight"
-                bestReps={bestReps}
-                strengthProgress={repsStrengthProgress}
+                variant="timed"
+                bestTimeSec={bestTimedSec}
+                strengthProgress={timedStrengthProgress}
               />
             )
-          : (heaviest != null || best1RM != null || strengthProgress != null) && (
-              <ExercisePRs
-                heaviest={heaviest}
-                best1RM={best1RM}
-                maxRepsAtHeaviest={maxRepsAtHeaviest}
-                strengthProgress={strengthProgress}
-              />
-            )}
+          : isBodyweight
+            ? (bestReps != null || repsStrengthProgress != null) && (
+                <ExercisePRs
+                  variant="bodyweight"
+                  bestReps={bestReps}
+                  strengthProgress={repsStrengthProgress}
+                />
+              )
+            : (heaviest != null || best1RM != null || strengthProgress != null) && (
+                <ExercisePRs
+                  heaviest={heaviest}
+                  best1RM={best1RM}
+                  maxRepsAtHeaviest={maxRepsAtHeaviest}
+                  strengthProgress={strengthProgress}
+                />
+              )}
 
         {(chartData.length > 0 || workouts.length > 0) && (
           <>
@@ -211,7 +233,7 @@ export default async function ExercisePage({ params }: Props) {
             <div className="flex flex-col gap-6">
               {chartData.length > 0 && (
                 <>
-                  {!isBodyweight && (
+                  {!isBodyweight && !isTimed && (
                     <section>
                       <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
                         Weight over time
@@ -219,7 +241,21 @@ export default async function ExercisePage({ params }: Props) {
                       <WeightChart data={chartData} />
                     </section>
                   )}
-                  {isBodyweight ? (
+                  {isTimed ? (
+                    showTimeOverTimeChart && (
+                      <section>
+                        <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+                          Time over time
+                        </h2>
+                        <TimeOverTimeChart
+                          data={chartData.map((d) => ({
+                            date: d.date,
+                            seconds: d.sessionMaxReps ?? 0,
+                          }))}
+                        />
+                      </section>
+                    )
+                  ) : isBodyweight ? (
                     showRepsOverTimeChart && (
                       <section>
                         <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">

@@ -3,6 +3,7 @@
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import type { StrengthRecommendation } from "@/lib/strengthRecommendation";
 import { useUnits } from "@/app/components/UnitsContext";
+import { formatDurationClock } from "@/lib/formatDuration";
 
 type Props = {
   recommendation: StrengthRecommendation;
@@ -42,7 +43,11 @@ export function StrengthRecommendationCard({ recommendation }: Props) {
         ) : (
           <>
             <p className="text-sm font-medium text-zinc-200">{recommendation.subtitle}</p>
-            {recommendation.bodyweightRepProgression && recommendation.targetRep != null ? (
+            {recommendation.timedProgression && recommendation.targetSec != null ? (
+              <p className="mt-1 text-base font-semibold text-zinc-100 tabular-nums">
+                {formatDurationClock(recommendation.targetSec)}
+              </p>
+            ) : recommendation.bodyweightRepProgression && recommendation.targetRep != null ? (
               <p className="mt-1 text-base font-semibold text-zinc-100">
                 {recommendation.targetRep} reps
               </p>

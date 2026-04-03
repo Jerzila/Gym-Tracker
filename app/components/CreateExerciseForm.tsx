@@ -12,6 +12,9 @@ function formAction(_: { error?: string } | undefined, formData: FormData) {
   return createExercise(formData);
 }
 
+/** Brief “Added” label on the main control; navigation and toast run immediately. */
+const ADDED_LABEL_MS = 400;
+
 export function CreateExerciseForm({
   categories,
   buttonLabel = "Add Exercise",
@@ -21,50 +24,76 @@ export function CreateExerciseForm({
 }) {
   const router = useRouter();
   const toast = useToast();
-  const [state, action] = useActionState(formAction, undefined);
+  const [state, action, isPending] = useActionState(formAction, undefined);
   const [isOpen, setIsOpen] = useState(false);
   const [loadType, setLoadType] = useState<LoadType>("weight");
+  const [showAdded, setShowAdded] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
+  /** True while a server action is in flight; used to detect success when isPending flips false. */
+  const hadPendingSubmissionRef = useRef(false);
 
   useEffect(() => {
     if (isOpen) {
-      const t = setTimeout(() => nameInputRef.current?.focus(), 100);
+      const t = setTimeout(() => nameInputRef.current?.focus(), 50);
       return () => clearTimeout(t);
     }
-    setLoadType("weight");
+    queueMicrotask(() => setLoadType("weight"));
   }, [isOpen]);
 
   useEffect(() => {
-    if (state && !state.error) {
-      const categoryId = formRef.current?.querySelector<HTMLSelectElement>(
-        '[name="category_id"]'
-      )?.value;
-      Promise.resolve().then(() => {
-        setIsOpen(false);
-        formRef.current?.reset();
-        toast.show("Exercise added");
-        if (categoryId) router.push(`/exercises?expand=${categoryId}`);
-      });
-    }
-  }, [state, router, toast]);
+    if (isPending) hadPendingSubmissionRef.current = true;
+  }, [isPending]);
+
+  useEffect(() => {
+    if (isPending || !hadPendingSubmissionRef.current) return;
+    hadPendingSubmissionRef.current = false;
+
+    if (state?.error) return;
+
+    const categoryId = formRef.current?.querySelector<HTMLSelectElement>(
+      '[name="category_id"]'
+    )?.value;
+
+    queueMicrotask(() => {
+      setShowAdded(true);
+      setIsOpen(false);
+      formRef.current?.reset();
+      toast.show("Exercise added");
+      if (categoryId) router.push(`/exercises?expand=${categoryId}`);
+    });
+    const t = window.setTimeout(() => {
+      setShowAdded(false);
+    }, ADDED_LABEL_MS);
+
+    return () => clearTimeout(t);
+  }, [isPending, state, router, toast]);
+
+  useEffect(() => {
+    if (isOpen) queueMicrotask(() => setShowAdded(false));
+  }, [isOpen]);
 
   function handleCancel() {
     setIsOpen(false);
     formRef.current?.reset();
   }
 
+  const submitLocked = isPending;
+  const submitLabel = isPending ? "Adding…" : "Add";
+  const headerLabel = showAdded ? "Added" : buttonLabel;
+
   return (
     <div className="space-y-3">
       <button
         type="button"
         onClick={() => setIsOpen((open) => !open)}
-        className={buttonClass.primary}
+        disabled={isPending}
         aria-expanded={isOpen}
         aria-controls="add-exercise-form"
         id="add-exercise-btn"
+        className={buttonClass.primary}
       >
-        {buttonLabel}
+        {headerLabel}
       </button>
 
       <div
@@ -131,9 +160,10 @@ export function CreateExerciseForm({
                     <option value="weight">Both arms / total weight</option>
                     <option value="unilateral">One arm / per side</option>
                     <option value="bodyweight">Bodyweight</option>
+                    <option value="timed">Timed hold</option>
                   </select>
                 </div>
-                {loadType !== "bodyweight" && (
+                {loadType !== "bodyweight" && loadType !== "timed" && (
                   <>
                     <div className="w-20 space-y-1">
                       <label htmlFor="rep_min" className="block text-xs text-zinc-500">
@@ -168,13 +198,16 @@ export function CreateExerciseForm({
                 <div className="flex gap-2 sm:items-end">
                   <button
                     type="submit"
-                    className={buttonClass.primary}
+                    disabled={submitLocked}
+                    aria-busy={isPending}
+                    className={`${buttonClass.primary} min-w-[6.25rem]`}
                   >
-                    Add
+                    {submitLabel}
                   </button>
                   <button
                     type="button"
                     onClick={handleCancel}
+                    disabled={isPending}
                     className={buttonClass.secondary}
                   >
                     Cancel

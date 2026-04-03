@@ -38,6 +38,7 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
   const lt = normalizeLoadType(exercise.load_type);
   const isBodyweight = lt === "bodyweight";
   const isUnilateral = lt === "unilateral";
+  const isTimed = lt === "timed";
   const [state, action, isPending] = useActionState(formAction(exercise.id), undefined);
   const [setValues, setSetValues] = useState(initialSetValues);
   const [advancedLogging, setAdvancedLogging] = useState(false);
@@ -103,7 +104,7 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
         <h2 id="log-set-modal-title" className="text-lg font-semibold text-zinc-100">
           Log set — {exercise.name}
         </h2>
-        {!isBodyweight && (
+        {!isBodyweight && !isTimed && (
           <p className="mt-0.5 text-sm text-zinc-500">
             {exercise.rep_min}–{exercise.rep_max} reps target
           </p>
@@ -133,11 +134,13 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
           <div>
             <div className="flex items-start justify-between gap-3">
               <p className="mb-2 text-xs text-zinc-500">
-                {isBodyweight
-                  ? "Log 1–5 sets; only fill the sets you did."
-                  : `Sets (${exercise.rep_min}–${exercise.rep_max} reps target). Log 1–5 sets; only fill the sets you did.`}
+                {isTimed
+                  ? "Log each hold you did; skip empty sets."
+                  : isBodyweight
+                    ? "Log 1–5 sets; only fill the sets you did."
+                    : `Sets (${exercise.rep_min}–${exercise.rep_max} reps target). Log 1–5 sets; only fill the sets you did.`}
               </p>
-              {!isBodyweight && (
+              {!isBodyweight && !isTimed && (
                 <div className="flex items-center gap-2 pt-0.5">
                   <span className="text-xs text-zinc-500">Advanced</span>
                   <button
@@ -161,7 +164,56 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
               )}
             </div>
 
-            {isBodyweight ? (
+            {isTimed ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-zinc-800/90 bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+                  <div className="mb-2.5 flex items-baseline justify-between gap-2">
+                    <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
+                      Hold time
+                    </span>
+                    <span className="text-[10px] text-zinc-600">seconds</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-zinc-700/45 bg-zinc-900/70 transition-[border-color,box-shadow] focus-within:border-amber-500/55 focus-within:shadow-[0_0_0_1px_rgba(245,158,11,0.25)]"
+                      >
+                        <label
+                          htmlFor={`log-modal-reps_${i}`}
+                          className="border-b border-zinc-800/90 py-1 text-center text-[10px] font-semibold tabular-nums text-zinc-500"
+                        >
+                          {i}
+                        </label>
+                        <input
+                          id={`log-modal-reps_${i}`}
+                          name={`reps_${i}`}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          autoComplete="off"
+                          maxLength={5}
+                          placeholder="—"
+                          aria-label={`Set ${i} seconds`}
+                          value={setValues.reps[i - 1]}
+                          onChange={(e) => {
+                            const next = e.target.value.replace(/\D/g, "").slice(0, 5);
+                            setSetValues((prev) => ({
+                              ...prev,
+                              reps: prev.reps.map((r, j) => (j === i - 1 ? next : r)),
+                            }));
+                          }}
+                          className="min-h-[2.35rem] w-full min-w-0 border-0 bg-transparent px-0.5 py-1.5 text-center text-sm tabular-nums leading-none text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:ring-0"
+                        />
+                        <div className="border-t border-zinc-800/80 py-1 text-center text-[9px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                          sec
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : isBodyweight ? (
               <div className="space-y-4">
                 <div>
                   <p className="text-xs font-medium text-zinc-600">Reps</p>

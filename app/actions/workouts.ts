@@ -5,6 +5,7 @@ import { bodyweightLoadFractionFromCategoryName } from "@/lib/bodyweightCategory
 import {
   getBodyweightProgressMessage,
   getProgressiveOverloadMessage,
+  getTimedProgressMessage,
 } from "@/lib/progression";
 import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
 import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
@@ -73,39 +74,56 @@ export async function createWorkout(
 
     const loadType = normalizeLoadType((exercise as { load_type?: unknown }).load_type);
 
-    const globalWeightRaw = formData.get("weight");
-    const hasGlobalWeight = globalWeightRaw != null && String(globalWeightRaw).trim() !== "";
-    const globalWeight = Number(globalWeightRaw);
-    const sets: { weight: number; reps: number }[] = [];
-    for (let i = 1; i <= 5; i++) {
-      const raw = formData.get(`reps_${i}`);
-      if (raw === null || raw === undefined || String(raw).trim() === "") continue;
-      const r = Number(raw);
-      if (Number.isNaN(r) || r < 0) continue;
-      const rawW = formData.get(`weight_${i}`);
-      let w: number;
-      if (loadType === "bodyweight") {
-        const parsed =
-          rawW == null || String(rawW).trim() === ""
-            ? hasGlobalWeight
-              ? globalWeight
-              : 0
-            : Number(rawW);
-        w = parsed;
-        if (!Number.isFinite(w) || w < 0) {
-          return { error: "Extra weight must be zero or positive." };
-        }
-      } else {
-        w = rawW == null || String(rawW).trim() === "" ? globalWeight : Number(rawW);
-        if (!Number.isFinite(w) || w <= 0) {
-          return { error: "Weight must be greater than 0." };
-        }
-      }
-      sets.push({ weight: w, reps: r });
-    }
+    type ParsedSet = { reps: number; weight: number | null };
+    const parsedSets: ParsedSet[] = [];
 
-    if (sets.length === 0) {
-      return { error: "Please log at least one set." };
+    if (loadType === "timed") {
+      for (let i = 1; i <= 5; i++) {
+        const raw = formData.get(`reps_${i}`);
+        if (raw === null || raw === undefined || String(raw).trim() === "") continue;
+        const r = Number(raw);
+        if (Number.isNaN(r) || r < 1) continue;
+        const sec = Math.round(r);
+        if (sec < 1) continue;
+        parsedSets.push({ reps: sec, weight: null });
+      }
+      if (parsedSets.length === 0) {
+        return { error: "Please log at least one set with time (seconds)." };
+      }
+    } else {
+      const globalWeightRaw = formData.get("weight");
+      const hasGlobalWeight = globalWeightRaw != null && String(globalWeightRaw).trim() !== "";
+      const globalWeight = Number(globalWeightRaw);
+      for (let i = 1; i <= 5; i++) {
+        const raw = formData.get(`reps_${i}`);
+        if (raw === null || raw === undefined || String(raw).trim() === "") continue;
+        const r = Number(raw);
+        if (Number.isNaN(r) || r < 0) continue;
+        const rawW = formData.get(`weight_${i}`);
+        let w: number;
+        if (loadType === "bodyweight") {
+          const parsed =
+            rawW == null || String(rawW).trim() === ""
+              ? hasGlobalWeight
+                ? globalWeight
+                : 0
+              : Number(rawW);
+          w = parsed;
+          if (!Number.isFinite(w) || w < 0) {
+            return { error: "Extra weight must be zero or positive." };
+          }
+        } else {
+          w = rawW == null || String(rawW).trim() === "" ? globalWeight : Number(rawW);
+          if (!Number.isFinite(w) || w <= 0) {
+            return { error: "Weight must be greater than 0." };
+          }
+        }
+        parsedSets.push({ weight: w, reps: r });
+      }
+
+      if (parsedSets.length === 0) {
+        return { error: "Please log at least one set." };
+      }
     }
 
     const { profileKg, logsAsc } = await loadBodyweightSeriesForUser(supabase, user.id);
@@ -129,18 +147,23 @@ export async function createWorkout(
     const bwFrac = bwStrengthCtx?.bodyweightLoadFraction ?? 1;
 
     const workoutWeight =
-      loadType === "bodyweight"
-        ? Math.max(...sets.map((s) => userBwForDate * bwFrac + s.weight), 0)
-        : Math.max(...sets.map((s) => s.weight));
+      loadType === "timed"
+        ? Math.max(...parsedSets.map((s) => s.reps))
+        : loadType === "bodyweight"
+          ? Math.max(...parsedSets.map((s) => userBwForDate * bwFrac + (s.weight ?? 0)), 0)
+          : Math.max(...parsedSets.map((s) => s.weight ?? 0));
 
     const strengthCtx = bwStrengthCtx;
 
-    const bestSetEstimated1RM = sessionEstimated1RMFromSets(
-      sets as SessionSetRow[],
-      workoutWeight,
-      loadType,
-      strengthCtx
-    );
+    const bestSetEstimated1RM =
+      loadType === "timed"
+        ? 0
+        : sessionEstimated1RMFromSets(
+            parsedSets as SessionSetRow[],
+            workoutWeight,
+            loadType,
+            strengthCtx
+          );
 
     const { data: priorWorkouts, error: pwError } = await supabase
       .from("workouts")
@@ -176,6 +199,15 @@ export async function createWorkout(
       for (const w of priorList) {
         const wid = w.id as string;
         const list = setsByWorkout.get(wid) ?? [];
+        if (loadType === "timed") {
+          let sessionMax = 0;
+          for (const s of list) {
+            const t = Number(s.reps) || 0;
+            if (t > sessionMax) sessionMax = t;
+          }
+          if (sessionMax > bestBefore) bestBefore = sessionMax;
+          continue;
+        }
         const stored = (w as { estimated_1rm?: number | null }).estimated_1rm;
         let rm: number;
         if (stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0) {
@@ -199,8 +231,12 @@ export async function createWorkout(
       }
     }
 
-    const newSessionBest = bestSetEstimated1RM;
-    const hitPr = priorList.length > 0 && newSessionBest > bestBefore;
+    const newSessionBestTime =
+      loadType === "timed" ? Math.max(...parsedSets.map((s) => s.reps)) : 0;
+    const hitPr =
+      loadType === "timed"
+        ? priorList.length > 0 && newSessionBestTime > bestBefore
+        : priorList.length > 0 && bestSetEstimated1RM > bestBefore;
 
     const { data: workout, error: wError } = await supabase
       .from("workouts")
@@ -211,7 +247,7 @@ export async function createWorkout(
           date,
           weight: workoutWeight,
           effective_weight: getEffectiveWeight(workoutWeight, loadType),
-          estimated_1rm: newSessionBest,
+          estimated_1rm: loadType === "timed" ? 0 : bestSetEstimated1RM,
           // Deprecated by new spec; keep null to avoid confusion.
           average_estimated_1rm: null,
         } as Record<string, unknown>
@@ -225,7 +261,11 @@ export async function createWorkout(
     const { error: sError } = await supabase
       .from("sets")
       .insert(
-        sets.map((s) => ({ workout_id: workout.id, reps: s.reps, weight: s.weight })) as Record<string, unknown>[]
+        parsedSets.map((s) => ({
+          workout_id: workout.id,
+          reps: s.reps,
+          weight: s.weight,
+        })) as Record<string, unknown>[]
       );
 
     if (sError) return { error: sError.message };
@@ -240,13 +280,15 @@ export async function createWorkout(
     });
 
     const message =
-      loadType === "bodyweight"
-        ? getBodyweightProgressMessage(sets.map((s) => s.reps))
-        : getProgressiveOverloadMessage(
-            exercise.rep_min,
-            exercise.rep_max,
-            sets.map((s) => s.reps)
-          );
+      loadType === "timed"
+        ? getTimedProgressMessage(parsedSets.map((s) => s.reps))
+        : loadType === "bodyweight"
+          ? getBodyweightProgressMessage(parsedSets.map((s) => s.reps))
+          : getProgressiveOverloadMessage(
+              exercise.rep_min,
+              exercise.rep_max,
+              parsedSets.map((s) => s.reps)
+            );
     return { message, hitPr };
   } catch (e) {
     if (isConnectionError(e)) {
@@ -618,14 +660,17 @@ export async function getLastWorkoutSummary(): Promise<{
         lt === "bodyweight"
           ? resolveBodyweightKgFromLogs(date, logsAsc, profileKg)
           : 0;
-      const estimated1RM = sessionEstimated1RMFromSets(
-        list as SessionSetRow[],
-        loggedWeight,
-        lt,
-        lt === "bodyweight"
-          ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(w.exercise_id))
-          : undefined
-      );
+      const estimated1RM =
+        lt === "timed"
+          ? list.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0)
+          : sessionEstimated1RMFromSets(
+              list as SessionSetRow[],
+              loggedWeight,
+              lt,
+              lt === "bodyweight"
+                ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(w.exercise_id))
+                : undefined
+            );
       return {
         exercise_id: w.exercise_id,
         estimated1RM,
@@ -717,6 +762,15 @@ export async function getPRsForDate(
 
       let bestBefore = 0;
       const lt = loadTypeByExerciseId.get(exercise_id) ?? "weight";
+      if (lt === "timed") {
+        for (const w of workouts) {
+          const list = setsByWorkout.get(w.id) ?? [];
+          const sessionMax = list.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0);
+          if (sessionMax > bestBefore) bestBefore = sessionMax;
+        }
+        if (estimated1RM > bestBefore) prExerciseIds.push(exercise_id);
+        continue;
+      }
       for (const w of workouts) {
         const list = setsByWorkout.get(w.id) ?? [];
         const stored = (w as { estimated_1rm?: number | null }).estimated_1rm;

@@ -1,3 +1,4 @@
+import { formatDurationClock } from "@/lib/formatDuration";
 import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
 
 type StrengthRecOpts = {
@@ -32,6 +33,10 @@ export type StrengthRecommendation = {
   bodyweightExtraMode?: boolean;
   /** Bodyweight: reps-only target (no automatic weight progression). */
   bodyweightRepProgression?: boolean;
+  /** Timed holds: target = global best + 5s. */
+  timedProgression?: boolean;
+  targetSec?: number | null;
+  bestSec?: number | null;
 };
 
 function roundToTenth(value: number): number {
@@ -65,6 +70,46 @@ export function getStrengthRecommendation(
       primaryText: "",
       secondaryText: "",
       emptyStateText: "Log your first workout to receive strength recommendations.",
+    };
+  }
+
+  if (lt === "timed") {
+    let bestTime = 0;
+    for (const w of exerciseHistory) {
+      for (const s of w.sets ?? []) {
+        const sec = Number(s.reps) || 0;
+        if (sec > bestTime) bestTime = sec;
+      }
+    }
+    if (bestTime <= 0) {
+      return {
+        action: "no_data",
+        title: "Strength Recommendation",
+        subtitle: "Next workout target",
+        nextWeightKg: null,
+        currentWeightKg: null,
+        targetRep: null,
+        bestRep: null,
+        primaryText: "",
+        secondaryText: "",
+        emptyStateText: "Log your first workout to receive strength recommendations.",
+      };
+    }
+    const targetSec = bestTime + 5;
+    return {
+      action: "keep",
+      title: "Strength Recommendation",
+      subtitle: "Next workout target",
+      nextWeightKg: null,
+      currentWeightKg: null,
+      targetRep: null,
+      bestRep: null,
+      primaryText: "",
+      secondaryText: `Try to beat your best time of ${formatDurationClock(bestTime)}.`,
+      emptyStateText: "",
+      timedProgression: true,
+      targetSec,
+      bestSec: bestTime,
     };
   }
 

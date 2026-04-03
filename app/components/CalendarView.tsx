@@ -10,6 +10,7 @@ import {
 } from "@/app/actions/workouts";
 import { resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
 import { formatLoggedSetsSummary } from "@/lib/formatBodyweightSets";
+import { formatDurationClock, formatDurationTooltip } from "@/lib/formatDuration";
 import {
   sessionEstimated1RMFromSets,
   sessionVolumeKgFromSets,
@@ -141,6 +142,13 @@ export function CalendarView() {
         return { exercise_id: w.exercise_id, estimated1RM: Number(stored) };
       }
       const lt = normalizeLoadType(w.load_type);
+      if (lt === "timed") {
+        const sessionMax = (w.sets as SessionSetRow[]).reduce(
+          (m, s) => Math.max(m, Number(s.reps) || 0),
+          0
+        );
+        return { exercise_id: w.exercise_id, estimated1RM: sessionMax };
+      }
       const bwAt =
         lt === "bodyweight"
           ? resolveBodyweightKgFromLogs(dateKey, bodyweightContext.logsAsc, bodyweightContext.profileKg)
@@ -509,13 +517,17 @@ function CalendarDayPanel({
                   const lt = normalizeLoadType(w.load_type);
                   const bwSummary = formatLoggedSetsSummary(w.sets, lt, units, weightLabel);
                   const setSummary =
-                    bwSummary ||
-                    w.sets
-                      .map((s) => {
-                        const wKg = s.weight != null ? Number(s.weight) : fallbackW;
-                        return `${formatWeight(Number(wKg), { units })} ${weightLabel} × ${Number(s.reps) || 0}`;
-                      })
-                      .join(" · ");
+                    lt === "timed"
+                      ? w.sets
+                          .map((s) => formatDurationTooltip(Number(s.reps) || 0))
+                          .join(" · ")
+                      : bwSummary ||
+                        w.sets
+                          .map((s) => {
+                            const wKg = s.weight != null ? Number(s.weight) : fallbackW;
+                            return `${formatWeight(Number(wKg), { units })} ${weightLabel} × ${Number(s.reps) || 0}`;
+                          })
+                          .join(" · ");
                   const stored = w.estimated_1rm;
                   const bwAt =
                     lt === "bodyweight"
@@ -525,20 +537,26 @@ function CalendarDayPanel({
                           bodyweightContext.profileKg
                         )
                       : 0;
+                  const sessionMaxSec =
+                    lt === "timed"
+                      ? w.sets.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0)
+                      : 0;
                   const est1RM =
-                    stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0
-                      ? Number(stored)
-                      : sessionEstimated1RMFromSets(
-                          w.sets as SessionSetRow[],
-                          fallbackW,
-                          lt,
-                          lt === "bodyweight"
-                            ? {
-                                userBodyweightKg: bwAt,
-                                bodyweightLoadFraction: w.bodyweight_load_fraction ?? 1,
-                              }
-                            : undefined
-                        );
+                    lt === "timed"
+                      ? sessionMaxSec
+                      : stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0
+                        ? Number(stored)
+                        : sessionEstimated1RMFromSets(
+                            w.sets as SessionSetRow[],
+                            fallbackW,
+                            lt,
+                            lt === "bodyweight"
+                              ? {
+                                  userBodyweightKg: bwAt,
+                                  bodyweightLoadFraction: w.bodyweight_load_fraction ?? 1,
+                                }
+                              : undefined
+                          );
                   const isPR = prExerciseIds.has(w.exercise_id);
 
                   return (
@@ -556,7 +574,16 @@ function CalendarDayPanel({
                       </div>
                       <p className="mt-1 text-sm text-zinc-400">{setSummary}</p>
                       <p className="mt-0.5 text-xs text-zinc-500">
-                        Est. 1RM: {formatWeight(est1RM, { units })} {weightLabel}
+                        {lt === "timed" ? (
+                          <>
+                            Best time:{" "}
+                            <span className="tabular-nums text-zinc-400">{formatDurationClock(est1RM)}</span>
+                          </>
+                        ) : (
+                          <>
+                            Est. 1RM: {formatWeight(est1RM, { units })} {weightLabel}
+                          </>
+                        )}
                       </p>
                     </li>
                   );

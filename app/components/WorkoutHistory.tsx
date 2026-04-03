@@ -9,6 +9,7 @@ import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { buttonClass } from "@/app/components/Button";
 import { formatLoggedSetsSummary } from "@/lib/formatBodyweightSets";
+import { formatDurationTooltip } from "@/lib/formatDuration";
 import { normalizeLoadType, type LoadType } from "@/lib/loadType";
 
 type WorkoutItem = {
@@ -33,6 +34,7 @@ export function WorkoutHistory({
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const isBodyweight = normalizeLoadType(loadType) === "bodyweight";
+  const isTimed = normalizeLoadType(loadType) === "timed";
   const [removedIds, setRemovedIds] = useState<Set<string>>(new Set());
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
@@ -74,6 +76,15 @@ export function WorkoutHistory({
               {(() => {
                 if (isBodyweight) {
                   const line = formatLoggedSetsSummary(w.sets, loadType, units, weightLabel);
+                  return <span className="font-medium">{line}</span>;
+                }
+                if (isTimed) {
+                  const line =
+                    (w.sets ?? []).length > 0
+                      ? (w.sets ?? [])
+                          .map((s) => formatDurationTooltip(Number(s.reps) || 0))
+                          .join(" • ")
+                      : "";
                   return <span className="font-medium">{line}</span>;
                 }
                 const fallbackWeight = Number(w.weight) || 0;
@@ -180,6 +191,14 @@ export function WorkoutHistory({
                             </div>
                           );
                         })
+                      : isTimed
+                        ? (w.sets ?? []).map((s, idx) => (
+                            <div key={idx} className="flex items-center justify-between text-sm">
+                              <span className="text-zinc-300">
+                                {formatDurationTooltip(Number(s.reps) || 0)}
+                              </span>
+                            </div>
+                          ))
                       : (w.sets ?? []).map((s, idx) => {
                           const wKg = s.weight != null ? Number(s.weight) : fallbackWeight;
                           return (
@@ -195,7 +214,7 @@ export function WorkoutHistory({
                 </div>
 
                 <div className="mt-4 space-y-1 text-sm text-zinc-300">
-                  {!isBodyweight && (
+                  {!isBodyweight && !isTimed && (
                     <div className="flex items-center justify-between">
                       <span className="text-zinc-500">Avg weight</span>
                       <span>

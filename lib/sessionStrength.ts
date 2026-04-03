@@ -61,6 +61,7 @@ export function sessionBestStrengthSetFromSets(
   loadType: LoadType | unknown,
   ctx?: SessionStrengthContext
 ): { weightKg: number; reps: number; estimated1RM: number } | null {
+  if (normalizeLoadType(loadType) === "timed") return null;
   if (!sets.length) return null;
   let maxKg = 0;
   for (const s of sets) {
@@ -98,6 +99,7 @@ export function sessionVolumeKgFromSets(
   loadType: LoadType | unknown,
   ctx?: SessionStrengthContext
 ): number {
+  if (normalizeLoadType(loadType) === "timed") return 0;
   let vol = 0;
   for (const s of sets) {
     const kg = resolvedSetWeightKg(s, workoutFallbackKg, loadType, ctx);

@@ -128,6 +128,7 @@ async function computeAggregatesFromWorkoutRows(
         ? resolveBodyweightKgFromLogs(String(w.date), bwSeries.logsAsc, bwSeries.profileKg)
         : 0;
     const setList = setsByWorkout.get(wid) ?? [];
+    if (lt === "timed") continue;
     totalVolumeKg += sessionVolumeKgFromSets(
       setList as SessionSetRow[],
       workoutFallbackWeight,
@@ -150,14 +151,17 @@ async function computeAggregatesFromWorkoutRows(
       lt === "bodyweight"
         ? resolveBodyweightKgFromLogs(String(w.date), bwSeries.logsAsc, bwSeries.profileKg)
         : 0;
-    const est = sessionEstimated1RMFromSets(
-      list as SessionSetRow[],
-      workoutFallbackWeight,
-      lt,
-      lt === "bodyweight"
-        ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(eid))
-        : undefined
-    );
+    const est =
+      lt === "timed"
+        ? list.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0)
+        : sessionEstimated1RMFromSets(
+            list as SessionSetRow[],
+            workoutFallbackWeight,
+            lt,
+            lt === "bodyweight"
+              ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(eid))
+              : undefined
+          );
     const prev = bestByExercise.get(eid) ?? 0;
     if (est >= prev) {
       prCount += 1;
@@ -250,14 +254,17 @@ async function countProfileStylePrsInWeek(
       lt === "bodyweight"
         ? resolveBodyweightKgFromLogs(String(w.date), bwSeries.logsAsc, bwSeries.profileKg)
         : 0;
-    const est = sessionEstimated1RMFromSets(
-      listSets as SessionSetRow[],
-      workoutFallbackWeight,
-      lt,
-      lt === "bodyweight"
-        ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(eid))
-        : undefined
-    );
+    const est =
+      lt === "timed"
+        ? listSets.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0)
+        : sessionEstimated1RMFromSets(
+            listSets as SessionSetRow[],
+            workoutFallbackWeight,
+            lt,
+            lt === "bodyweight"
+              ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(eid))
+              : undefined
+          );
     const prev = bestByExercise.get(eid) ?? 0;
     if (inWeek && est >= prev) {
       prCount += 1;

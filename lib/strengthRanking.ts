@@ -257,39 +257,39 @@ const BICEPS_STEPS: RankStep[] = [
   step(0.05, "Newbie", "I"),
 ];
 
-/** Base ratios × 1.08 (rounded 2dp); stricter vs dip-machine–inflated loads. */
+/** Minimum strength_ratio (1RM/bw) per tier; much stricter vs cable pushdowns / dip-machine–inflated loads. */
 const TRICEPS_STEPS: RankStep[] = [
-  step(1.46, "GOAT", "I"),
-  step(1.37, "Titan", "III"),
-  step(1.31, "Titan", "II"),
-  step(1.24, "Titan", "I"),
-  step(1.19, "Grandmaster", "III"),
-  step(1.13, "Grandmaster", "II"),
-  step(1.08, "Grandmaster", "I"),
-  step(1.04, "Master", "III"),
-  step(0.98, "Master", "II"),
-  step(0.93, "Master", "I"),
-  step(0.86, "Elite", "III"),
-  step(0.8, "Elite", "II"),
-  step(0.75, "Elite", "I"),
-  step(0.7, "Pro", "III"),
-  step(0.67, "Pro", "II"),
-  step(0.64, "Pro", "I"),
-  step(0.59, "Semi-Pro", "III"),
-  step(0.55, "Semi-Pro", "II"),
-  step(0.52, "Semi-Pro", "I"),
-  step(0.49, "Lifter", "III"),
-  step(0.44, "Lifter", "II"),
-  step(0.41, "Lifter", "I"),
-  step(0.37, "Apprentice", "III"),
+  step(1.75, "GOAT", "I"),
+  step(1.62, "Titan", "III"),
+  step(1.55, "Titan", "II"),
+  step(1.48, "Titan", "I"),
+  step(1.4, "Grandmaster", "III"),
+  step(1.33, "Grandmaster", "II"),
+  step(1.26, "Grandmaster", "I"),
+  step(1.18, "Master", "III"),
+  step(1.1, "Master", "II"),
+  step(1.03, "Master", "I"),
+  step(0.96, "Elite", "III"),
+  step(0.9, "Elite", "II"),
+  step(0.85, "Elite", "I"),
+  step(0.78, "Pro", "III"),
+  step(0.74, "Pro", "II"),
+  step(0.7, "Pro", "I"),
+  step(0.64, "Semi-Pro", "III"),
+  step(0.6, "Semi-Pro", "II"),
+  step(0.56, "Semi-Pro", "I"),
+  step(0.5, "Lifter", "III"),
+  step(0.46, "Lifter", "II"),
+  step(0.42, "Lifter", "I"),
+  step(0.36, "Apprentice", "III"),
   step(0.31, "Apprentice", "II"),
   step(0.26, "Apprentice", "I"),
-  step(0.22, "Starter", "III"),
-  step(0.18, "Starter", "II"),
-  step(0.15, "Starter", "I"),
-  step(0.11, "Newbie", "III"),
-  step(0.09, "Newbie", "II"),
-  step(0.05, "Newbie", "I"),
+  step(0.21, "Starter", "III"),
+  step(0.17, "Starter", "II"),
+  step(0.14, "Starter", "I"),
+  step(0.1, "Newbie", "III"),
+  step(0.07, "Newbie", "II"),
+  step(0.04, "Newbie", "I"),
 ];
 
 const LEGS_STEPS: RankStep[] = [
@@ -326,39 +326,46 @@ const LEGS_STEPS: RankStep[] = [
   step(0.35, "Newbie", "I"),
 ];
 
-const CORE_STEPS: RankStep[] = [
-  step(1.5, "GOAT", "I"),
-  step(1.33, "Titan", "III"),
-  step(1.22, "Titan", "II"),
-  step(1.11, "Titan", "I"),
-  step(1.0, "Grandmaster", "III"),
-  step(0.94, "Grandmaster", "II"),
-  step(0.88, "Grandmaster", "I"),
-  step(0.83, "Master", "III"),
-  step(0.77, "Master", "II"),
-  step(0.71, "Master", "I"),
-  step(0.65, "Elite", "III"),
-  step(0.59, "Elite", "II"),
-  step(0.53, "Elite", "I"),
-  step(0.48, "Pro", "III"),
-  step(0.44, "Pro", "II"),
-  step(0.41, "Pro", "I"),
-  step(0.38, "Semi-Pro", "III"),
-  step(0.35, "Semi-Pro", "II"),
-  step(0.32, "Semi-Pro", "I"),
-  step(0.3, "Lifter", "III"),
-  step(0.27, "Lifter", "II"),
-  step(0.24, "Lifter", "I"),
-  step(0.21, "Apprentice", "III"),
-  step(0.18, "Apprentice", "II"),
-  step(0.15, "Apprentice", "I"),
-  step(0.12, "Starter", "III"),
-  step(0.09, "Starter", "II"),
-  step(0.06, "Starter", "I"),
-  step(0.03, "Newbie", "III"),
-  step(0.02, "Newbie", "II"),
-  step(0.01, "Newbie", "I"),
+/**
+ * Core endurance volume: score = bestHoldSeconds + 2 × bestBodyweightReps (historical bests only).
+ * Bands: Newbie <30 · Starter 30–60 · … · GOAT ≥320. Sub-tiers split 30-pt bands by 10; GM/Titan 40-pt bands by ~13.
+ */
+const CORE_VOLUME_STEPS: RankStep[] = [
+  step(320, "GOAT", "I"),
+  step(307, "Titan", "I"),
+  step(294, "Titan", "II"),
+  step(280, "Titan", "III"),
+  step(267, "Grandmaster", "I"),
+  step(254, "Grandmaster", "II"),
+  step(240, "Grandmaster", "III"),
+  step(230, "Master", "I"),
+  step(220, "Master", "II"),
+  step(210, "Master", "III"),
+  step(200, "Elite", "I"),
+  step(190, "Elite", "II"),
+  step(180, "Elite", "III"),
+  step(170, "Pro", "I"),
+  step(160, "Pro", "II"),
+  step(150, "Pro", "III"),
+  step(140, "Semi-Pro", "I"),
+  step(130, "Semi-Pro", "II"),
+  step(120, "Semi-Pro", "III"),
+  step(110, "Lifter", "I"),
+  step(100, "Lifter", "II"),
+  step(90, "Lifter", "III"),
+  step(80, "Apprentice", "I"),
+  step(70, "Apprentice", "II"),
+  step(60, "Apprentice", "III"),
+  step(50, "Starter", "I"),
+  step(40, "Starter", "II"),
+  step(30, "Starter", "III"),
+  step(20, "Newbie", "I"),
+  step(10, "Newbie", "II"),
+  step(0, "Newbie", "III"),
 ];
+
+/** Map core volume (≈0–320+) into overall ratio blend; GOAT volume (320) → 2.5. */
+export const CORE_VOLUME_FOR_OVERALL_DIVISOR = 128;
 
 const FOREARMS_STEPS: RankStep[] = [
   step(2.75, "GOAT", "I"),
@@ -459,7 +466,7 @@ export function getStepsForMuscle(muscle: StrengthRankMuscle): RankStep[] {
     case "forearms":
       return FOREARMS_STEPS;
     case "core":
-      return CORE_STEPS;
+      return CORE_VOLUME_STEPS;
     default:
       return CHEST_STEPS;
   }
@@ -686,6 +693,8 @@ export type ExerciseDataPoint = {
   /** strength_ratio for this set (1RM/bw or forearm farmer rule only on forearms), precomputed in action. */
   strengthRatio: number;
   date: string;
+  /** Timed holds: estimated1RM is best time in seconds; do not use for kg-based suggestions. */
+  isDurationSeconds?: boolean;
 };
 
 export type StrengthRankingInput = {
@@ -865,7 +874,11 @@ export function computeStrengthRanking(input: StrengthRankingInput): StrengthRan
     const s = muscleScores[m];
     if (s <= 0) continue;
     const w = MUSCLE_WEIGHT[m];
-    weightedSum += s * w;
+    const blended =
+      m === "core"
+        ? Math.min(2.5, s / CORE_VOLUME_FOR_OVERALL_DIVISOR)
+        : s;
+    weightedSum += blended * w;
     weightTotal += w;
   }
 
@@ -906,11 +919,17 @@ export function getTopExercisesByMuscleForSuggestions(
   exerciseDataPoints: ExerciseDataPoint[]
 ): Record<
   StrengthRankMuscle,
-  { exerciseId: string; name: string; estimated1RM: number; ratio: number }[]
+  {
+    exerciseId: string;
+    name: string;
+    estimated1RM: number;
+    ratio: number;
+    isDurationSeconds?: boolean;
+  }[]
 > {
   const bestByExerciseMuscle = new Map<
     string,
-    { ratio: number; estimated1RM: number; name: string }
+    { ratio: number; estimated1RM: number; name: string; isDurationSeconds?: boolean }
   >();
 
   for (const pt of exerciseDataPoints) {
@@ -922,13 +941,20 @@ export function getTopExercisesByMuscleForSuggestions(
         ratio: pt.strengthRatio,
         estimated1RM: pt.estimated1RM,
         name: pt.exerciseName,
+        isDurationSeconds: pt.isDurationSeconds,
       });
     }
   }
 
   const byMuscle = new Map<
     StrengthRankMuscle,
-    { exerciseId: string; name: string; estimated1RM: number; ratio: number }[]
+    {
+      exerciseId: string;
+      name: string;
+      estimated1RM: number;
+      ratio: number;
+      isDurationSeconds?: boolean;
+    }[]
   >();
   for (const m of STRENGTH_RANK_MUSCLES) byMuscle.set(m, []);
 
@@ -942,6 +968,7 @@ export function getTopExercisesByMuscleForSuggestions(
       name: val.name,
       estimated1RM: val.estimated1RM,
       ratio: val.ratio,
+      isDurationSeconds: val.isDurationSeconds,
     });
   }
 

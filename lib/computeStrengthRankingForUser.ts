@@ -15,7 +15,6 @@ import {
   categoryToStrengthMuscles,
   epleyEstimated1RM,
   getNextRankThreshold,
-  muscleScoreFromExerciseRatios,
   type StrengthRankingOutput,
   type StrengthRankMuscle,
   type ExerciseDataPoint,
@@ -31,6 +30,16 @@ export type CoreImprovementSuggestion = {
   improvementLabel: string;
 };
 
+/** Top core lifts for Muscle Strength UI (best hold, reps, or estimated 1RM). */
+export type CoreTopExerciseForDisplay = {
+  exerciseId: string;
+  name: string;
+  displayEstimated1RM: number;
+  isDurationSeconds: boolean;
+  isReps: boolean;
+  score: number;
+};
+
 type SupabaseServer = Awaited<ReturnType<typeof createServerClient>>;
 
 /** Exercise name → core (auto-map even if category is not Core). */
@@ -42,9 +51,13 @@ function exerciseNameMapsToCore(name: string): boolean {
     n.includes("situp") ||
     n.includes("crunch") ||
     n.includes("plank") ||
+    n.includes("dead hang") ||
+    n.includes("dead-hang") ||
     (n.includes("hanging") && (n.includes("leg raise") || n.includes("legraise"))) ||
     n.includes("leg raise") ||
     n.includes("legraise") ||
+    n.includes("knee raise") ||
+    n.includes("knee-raise") ||
     n.includes("ab wheel") ||
     n.includes("cable crunch")
   );
@@ -107,8 +120,39 @@ function normalizeCoreExerciseType(exerciseName: string): CoreExerciseType {
   if (n.includes("hanging") && (n.includes("leg raise") || n.includes("legraise") || n.includes("raise")))
     return "hanging_leg_raise";
   if (n.includes("leg raise") || n.includes("legraise")) return "hanging_leg_raise";
+  if (n.includes("knee raise") || n.includes("knee-raise")) return "hanging_leg_raise";
   return "weighted";
 }
+
+/** Timed / isometric core: seconds in `sets.reps` (or timed load type). */
+function isTimedCoreHold(exerciseName: string, loadType: LoadType): boolean {
+  if (loadType === "timed") return true;
+  const n = exerciseName.trim().toLowerCase();
+  if (n.includes("plank")) return true;
+  if (n.includes("dead hang") || n.includes("dead-hang")) return true;
+  return false;
+}
+
+/**
+ * Bodyweight rep core: dynamic reps (sit-ups, raises, etc.). Excludes holds, timed, and loaded cable/weighted patterns.
+ */
+function isBodyweightRepCore(
+  exerciseName: string,
+  loadType: LoadType,
+  coreType: CoreExerciseType
+): boolean {
+  if (isTimedCoreHold(exerciseName, loadType)) return false;
+  if (coreType === "weighted") return false;
+  if (loadType === "bodyweight") return true;
+  if (coreType === "situps" || coreType === "hanging_leg_raise") return true;
+  return false;
+}
+
+/** Bodyweight rep volume: each rep counts this many points toward core endurance score. */
+const CORE_REP_VOLUME_POINTS_PER_REP = 2;
+
+/** Maps strength ratio to pseudo-seconds for sorting/display of weighted core only (cap 240s). */
+const CORE_NON_PLANK_RATIO_TO_SECONDS = 100;
 
 function coreScoreFromBestPerformance(args: {
   type: CoreExerciseType;
@@ -117,36 +161,58 @@ function coreScoreFromBestPerformance(args: {
   bodyweightKg: number;
 }): number {
   if (args.type === "plank") {
-    return Math.max(0, args.bestRepsOrSeconds) / 110;
+    // Best hold (seconds); timed planks store seconds in sets.reps.
+    return Math.max(0, args.bestRepsOrSeconds);
   }
   const bw = args.bodyweightKg > 0 ? args.bodyweightKg : 0;
   if (bw <= 0 || args.bestWeightKg <= 0) return 0;
   const reps = Math.max(0, args.bestRepsOrSeconds);
   const oneRm = epleyEstimated1RM(args.bestWeightKg, reps);
-  return oneRm / bw;
+  const ratio = oneRm / bw;
+  return Math.min(240, Math.round(ratio * CORE_NON_PLANK_RATIO_TO_SECONDS * 100) / 100);
 }
 
-function formatCoreImprovement(
-  type: CoreExerciseType,
-  bestRepsOrSeconds: number,
-  bestWeightKg: number,
-  requiredScore: number,
-  bodyweightKg: number
-): string {
-  if (type === "plank") {
-    const requiredSeconds = requiredScore * 110;
-    const add = Math.max(0, requiredSeconds - bestRepsOrSeconds);
-    const rounded = Math.max(5, Math.round(add / 5) * 5);
+/**
+ * Next-rank target is total core volume (seconds + 2×reps) per CORE_VOLUME_STEPS.
+ */
+function formatCoreImprovementComposite(args: {
+  type: CoreExerciseType;
+  exerciseName: string;
+  loadType: LoadType;
+  nextVolumeThreshold: number;
+  bestTimedGlobal: number;
+  bestRepsGlobal: number;
+}): string {
+  const currentVol =
+    args.bestTimedGlobal + CORE_REP_VOLUME_POINTS_PER_REP * args.bestRepsGlobal;
+  const gap = Math.max(0, args.nextVolumeThreshold - currentVol);
+  const timedHold =
+    args.type === "plank" || args.loadType === "timed" || isTimedCoreHold(args.exerciseName, args.loadType);
+  const repCore = isBodyweightRepCore(args.exerciseName, args.loadType, args.type);
+
+  if (timedHold) {
+    const needSecs = gap;
+    if (needSecs <= 0) return "+0 seconds";
+    const rounded = Math.max(1, Math.round(needSecs / 5) * 5);
     return `+${rounded} seconds`;
   }
-  const bw = bodyweightKg > 0 ? bodyweightKg : 0;
-  if (bw <= 0) return "+0 kg";
-  const required1RM = requiredScore * bw;
-  const reps = Math.max(0, bestRepsOrSeconds);
-  const current1RM = epleyEstimated1RM(bestWeightKg, reps);
-  const add = Math.max(0, required1RM - current1RM);
-  const rounded = Math.max(1, Math.round(add));
-  return `+${rounded} kg`;
+
+  if (repCore) {
+    const needReps = Math.ceil(gap / CORE_REP_VOLUME_POINTS_PER_REP);
+    if (needReps <= 0) return "+0 reps";
+    const rounded = Math.max(1, needReps);
+    return `+${rounded} reps`;
+  }
+
+  return gap <= 0 ? "+0" : `+${Math.max(1, Math.round(gap))} volume`;
+}
+
+/** Core endurance volume: best hold seconds + 2 × best bodyweight reps (historical bests). */
+function coreVolumeScoreFromBests(bestTimed: number, bestReps: number): number {
+  const timedVol = Math.max(0, bestTimed);
+  const repVol = Math.max(0, bestReps) * CORE_REP_VOLUME_POINTS_PER_REP;
+  const raw = timedVol + repVol;
+  return Math.round(raw * 100) / 100;
 }
 
 export type StrengthRankingComputeBundle = {
@@ -158,6 +224,7 @@ export type StrengthRankingComputeBundle = {
   loadTypeByExercise: Record<string, LoadType>;
   allExercises: { id: string; name: string; category_id: string; load_type?: unknown }[];
   coreImprovementSuggestions: CoreImprovementSuggestion[];
+  coreTopExercisesForDisplay: CoreTopExerciseForDisplay[];
 };
 
 export type StrengthRankingComputeResult =
@@ -269,6 +336,28 @@ export async function computeStrengthRankingBundleForUser(
     if (muscles.includes("core")) continue;
 
     const loadType = loadTypeByExercise[w.exercise_id] ?? "weight";
+    if (loadType === "timed") {
+      const timedSets = setsByWorkout.get(w.id) ?? [];
+      const bestSeconds = timedSets.length
+        ? Math.max(...timedSets.map((s) => Number(s.reps) || 0))
+        : 0;
+      if (bestSeconds <= 0 || bwForRatio <= 0) continue;
+      const strengthRatio = bestSeconds / 60;
+      for (const m of muscles) {
+        if (m === "core") continue;
+        exerciseDataPoints.push({
+          exerciseId: w.exercise_id,
+          exerciseName: name,
+          categoryName,
+          forMuscle: m,
+          estimated1RM: Math.round(bestSeconds * 10) / 10,
+          strengthRatio,
+          date: w.date,
+          isDurationSeconds: true,
+        });
+      }
+      continue;
+    }
     const storedBest =
       (w as { estimated_1rm?: number | null }).estimated_1rm != null
         ? Number((w as { estimated_1rm?: number | null }).estimated_1rm)
@@ -358,6 +447,7 @@ export async function computeStrengthRankingBundleForUser(
 
   let coreScore: number | null = null;
   const coreImprovementSuggestions: CoreImprovementSuggestion[] = [];
+  let coreTopExercisesForDisplay: CoreTopExerciseForDisplay[] = [];
 
   if (coreExerciseIds.length > 0) {
     const coreWorkoutsQ = supabase
@@ -404,49 +494,126 @@ export async function computeStrengthRankingBundleForUser(
       });
     }
 
+    let bestTimedGlobal = 0;
+    let bestRepsGlobal = 0;
+
     for (const w of coreWorkouts ?? []) {
       const current = bestByExercise.get(w.exercise_id);
       if (!current) continue;
       const repsList = coreSetsByWorkout.get(w.id) ?? [];
-      const bestSet = repsList.length ? Math.max(...repsList) : 0;
+      const bestSet = repsList.length ? Math.max(...repsList.map((r) => Number(r) || 0)) : 0;
       const weightKg = Number(w.weight) || 0;
       const loadType = loadTypeByExercise[w.exercise_id] ?? "weight";
       const effectiveWeightKg = getEffectiveWeight(weightKg, loadType);
       current.bestRepsOrSeconds = Math.max(current.bestRepsOrSeconds, bestSet);
       current.bestWeightKg = Math.max(current.bestWeightKg, effectiveWeightKg);
+
+      const exName = current.name;
+      const coreType = current.type;
+      if (bestSet > 0 && isTimedCoreHold(exName, loadType)) {
+        bestTimedGlobal = Math.max(bestTimedGlobal, bestSet);
+      }
+      if (bestSet > 0 && isBodyweightRepCore(exName, loadType, coreType)) {
+        bestRepsGlobal = Math.max(bestRepsGlobal, bestSet);
+      }
     }
 
-    const scored = [...bestByExercise.values()].map((v) => {
-      const score = coreScoreFromBestPerformance({
-        type: v.type,
-        bestRepsOrSeconds: v.bestRepsOrSeconds,
-        bestWeightKg: v.bestWeightKg,
-        bodyweightKg: bodyweightKgRaw,
-      });
-      return { ...v, score: Math.round(score * 100) / 100 };
+    const scoredWithIds = [...bestByExercise.entries()].map(([exerciseId, v]) => {
+      const lt = loadTypeByExercise[exerciseId] ?? "weight";
+      let score: number;
+      if (v.bestRepsOrSeconds > 0 && isTimedCoreHold(v.name, lt)) {
+        score = Math.round(v.bestRepsOrSeconds * 100) / 100;
+      } else if (v.bestRepsOrSeconds > 0 && isBodyweightRepCore(v.name, lt, v.type)) {
+        score =
+          Math.round(v.bestRepsOrSeconds * CORE_REP_VOLUME_POINTS_PER_REP * 100) / 100;
+      } else {
+        score = coreScoreFromBestPerformance({
+          type: v.type,
+          bestRepsOrSeconds: v.bestRepsOrSeconds,
+          bestWeightKg: v.bestWeightKg,
+          bodyweightKg: bodyweightKgRaw,
+        });
+      }
+      return {
+        exerciseId,
+        ...v,
+        score,
+      };
     });
 
-    coreScore = muscleScoreFromExerciseRatios(scored.map((x) => x.score));
+    coreScore = coreVolumeScoreFromBests(bestTimedGlobal, bestRepsGlobal);
 
     const nextRankScore = getNextRankThreshold(coreScore ?? 0, "core");
-    const requiredScore = nextRankScore ?? coreScore + 0.15;
+    const requiredVolume =
+      nextRankScore ?? Math.min(400, Math.max(1, (coreScore ?? 0) + 15));
 
-    const topExercises = scored
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score)
+    const contributesToCoreRank = (x: (typeof scoredWithIds)[number]) => {
+      const lt = loadTypeByExercise[x.exerciseId] ?? "weight";
+      return (
+        (x.bestRepsOrSeconds > 0 && isTimedCoreHold(x.name, lt)) ||
+        (x.bestRepsOrSeconds > 0 && isBodyweightRepCore(x.name, lt, x.type))
+      );
+    };
+
+    const coreRankSortMetric = (x: (typeof scoredWithIds)[number]) => {
+      const lt = loadTypeByExercise[x.exerciseId] ?? "weight";
+      if (x.bestRepsOrSeconds <= 0) return 0;
+      if (isTimedCoreHold(x.name, lt)) return x.bestRepsOrSeconds;
+      if (isBodyweightRepCore(x.name, lt, x.type)) {
+        return x.bestRepsOrSeconds * CORE_REP_VOLUME_POINTS_PER_REP;
+      }
+      return 0;
+    };
+
+    const topExercises = scoredWithIds
+      .filter(contributesToCoreRank)
+      .sort((a, b) => coreRankSortMetric(b) - coreRankSortMetric(a))
       .slice(0, 3);
 
+    coreTopExercisesForDisplay = scoredWithIds
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 5)
+      .map((x) => {
+        const lt = loadTypeByExercise[x.exerciseId] ?? "weight";
+        let displayEstimated1RM = 0;
+        let isDurationSeconds = false;
+        let isReps = false;
+        if (x.type === "plank" || lt === "timed") {
+          displayEstimated1RM = x.bestRepsOrSeconds;
+          isDurationSeconds = true;
+        } else if (x.type === "situps" || x.type === "hanging_leg_raise") {
+          displayEstimated1RM = x.bestRepsOrSeconds;
+          isReps = true;
+        } else {
+          displayEstimated1RM =
+            x.bestWeightKg > 0
+              ? epleyEstimated1RM(x.bestWeightKg, Math.max(0, x.bestRepsOrSeconds))
+              : 0;
+        }
+        return {
+          exerciseId: x.exerciseId,
+          name: x.name,
+          displayEstimated1RM,
+          isDurationSeconds,
+          isReps,
+          score: x.score,
+        };
+      });
+
     for (const ex of topExercises) {
+      const lt = loadTypeByExercise[ex.exerciseId] ?? "weight";
       coreImprovementSuggestions.push({
         name: ex.name,
         type: ex.type,
-        improvementLabel: formatCoreImprovement(
-          ex.type,
-          ex.bestRepsOrSeconds,
-          ex.bestWeightKg,
-          requiredScore,
-          bodyweightKgRaw
-        ),
+        improvementLabel: formatCoreImprovementComposite({
+          type: ex.type,
+          exerciseName: ex.name,
+          loadType: lt,
+          nextVolumeThreshold: requiredVolume,
+          bestTimedGlobal,
+          bestRepsGlobal,
+        }),
       });
     }
   }
@@ -454,6 +621,7 @@ export async function computeStrengthRankingBundleForUser(
   if (exerciseCountByMuscle.core === 0) {
     coreScore = 0;
     coreImprovementSuggestions.length = 0;
+    coreTopExercisesForDisplay = [];
   }
 
   const output = computeStrengthRanking({
@@ -473,6 +641,7 @@ export async function computeStrengthRankingBundleForUser(
       loadTypeByExercise,
       allExercises: allExercises ?? [],
       coreImprovementSuggestions,
+      coreTopExercisesForDisplay,
     },
   };
 }

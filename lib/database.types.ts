@@ -56,9 +56,9 @@ export type Database = {
         Update: { id?: string; user_id?: string; name?: string; created_at?: string };
       };
       exercises: {
-        Row: { id: string; user_id: string; category_id: string; name: string; load_type: "weight" | "unilateral" | "bodyweight"; rep_min: number; rep_max: number; notes: string | null; created_at: string };
-        Insert: { id?: string; user_id: string; category_id: string; name: string; load_type?: "weight" | "unilateral" | "bodyweight"; rep_min: number; rep_max: number; notes?: string | null; created_at?: string };
-        Update: { id?: string; user_id?: string; category_id?: string; name?: string; load_type?: "weight" | "unilateral" | "bodyweight"; rep_min?: number; rep_max?: number; notes?: string | null; created_at?: string };
+        Row: { id: string; user_id: string; category_id: string; name: string; load_type: "weight" | "unilateral" | "bodyweight" | "timed"; rep_min: number; rep_max: number; notes: string | null; created_at: string };
+        Insert: { id?: string; user_id: string; category_id: string; name: string; load_type?: "weight" | "unilateral" | "bodyweight" | "timed"; rep_min: number; rep_max: number; notes?: string | null; created_at?: string };
+        Update: { id?: string; user_id?: string; category_id?: string; name?: string; load_type?: "weight" | "unilateral" | "bodyweight" | "timed"; rep_min?: number; rep_max?: number; notes?: string | null; created_at?: string };
       };
       exercise_categories: {
         Row: { exercise_id: string; category_id: string; created_at: string };
