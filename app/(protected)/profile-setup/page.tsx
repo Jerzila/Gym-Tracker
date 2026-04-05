@@ -9,8 +9,8 @@ export default async function ProfileSetupPage() {
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-zinc-950 text-zinc-100">
-      <div className="flex h-full flex-col overflow-hidden">
+    <main className="flex h-dvh max-h-dvh min-h-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <OnboardingFlow profile={profile} />
       </div>
     </main>

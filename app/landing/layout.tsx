@@ -1,18 +1,26 @@
 import type { Metadata } from "next";
+import { Syne } from "next/font/google";
+
+const landingDisplay = Syne({
+  subsets: ["latin"],
+  variable: "--font-landing-display",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Liftly – Track Your Strength. Beat Your PRs.",
+  title: "Liftly — Strength tracking & progressive overload",
   description:
-    "Liftly is the gym tracker built for progressive overload. Log workouts, monitor strength gains, and understand your muscle development.",
+    "Log workouts, track PRs and estimated 1RM, visualize muscle strength, and progress with clarity. Built for serious lifters.",
+  robots: { index: false, follow: false },
 };
 
 export default function LandingLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <div className="min-h-[100dvh] w-full bg-[#0a0a0b] text-zinc-100">
+    <div className={`${landingDisplay.variable} isolate`}>
       {children}
     </div>
   );

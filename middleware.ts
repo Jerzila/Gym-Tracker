@@ -4,15 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 const authPaths = ["/login", "/signup", "/forgot-password", "/reset-password"];
 const verificationPath = "/verify-email";
 
-/** Marketing and other routes that never require a session (same idea as auth pages). */
-const publicMarketingPaths = ["/landing"];
-
-function isPublicMarketingPath(pathname: string): boolean {
-  return publicMarketingPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
-
 function isProtectedPath(pathname: string): boolean {
-  if (isPublicMarketingPath(pathname)) return false;
   if (pathname === "/" || pathname === "/bodyweight" || pathname === "/categories") return true;
   if (pathname === "/profile-setup" || pathname.startsWith("/account")) return true;
   if (pathname === "/exercises" || pathname === "/calendar" || pathname === "/insights") return true;
@@ -35,8 +27,24 @@ function buildVerifyEmailUrl(request: NextRequest, email: string | null, next: s
   return url;
 }
 
+function isLandingPath(pathname: string): boolean {
+  return pathname === "/landing" || pathname.startsWith("/landing/");
+}
+
+/** Draft landing: open in dev, on Vercel previews, or when LANDING_PAGE_PUBLIC=true in production. */
+function isLandingAccessible(): boolean {
+  if (process.env.NODE_ENV !== "production") return true;
+  if (process.env.VERCEL_ENV === "preview") return true;
+  if (process.env.LANDING_PAGE_PUBLIC === "true") return true;
+  return false;
+}
+
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  if (isLandingPath(request.nextUrl.pathname) && !isLandingAccessible()) {
+    return new NextResponse(null, { status: 404 });
+  }
+
+  const response = NextResponse.next({ request });
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anonKey = (

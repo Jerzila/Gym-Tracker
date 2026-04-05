@@ -590,7 +590,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   const progress = step === 0 ? 0 : (step / TOTAL_STEPS) * 100;
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-zinc-950 text-zinc-100">
       <div className="bg-zinc-950 pt-[env(safe-area-inset-top,0px)]">
         {/* Header */}
         <header
@@ -614,8 +614,8 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
           </h1>
         </header>
 
-        {/* Progress bar */}
-        <div className="mt-2 mb-4 h-1 w-full bg-zinc-800">
+        {/* Progress bar — a bit tighter on step 5 to free vertical space on small phones */}
+        <div className={`h-1 w-full bg-zinc-800 ${step === 5 ? "mt-1.5 mb-2" : "mt-2 mb-4"}`}>
           <div
             className="h-full bg-amber-500 transition-all duration-300"
             style={{ width: `${progress}%` }}
@@ -1007,19 +1007,19 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
             {step === 5 && (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 {rankSubStep === 3 ? null : (
-                  <div className="px-5 pt-4 pb-3.5">
+                  <div className="shrink-0 px-5 pb-2 pt-3">
                     <h2 className="text-xl font-semibold text-zinc-100 sm:text-2xl">
                       Log your first workout
                     </h2>
-                    <p className="mt-1.5 text-sm text-zinc-400">
+                    <p className="mt-1 text-sm text-zinc-400">
                       Log one lift and we&apos;ll calculate your strength level.
                     </p>
                   </div>
                 )}
 
                 {rankSubStep === 0 && (
-                  <div className="flex min-h-0 flex-1 flex-col justify-center px-5 pb-1">
-                    <div className="mx-auto w-full max-w-md space-y-1.5">
+                  <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-contain px-5 pb-1">
+                    <div className="mx-auto w-full max-w-md space-y-1.5 py-1">
                       {(
                         [
                           { key: "chest" as const, title: "Chest", subtitle: "Bench Press · Incline Bench" },
@@ -1042,7 +1042,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
                                   setRankCustomName("");
                             }}
                             className={[
-                              "tap-feedback flex min-h-[74px] flex-col justify-center rounded-[14px] px-4 py-3.5 text-left transition-colors",
+                              "tap-feedback flex w-full min-h-[4rem] flex-col justify-center rounded-[14px] px-4 py-3 text-left transition-colors",
                               selected
                                 ? "border-2 border-[#F5A623] bg-[rgba(245,166,35,0.08)]"
                                 : "border border-white/[0.08] bg-zinc-900/40 hover:border-white/[0.12]",
@@ -1174,17 +1174,18 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
           {/* Bottom action bar (form steps) */}
           <div
             className={[
-              "mt-auto w-full border-t border-zinc-800 px-5 pt-4",
+              "mt-auto w-full shrink-0 border-t border-zinc-800 px-5",
+              isStrengthRankStep ? "pt-3" : "pt-4",
               isStrengthRankStep && rankSubStep === 1
-                ? "relative bg-zinc-950 pb-4"
+                ? "relative bg-zinc-950 pb-3"
                 : "relative bg-zinc-950 pb-5",
             ].join(" ")}
             style={{
               paddingBottom:
                 isStrengthRankStep && rankSubStep === 0
-                  ? "calc(18px + env(safe-area-inset-bottom))"
+                  ? "calc(14px + env(safe-area-inset-bottom))"
                   : isStrengthRankStep && rankSubStep === 1
-                    ? "calc(16px + env(safe-area-inset-bottom))"
+                    ? "calc(12px + env(safe-area-inset-bottom))"
                     : "calc(20px + env(safe-area-inset-bottom))",
             }}
           >
@@ -1258,7 +1259,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
               className={[
                 "tap-feedback w-full rounded-[14px] bg-amber-500 text-base font-semibold text-zinc-950 transition disabled:opacity-50 disabled:shadow-none hover:bg-amber-400 active:scale-[0.97] active:brightness-95",
                 logWorkoutPressed || logWorkoutLoading ? "shadow-none brightness-95" : "shadow-lg shadow-amber-500/20",
-                isStrengthRankStep && rankSubStep === 0 ? "h-[54px]" : isStrengthRankStep && rankSubStep === 1 ? "h-[50px]" : "h-14",
+                isStrengthRankStep && rankSubStep === 0 ? "h-12" : isStrengthRankStep && rankSubStep === 1 ? "h-12" : "h-14",
               ].join(" ")}
             >
               {isStrengthRankStep && (rankSubStep === 2 || logWorkoutLoading || submitting) ? (
@@ -1338,15 +1339,9 @@ function StrengthRankLogLiftStep(props: {
   const list = props.rankCategory ? props.exercisesForCategory[props.rankCategory] : [];
 
   return (
-    <div
-      className="min-h-0 flex-1 px-5"
-      style={{
-        overflowY: props.rankCustomOpen ? "auto" : "hidden",
-        paddingBottom: props.rankCustomOpen ? "90px" : undefined,
-      }}
-    >
-      <div className="pt-3">
-        <p className="mb-4 text-sm font-semibold text-zinc-400">Choose your first lift</p>
+    <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 pb-2">
+      <div className="pt-2">
+        <p className="mb-2 text-sm font-semibold text-zinc-400">Choose your first lift</p>
         <div className="space-y-1.5">
           {list.map((ex) => {
             const selected = props.rankExercise === ex;
@@ -1361,7 +1356,7 @@ function StrengthRankLogLiftStep(props: {
                   props.setRankCustomName("");
                 }}
                 className={[
-                  "tap-feedback flex h-[46px] w-full items-center rounded-[12px] px-3 py-2 text-left transition-colors",
+                  "tap-feedback flex h-11 w-full items-center rounded-[12px] px-3 py-2 text-left transition-colors",
                   selected
                     ? "border-2 border-[#F5A623] bg-[rgba(245,166,35,0.08)] text-amber-200"
                     : "border border-white/[0.08] bg-zinc-900/40 text-zinc-200 hover:border-white/[0.12]",
@@ -1381,7 +1376,7 @@ function StrengthRankLogLiftStep(props: {
               props.setRankExercise(null);
             }}
             className={[
-              "tap-feedback flex h-[46px] w-full items-center rounded-[12px] px-3 py-2 text-left transition-colors",
+              "tap-feedback flex h-11 w-full items-center rounded-[12px] px-3 py-2 text-left transition-colors",
               props.rankCustomOpen
                 ? "border-2 border-[#F5A623] bg-[rgba(245,166,35,0.08)] text-amber-200"
                 : "border border-white/[0.08] bg-zinc-900/40 text-zinc-200 hover:border-white/[0.12]",
@@ -1393,15 +1388,15 @@ function StrengthRankLogLiftStep(props: {
           <div
             className="overflow-hidden"
             style={{
-              maxHeight: props.rankCustomOpen ? "140px" : "0px",
+              maxHeight: props.rankCustomOpen ? "120px" : "0px",
               opacity: props.rankCustomOpen ? 1 : 0,
               transition: "max-height 0.25s ease, opacity 0.25s ease",
             }}
             aria-hidden={!props.rankCustomOpen}
           >
-            <div className="rounded-[12px] border border-white/[0.08] bg-zinc-900/30 p-3">
+            <div className="rounded-[12px] border border-white/[0.08] bg-zinc-900/30 p-2.5">
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-zinc-400">
+                <span className="mb-1.5 block text-sm font-medium text-zinc-400">
                   Custom Exercise Name
                 </span>
                 <input
@@ -1413,7 +1408,7 @@ function StrengthRankLogLiftStep(props: {
                     props.setRankExercise(v.trim() ? v.trim() : null);
                   }}
                   placeholder="Type your own exercise name"
-                  className="h-11 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+                  className="h-10 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
                   autoComplete="off"
                 />
               </label>
@@ -1422,11 +1417,11 @@ function StrengthRankLogLiftStep(props: {
         </div>
       </div>
 
-      <div className="mt-3.5">
-        <p className="mb-4 text-sm font-semibold text-zinc-400">Enter Lift</p>
+      <div className="mt-2.5">
+        <p className="mb-2 text-sm font-semibold text-zinc-400">Enter Lift</p>
         <div className="space-y-2">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-zinc-400">
+            <span className="mb-1.5 block text-sm font-medium text-zinc-400">
               Weight lifted ({props.units === "imperial" ? "lb" : "kg"})
             </span>
             <input
@@ -1435,22 +1430,22 @@ function StrengthRankLogLiftStep(props: {
               value={props.rankWeight}
               onChange={(e) => props.setRankWeight(e.target.value)}
               placeholder={props.units === "imperial" ? "lb" : "kg"}
-              className="h-11 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+              className="h-10 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
             />
-            <p className="my-1.5 text-xs text-zinc-500">
+            <p className="mt-1 text-xs text-zinc-500">
               Your rank is calculated relative to your bodyweight.
             </p>
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-zinc-400">Reps</span>
+            <span className="mb-1.5 block text-sm font-medium text-zinc-400">Reps</span>
             <input
               inputMode="numeric"
               type="number"
               value={props.rankReps}
               onChange={(e) => props.setRankReps(e.target.value)}
               placeholder="e.g. 5"
-              className="h-11 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
+              className="h-10 w-full rounded-[10px] border-2 border-zinc-700 bg-zinc-800/80 px-3.5 text-zinc-100 placeholder-zinc-500 focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500/30"
             />
           </label>
         </div>
