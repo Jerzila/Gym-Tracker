@@ -4,7 +4,15 @@ import { createServerClient } from "@supabase/ssr";
 const authPaths = ["/login", "/signup", "/forgot-password", "/reset-password"];
 const verificationPath = "/verify-email";
 
+/** Marketing and other routes that never require a session (same idea as auth pages). */
+const publicMarketingPaths = ["/landing"];
+
+function isPublicMarketingPath(pathname: string): boolean {
+  return publicMarketingPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 function isProtectedPath(pathname: string): boolean {
+  if (isPublicMarketingPath(pathname)) return false;
   if (pathname === "/" || pathname === "/bodyweight" || pathname === "/categories") return true;
   if (pathname === "/profile-setup" || pathname.startsWith("/account")) return true;
   if (pathname === "/exercises" || pathname === "/calendar" || pathname === "/insights") return true;
