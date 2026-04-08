@@ -31,7 +31,9 @@ export function DashboardRankWidget({ display }: Props) {
       </h2>
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1.5">
         <RankBadge rank={rankSlug} tier={tier} size={112} />
-        <p className="text-center text-base font-bold text-zinc-100">{rankLabel}</p>
+        <p className="text-center text-base font-bold text-zinc-100">
+          <span className="whitespace-nowrap">{rankLabel}</span>
+        </p>
         <p className="text-center text-[11px] text-zinc-400">{`${topPercentileLabel} of lifters`}</p>
         <div className="mt-1.5 w-full">
           {nextRankLabel ? (
@@ -42,7 +44,9 @@ export function DashboardRankWidget({ display }: Props) {
                   style={{ width: `${progressPct}%` }}
                 />
               </div>
-              <p className="mt-0.5 text-center text-[10px] text-zinc-500">Next: {nextRankLabel}</p>
+              <p className="mt-0.5 text-center text-[10px] text-zinc-500">
+                Next: <span className="whitespace-nowrap">{nextRankLabel}</span>
+              </p>
             </>
           ) : (
             <p className="text-center text-[10px] text-zinc-500">Peak rank</p>

@@ -3,7 +3,6 @@ import { getExerciseById } from "@/app/actions/exercises";
 import { getProfile } from "@/app/actions/profile";
 import {
   getHeaviestWeight,
-  getBestEstimated1RM,
   getMaxRepsAtWeight,
   getStrengthProgress,
   getSessionBestStrengthSet,
@@ -11,7 +10,9 @@ import {
   getRepsStrengthProgress,
   sessionMaxRepsInWorkout,
 } from "@/lib/pr";
-import { ExercisePRs } from "@/app/components/ExercisePRs";
+import { computeStrengthVelocityFromMaxWeights } from "@/lib/strengthVelocity";
+import { sessionMaxResolvedLoadKg, type SessionSetRow } from "@/lib/sessionStrength";
+import { ExercisePRs, type WeightStrengthVelocity } from "@/app/components/ExercisePRs";
 import { StrengthRecommendationCard } from "@/app/components/StrengthRecommendationCard";
 import { WeightChart } from "@/app/components/WeightChart";
 import { Estimated1RMChart } from "@/app/components/Estimated1RMChart";
@@ -84,7 +85,6 @@ export default async function ExercisePage({ params }: Props) {
   const isTimed = normalizeLoadType(exercise.load_type) === "timed";
 
   const heaviest = isTimed ? null : getHeaviestWeight(prWorkouts);
-  const best1RM = isTimed ? null : getBestEstimated1RM(prWorkouts, bwFor);
   const maxRepsAtHeaviest =
     !isTimed && heaviest != null
       ? getMaxRepsAtWeight(prWorkouts, heaviest, exercise.load_type, bwFor)
@@ -172,6 +172,40 @@ export default async function ExercisePage({ params }: Props) {
       };
     });
 
+  const velocityPerWorkout = !isTimed && !isBodyweight
+    ? [...workouts]
+        .sort((a, b) => a.date.localeCompare(b.date))
+        .map((w) => {
+          const weight = Number(w.weight);
+          const repsList: SessionSetRow[] = (w.sets ?? []).map((s) => ({
+            reps: Number(s.reps) || 0,
+            weight: s.weight != null ? Number(s.weight) : null,
+          }));
+          const maxWeightKg = sessionMaxResolvedLoadKg(
+            repsList,
+            weight || 0,
+            exercise.load_type,
+            undefined
+          );
+          return { date: w.date, maxWeightKg };
+        })
+        .filter((p) => p.maxWeightKg > 0)
+    : [];
+  const velocityComputation = !isTimed && !isBodyweight
+    ? computeStrengthVelocityFromMaxWeights(velocityPerWorkout)
+    : null;
+  const strengthVelocityForUi: WeightStrengthVelocity =
+    velocityComputation == null
+      ? { kind: "prompt_more_workouts" }
+      : velocityComputation.kind === "ok"
+        ? { kind: "ok", kgPerMonth: velocityComputation.velocityKgPerMonth }
+        : velocityComputation.reason === "too_few_workouts"
+          ? { kind: "prompt_more_workouts" }
+          : { kind: "needs_day_gap" };
+
+  const hasWeightHistoryForVelocity =
+    !isTimed && !isBodyweight && velocityPerWorkout.length > 0;
+
   const showRepsOverTimeChart =
     isBodyweight && chartData.some((d) => (d.sessionMaxReps ?? 0) > 0);
   const showTimeOverTimeChart =
@@ -218,10 +252,13 @@ export default async function ExercisePage({ params }: Props) {
                   strengthProgress={repsStrengthProgress}
                 />
               )
-            : (heaviest != null || best1RM != null || strengthProgress != null) && (
+            : (heaviest != null ||
+                maxRepsAtHeaviest != null ||
+                strengthProgress != null ||
+                hasWeightHistoryForVelocity) && (
                 <ExercisePRs
                   heaviest={heaviest}
-                  best1RM={best1RM}
+                  strengthVelocity={strengthVelocityForUi}
                   maxRepsAtHeaviest={maxRepsAtHeaviest}
                   strengthProgress={strengthProgress}
                 />

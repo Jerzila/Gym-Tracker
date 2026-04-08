@@ -6,11 +6,14 @@ import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/
 import { bodyweightLoadFractionFromCategoryName } from "@/lib/bodyweightCategoryFraction";
 import { normalizeLoadType, type LoadType } from "@/lib/loadType";
 import {
+  sessionBestStrengthSetFromSets,
   sessionEstimated1RMFromSets,
+  sessionMaxResolvedLoadKg,
   sessionVolumeKgFromSets,
   type SessionSetRow,
   type SessionStrengthContext,
 } from "@/lib/sessionStrength";
+import type { MaxSessionWeightByExercise } from "@/lib/strengthVelocity";
 import { getWeekBounds, getMonthBounds, getMonthBoundsFor, getWeekProgress } from "@/lib/insightsDates";
 import { MUSCLE_GROUPS, categoryToMuscle, categoryToMuscleGroups, type MuscleGroup } from "@/lib/muscleMapping";
 import {
@@ -1320,7 +1323,12 @@ export async function getMuscleHeatmapData(range: InsightsRange): Promise<{
 
 // --- 1RM progression ---
 
-export type OneRMPoint = { date: string; estimated1RM: number };
+/** `strengthSessionReps` is optional; used to filter obvious high-rep outliers for strength velocity only. */
+export type OneRMPoint = {
+  date: string;
+  estimated1RM: number;
+  strengthSessionReps?: number;
+};
 
 /**
  * Precomputed 1RM progression for all exercises (full history).
@@ -1328,9 +1336,14 @@ export type OneRMPoint = { date: string; estimated1RM: number };
  */
 export type Estimated1RMByExercise = Record<string, OneRMPoint[]>;
 
-/** Fetches workouts + sets once and builds 1RM progression per exercise. Single pass. */
-export async function getAll1RMProgression(): Promise<{
-  data: Estimated1RMByExercise;
+export type StrengthChartSeriesBundle = {
+  estimated1RMByExercise: Estimated1RMByExercise;
+  maxSessionWeightByExercise: MaxSessionWeightByExercise;
+};
+
+/** Fetches workouts + sets once; builds 1RM progression and per-workout max load series. Single DB round-trip. */
+export async function getAllStrengthChartSeries(): Promise<{
+  data: StrengthChartSeriesBundle;
   error?: string;
 }> {
   try {
@@ -1338,7 +1351,12 @@ export async function getAll1RMProgression(): Promise<{
     const {
       data: { user },
     } = await supabase.auth.getUser();
-    if (!user) return { data: {}, error: "Not authenticated" };
+    if (!user) {
+      return {
+        data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
+        error: "Not authenticated",
+      };
+    }
 
     const { data: workouts, error: wError } = await supabase
       .from("workouts")
@@ -1346,8 +1364,15 @@ export async function getAll1RMProgression(): Promise<{
       .eq("user_id", user.id)
       .order("date", { ascending: true });
 
-    if (wError) return { data: {}, error: wError.message };
-    if (!workouts?.length) return { data: {} };
+    if (wError) {
+      return {
+        data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
+        error: wError.message,
+      };
+    }
+    if (!workouts?.length) {
+      return { data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} } };
+    }
 
     const workoutIds = workouts.map((w) => w.id);
     const { data: sets, error: sError } = await supabase
@@ -1355,7 +1380,12 @@ export async function getAll1RMProgression(): Promise<{
       .select("workout_id, reps, weight")
       .in("workout_id", workoutIds);
 
-    if (sError) return { data: {}, error: sError.message };
+    if (sError) {
+      return {
+        data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
+        error: sError.message,
+      };
+    }
     const allExerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
     const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, allExerciseIds);
     const bwSeries = await loadBodyweightSeriesForUser(supabase, user.id);
@@ -1375,37 +1405,76 @@ export async function getAll1RMProgression(): Promise<{
     }
 
     const byExercise: Estimated1RMByExercise = {};
+    const maxByExercise: MaxSessionWeightByExercise = {};
     for (const w of workouts) {
       const repsList = setsByWorkout.get(w.id) ?? [];
       const lt = loadTypeByExerciseId.get(w.exercise_id) ?? "weight";
+      const ctx = bodyweightStrengthContext(
+        lt,
+        String(w.date),
+        bwSeries,
+        categoryNameByExerciseId.get(w.exercise_id)
+      );
+      const bestSet = sessionBestStrengthSetFromSets(
+        repsList,
+        Number(w.weight) || 0,
+        lt,
+        ctx
+      );
       const stored = (w as { estimated_1rm?: number | null }).estimated_1rm;
       const best =
         stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0
           ? Number(stored)
-          : sessionEstimated1RMFromSets(
-              repsList,
-              Number(w.weight) || 0,
-              lt,
-              bodyweightStrengthContext(
-                lt,
-                String(w.date),
-                bwSeries,
-                categoryNameByExerciseId.get(w.exercise_id)
-              )
-            );
+          : sessionEstimated1RMFromSets(repsList, Number(w.weight) || 0, lt, ctx);
+      const strengthSessionReps =
+        bestSet != null
+          ? bestSet.reps
+          : repsList.length > 0
+            ? Math.max(...repsList.map((s) => Math.max(0, Number(s.reps) || 0)))
+            : undefined;
       if (best > 0) {
         const points = byExercise[w.exercise_id] ?? [];
-        points.push({ date: w.date, estimated1RM: Math.round(best * 10) / 10 });
+        points.push({
+          date: w.date,
+          estimated1RM: Math.round(best * 10) / 10,
+          ...(strengthSessionReps != null && strengthSessionReps > 0
+            ? { strengthSessionReps }
+            : {}),
+        });
         byExercise[w.exercise_id] = points;
       }
+
+      const maxLoadKg = sessionMaxResolvedLoadKg(
+        repsList,
+        Number(w.weight) || 0,
+        lt,
+        ctx
+      );
+      if (maxLoadKg > 0) {
+        const mwl = maxByExercise[w.exercise_id] ?? [];
+        mwl.push({ date: w.date, maxWeightKg: Math.round(maxLoadKg * 10) / 10 });
+        maxByExercise[w.exercise_id] = mwl;
+      }
     }
-    return { data: byExercise };
+    return { data: { estimated1RMByExercise: byExercise, maxSessionWeightByExercise: maxByExercise } };
   } catch (e) {
     return {
-      data: {},
+      data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
       error: e instanceof Error ? e.message : "Something went wrong.",
     };
   }
+}
+
+/** Fetches workouts + sets once and builds 1RM progression per exercise. Single pass. */
+export async function getAll1RMProgression(): Promise<{
+  data: Estimated1RMByExercise;
+  error?: string;
+}> {
+  const res = await getAllStrengthChartSeries();
+  return {
+    data: res.data.estimated1RMByExercise,
+    error: res.error,
+  };
 }
 
 export async function get1RMProgression(
@@ -2127,6 +2196,8 @@ export type InsightsInitialData = {
   insightItems: InsightItem[];
   /** Precomputed 1RM progression per exercise (full history). Client filters by 30/90/all. */
   estimated1RMByExercise: Estimated1RMByExercise;
+  /** Per-workout max resolved load (kg) for strength velocity (Fastest Improving Lifts). */
+  maxSessionWeightByExercise: MaxSessionWeightByExercise;
 };
 
 /** Fetches all data needed for the initial insights view in one server round-trip. Includes precomputed 1RM for all exercises. */
@@ -2140,7 +2211,7 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
       muscleRes,
       gainsRes,
       balanceRes,
-      oneRMRes,
+      seriesRes,
     ] = await Promise.all([
       getWeeklyComparison(),
       getMonthlySummary(),
@@ -2149,10 +2220,11 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
       getMuscleDistribution("this_week"),
       getTopStrengthImprovements("this_week"),
       getTrainingBalance("this_week"),
-      getAll1RMProgression(),
+      getAllStrengthChartSeries(),
     ]);
 
-    const estimated1RMByExercise = oneRMRes.data ?? {};
+    const estimated1RMByExercise = seriesRes.data?.estimated1RMByExercise ?? {};
+    const maxSessionWeightByExercise = seriesRes.data?.maxSessionWeightByExercise ?? {};
     const gainsAllTimeRes = await getTopStrengthGainsAllTime(estimated1RMByExercise);
 
     const weekly = weeklyRes.error ? null : weeklyRes.data;
@@ -2186,6 +2258,7 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
       trainingBalance,
       insightItems: insightResult.items,
       estimated1RMByExercise,
+      maxSessionWeightByExercise,
     };
   } catch (error) {
     console.error("[insights] dashboard data loading failed", error);
@@ -2201,6 +2274,7 @@ export async function getInsightsInitialData(): Promise<InsightsInitialData> {
       trainingBalance: null,
       insightItems: [],
       estimated1RMByExercise: {},
+      maxSessionWeightByExercise: {},
     };
   }
 }
@@ -2220,17 +2294,18 @@ export async function getInsightsCriticalData(): Promise<InsightsInitialData> {
     muscleRes,
     gainsRes,
     balanceRes,
-    oneRMRes,
+    seriesRes,
   ] = await Promise.all([
     getWeeklyComparison(),
     getMuscleBalanceRadarData("this_week"),
     getMuscleDistribution("this_week"),
     getTopStrengthImprovements("this_week"),
     getTrainingBalance("this_week"),
-    getAll1RMProgression(),
+    getAllStrengthChartSeries(),
   ]);
 
-  const estimated1RMByExercise = oneRMRes.data ?? {};
+  const estimated1RMByExercise = seriesRes.data?.estimated1RMByExercise ?? {};
+  const maxSessionWeightByExercise = seriesRes.data?.maxSessionWeightByExercise ?? {};
   const weekly = weeklyRes.error ? null : weeklyRes.data;
   const muscleBalanceRadar = categoryRes.data ?? null;
   const muscleDistribution = muscleRes.data ?? null;
@@ -2259,6 +2334,7 @@ export async function getInsightsCriticalData(): Promise<InsightsInitialData> {
     trainingBalance,
     insightItems: insightResult.items,
     estimated1RMByExercise,
+    maxSessionWeightByExercise,
   };
 }
 

@@ -89,7 +89,8 @@ export function RankImprovementCard({ data }: Props) {
           <>
             <div className="flex items-center gap-2">
               <p className="min-w-0 flex-1 text-xs font-semibold text-zinc-200">
-                Next rank: {content.nextLabel}
+                Next rank:{" "}
+                <span className="whitespace-nowrap">{content.nextLabel}</span>
               </p>
               <div className="flex h-6 w-6 shrink-0 items-center justify-center">
                 <RankBadge
@@ -117,7 +118,8 @@ export function RankImprovementCard({ data }: Props) {
                   />
                 </div>
                 <p className="text-[10px] text-zinc-500">
-                  {Math.round(content.progressPct)}% to {content.nextLabel}
+                  {Math.round(content.progressPct)}% to{" "}
+                  <span className="whitespace-nowrap">{content.nextLabel}</span>
                 </p>
               </div>
             )}
@@ -132,7 +134,8 @@ export function RankImprovementCard({ data }: Props) {
         ) : (
           <>
             <p className="text-[10px] text-zinc-500">
-              Add weight on these to reach {content.nextLabel}:
+              Add weight on these to reach{" "}
+              <span className="whitespace-nowrap">{content.nextLabel}</span>:
             </p>
             <ul className="space-y-1">
               {content.limiting.map(({ muscle, label, suggestions }) => (
@@ -147,7 +150,12 @@ export function RankImprovementCard({ data }: Props) {
                   >
                     <span className="min-w-0 truncate text-right">{s.exerciseName}</span>
                     <span className="shrink-0 font-semibold tabular-nums text-amber-400">
-                      {formatWeight(s.increaseKg, { units, signed: true })} {weightLabel}
+                      {formatWeight(s.increaseKg, {
+                        units,
+                        signed: true,
+                        omitFractionIfWhole: true,
+                      })}{" "}
+                      {weightLabel}
                     </span>
                   </span>
                 ))}

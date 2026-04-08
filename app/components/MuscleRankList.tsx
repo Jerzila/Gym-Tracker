@@ -7,8 +7,8 @@ import { formatDurationClock } from "@/lib/formatDuration";
 import { useUnits } from "@/app/components/UnitsContext";
 import type { BestExerciseByMuscle } from "@/app/actions/strengthRanking";
 import type { RankSlug } from "@/lib/rankBadges";
-import type { StrengthRankMuscle } from "@/lib/strengthRanking";
-import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
+import type { StrengthRankMuscle, WeightIncreaseSuggestion } from "@/lib/strengthRanking";
+import type { CoreImprovementSuggestion, StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
 
 const MUSCLE_LABELS: Record<StrengthRankMuscle, string> = {
   chest: "Chest",
@@ -21,7 +21,6 @@ const MUSCLE_LABELS: Record<StrengthRankMuscle, string> = {
   traps: "Traps",
   core: "Core",
 };
-
 
 type Props = {
   data: StrengthRankingWithExercises;
@@ -37,6 +36,156 @@ function formatTopExerciseValue(
   return `${formatWeight(ex.estimated1RM, { units })} ${weightLabel} 1RM`;
 }
 
+type Row = {
+  muscle: StrengthRankMuscle;
+  label: string;
+  isEmpty: boolean;
+  rank: RankSlug;
+  rankLabel: string;
+  progressToNextPct: number;
+  nextRankLabel: string | null;
+  topPercentileLabel: string;
+  weightSuggestions: WeightIncreaseSuggestion[];
+  coreSuggestions: CoreImprovementSuggestion[];
+  topExercises: BestExerciseByMuscle[];
+  hasStrengthData: boolean;
+};
+
+function MuscleRankCard({
+  row,
+  nextLabel,
+  isGoat,
+  units,
+  weightLabel,
+}: {
+  row: Row;
+  nextLabel: string;
+  isGoat: boolean;
+  units: ReturnType<typeof useUnits>;
+  weightLabel: string;
+}) {
+  const showProgressBar =
+    row.hasStrengthData &&
+    !row.isEmpty &&
+    row.nextRankLabel != null &&
+    !isGoat;
+
+  const pct = Math.min(100, Math.max(0, row.progressToNextPct));
+
+  const exerciseBlock = (() => {
+    if (isGoat) {
+      return <p className="text-[11px] leading-snug text-zinc-500">All lifts maxed</p>;
+    }
+    if (row.isEmpty || !row.hasStrengthData) {
+      return <p className="text-[11px] leading-snug text-zinc-500">No exercise data yet</p>;
+    }
+    if (row.muscle === "core") {
+      const cs = row.coreSuggestions[0];
+      if (cs) {
+        return (
+          <div className="border-t border-zinc-800/90 pt-1.5">
+            <p className="line-clamp-2 min-w-0 break-words text-sm font-medium leading-snug text-zinc-100">
+              {cs.name}
+            </p>
+            <p className="mt-0.5 line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-amber-500">
+              {cs.improvementLabel}
+            </p>
+          </div>
+        );
+      }
+      const ex = row.topExercises[0];
+      if (ex) {
+        return (
+          <div className="border-t border-zinc-800/90 pt-1.5">
+            <p className="line-clamp-2 min-w-0 break-words text-sm font-medium leading-snug text-zinc-100">
+              {ex.name}
+            </p>
+            <p className="mt-0.5 line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-amber-500">
+              {formatTopExerciseValue(ex, units, weightLabel)}
+            </p>
+          </div>
+        );
+      }
+      return <p className="text-[11px] leading-snug text-zinc-500">No exercise data yet</p>;
+    }
+    const w = row.weightSuggestions[0];
+    if (w) {
+      const target = row.nextRankLabel ?? nextLabel;
+      return (
+        <div className="border-t border-zinc-800/90 pt-1.5">
+          <p className="line-clamp-2 min-w-0 break-words text-sm font-medium leading-snug text-zinc-100">
+            {w.exerciseName}
+          </p>
+          <p className="mt-0.5 line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-amber-500">
+            {formatWeight(w.increaseKg, {
+              units,
+              signed: true,
+              omitFractionIfWhole: true,
+            })}{" "}
+            {weightLabel} to <span className="whitespace-nowrap">{target}</span>
+          </p>
+        </div>
+      );
+    }
+    const ex = row.topExercises[0];
+    if (ex) {
+      return (
+        <div className="border-t border-zinc-800/90 pt-1.5">
+          <p className="line-clamp-2 min-w-0 break-words text-sm font-medium leading-snug text-zinc-100">
+            {ex.name}
+          </p>
+          <p className="mt-0.5 line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-amber-500">
+            {formatTopExerciseValue(ex, units, weightLabel)}
+          </p>
+        </div>
+      );
+    }
+    return <p className="text-[11px] leading-snug text-zinc-500">No exercise data yet</p>;
+  })();
+
+  return (
+    <li className="card-tap flex min-w-0 flex-col gap-1 rounded-lg border border-zinc-800 bg-zinc-900/30 p-2.5">
+      {row.isEmpty ? (
+        <>
+          <p className="text-sm font-semibold leading-snug text-zinc-100">{row.label}</p>
+          <p className="text-[11px] leading-snug text-zinc-500">No exercise data yet</p>
+        </>
+      ) : (
+        <>
+          <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5">
+            <Image
+              src={`/${row.rank || "newbie"}.png`}
+              alt={row.rankLabel}
+              width={40}
+              height={40}
+              className="row-span-2 h-10 w-10 shrink-0 self-start object-contain"
+              unoptimized
+            />
+            <p className="line-clamp-2 min-w-0 break-normal text-sm font-semibold leading-snug text-zinc-100">
+              {row.label}
+            </p>
+            <p className="min-w-0 text-[11px] leading-snug text-zinc-400">
+              <span className="whitespace-nowrap">{row.rankLabel}</span> • {row.topPercentileLabel}
+            </p>
+          </div>
+          {showProgressBar && (
+            <div className="mt-1.5 flex w-full min-w-0 items-center gap-2">
+              <div className="h-2 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-amber-500/90 transition-[width]"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-[10px] tabular-nums text-zinc-500">{Math.round(pct)}%</span>
+            </div>
+          )}
+          <div className={showProgressBar ? "mt-2 min-w-0" : "mt-1 min-w-0"}>{exerciseBlock}</div>
+        </>
+      )}
+    </li>
+  );
+}
+
 export function MuscleRankList({ data }: Props) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
@@ -45,14 +194,13 @@ export function MuscleRankList({ data }: Props) {
     const nextLabel = data.overallNextRankLabel ?? "";
     const goat = data.overallRankSlug === "goat";
     const suggestionsByMuscle = data.improvementSuggestionsByMuscle ?? {};
-    const visible = (data.visibleMuscles?.length
+    const visible = data.visibleMuscles?.length
       ? data.visibleMuscles
-      : (["chest", "back", "legs", "shoulders", "biceps", "triceps"] as StrengthRankMuscle[]));
+      : (["chest", "back", "legs", "shoulders", "biceps", "triceps"] as StrengthRankMuscle[]);
 
     const topByMuscle =
-      data.topExercisesByMuscle ??
-      ({} as Record<StrengthRankMuscle, BestExerciseByMuscle[]>);
-    const rows = visible.map((muscle) => {
+      data.topExercisesByMuscle ?? ({} as Record<StrengthRankMuscle, BestExerciseByMuscle[]>);
+    const rows: Row[] = visible.map((muscle) => {
       const exerciseCount = data.exerciseCountByMuscle?.[muscle] ?? 0;
       const muscleScore = data.muscleScores?.[muscle] ?? 0;
       const isEmpty =
@@ -60,7 +208,6 @@ export function MuscleRankList({ data }: Props) {
         exerciseCount === 0 &&
         muscleScore <= 0;
       const rankInfo = data.muscleRanks[muscle];
-      const topLabel = `${rankInfo.topPercentileLabel} of lifters`;
       const isCore = muscle === "core";
       const weightSuggestions = isCore ? [] : (suggestionsByMuscle[muscle] ?? []);
       const coreSuggestions = isCore ? (data.coreImprovementSuggestions ?? []) : [];
@@ -72,11 +219,10 @@ export function MuscleRankList({ data }: Props) {
         label: MUSCLE_LABELS[muscle],
         isEmpty,
         rank: rankInfo.rankSlug as RankSlug,
-        tier: rankInfo.tier,
         rankLabel: rankInfo.rankLabel,
         progressToNextPct: rankInfo.progressToNextPct ?? 0,
         nextRankLabel: rankInfo.nextRankLabel ?? null,
-        topLabel,
+        topPercentileLabel: rankInfo.topPercentileLabel,
         weightSuggestions,
         coreSuggestions,
         topExercises,
@@ -88,139 +234,20 @@ export function MuscleRankList({ data }: Props) {
   }, [data]);
 
   return (
-    <div className="card-tap rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 transition hover:border-zinc-700">
-      <h2 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+    <div className="card-tap rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700">
+      <h2 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
         Muscle Strength Rankings
       </h2>
-      <ul className="space-y-3">
+      <ul className="grid grid-cols-2 gap-x-3 gap-y-2">
         {rows.map((row) => (
-          <li
+          <MuscleRankCard
             key={row.muscle}
-            className="card-tap flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/30 px-3 py-2.5"
-          >
-            {!row.isEmpty && (
-              <Image
-                src={`/${row.rank || "newbie"}.png`}
-                alt={row.rankLabel}
-                width={48}
-                height={48}
-                className="h-12 w-12 shrink-0 object-contain"
-                unoptimized
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-zinc-100">{row.label}</p>
-              {row.isEmpty ? (
-                <p className="text-sm text-zinc-500">No strength data yet</p>
-              ) : (
-                <>
-                  <p className="text-sm text-zinc-400">
-                    {row.rankLabel} · {row.topLabel}
-                  </p>
-                  {row.nextRankLabel && row.progressToNextPct < 100 && (
-                    <p className="text-xs text-zinc-500">
-                      {row.progressToNextPct}% progress to {row.nextRankLabel}
-                    </p>
-                  )}
-                </>
-              )}
-              {isGoat ? (
-                <p className="mt-1 text-sm text-zinc-500">All lifts maxed</p>
-              ) : row.isEmpty ? (
-                <p className="mt-1 text-sm text-zinc-500">
-                  Log exercises in {row.label} to see your rank.
-                </p>
-              ) : row.muscle === "core" ? (
-                row.coreSuggestions.length > 0 ? (
-                  <>
-                    <ul className="mt-1.5 space-y-1 text-sm text-zinc-400">
-                      {row.coreSuggestions.slice(0, 3).map(({ name, improvementLabel }) => (
-                        <li key={name} className="flex items-baseline justify-between gap-2">
-                          <span>{name}</span>
-                          <span className="shrink-0 font-semibold text-amber-500">
-                            {improvementLabel}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 text-xs text-zinc-500">
-                      Improve any of these to climb core ranks.
-                    </p>
-                  </>
-                ) : row.topExercises.length > 0 ? (
-                  <>
-                    <ul className="mt-1.5 space-y-1 text-sm text-zinc-400">
-                      {row.topExercises.slice(0, 3).map((ex) => (
-                        <li key={ex.name} className="flex items-baseline justify-between gap-2">
-                          <span>Best {ex.name}</span>
-                          <span className="shrink-0 font-medium text-zinc-300">
-                            {formatTopExerciseValue(ex, units, weightLabel)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 text-xs text-zinc-500">
-                      Keep training core to reach {row.nextRankLabel ?? nextLabel}.
-                    </p>
-                  </>
-                ) : (data.muscleScores?.core ?? 0) > 0 ? (
-                  <p className="mt-1 text-sm text-zinc-500">
-                    Core rank is endurance volume: best hold (seconds) + 2× best bodyweight reps, using dedicated volume tiers.
-                  </p>
-                ) : (
-                  <p className="mt-1 text-sm text-zinc-500">
-                    No core workouts logged yet
-                    <br />
-                    <span className="text-xs">Log core workouts to start ranking.</span>
-                  </p>
-                )
-              ) : row.weightSuggestions.length > 0 ? (
-                <>
-                  <ul className="mt-1.5 space-y-1 text-sm text-zinc-400">
-                    {row.weightSuggestions.map((s) => (
-                      <li key={s.exerciseId} className="flex items-baseline justify-between gap-2">
-                        <span>{s.exerciseName}</span>
-                        <span className="shrink-0 font-semibold text-amber-500">
-                          {formatWeight(s.increaseKg, { units, signed: true })} {weightLabel}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-2 text-xs text-zinc-500">
-                    Improve any of these to reach {row.nextRankLabel ?? nextLabel}.
-                  </p>
-                </>
-              ) : row.hasStrengthData ? (
-                row.topExercises.length > 0 ? (
-                  <>
-                    <ul className="mt-1.5 space-y-1 text-sm text-zinc-400">
-                      {row.topExercises.slice(0, 3).map((ex) => (
-                        <li key={ex.name} className="flex items-baseline justify-between gap-2">
-                          <span>{ex.name}</span>
-                          <span className="shrink-0 font-medium text-zinc-500">
-                            {formatTopExerciseValue(ex, units, weightLabel)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <p className="mt-2 text-xs text-zinc-500">
-                      Keep pushing these lifts to reach {row.nextRankLabel ?? nextLabel}.
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-1 text-sm text-zinc-500">
-                    Keep training {row.label.toLowerCase()} to reach {row.nextRankLabel ?? nextLabel}.
-                  </p>
-                )
-              ) : (
-                <p className="mt-1 text-sm text-zinc-500">
-                  No strength data yet
-                  <br />
-                  <span className="text-xs">Log {row.label.toLowerCase()} exercises to start ranking.</span>
-                </p>
-              )}
-            </div>
-          </li>
+            row={row}
+            nextLabel={nextLabel}
+            isGoat={isGoat}
+            units={units}
+            weightLabel={weightLabel}
+          />
         ))}
       </ul>
     </div>

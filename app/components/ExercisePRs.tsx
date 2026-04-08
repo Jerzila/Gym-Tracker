@@ -4,6 +4,7 @@ import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import type { StrengthProgressResult } from "@/lib/pr";
 import { formatDurationClock } from "@/lib/formatDuration";
+import { formatStrengthVelocityLine } from "@/lib/strengthVelocity";
 
 type BodyweightProps = {
   variant: "bodyweight";
@@ -11,10 +12,15 @@ type BodyweightProps = {
   strengthProgress: Extract<StrengthProgressResult, { kind: "reps" }> | null;
 };
 
+export type WeightStrengthVelocity =
+  | { kind: "ok"; kgPerMonth: number }
+  | { kind: "prompt_more_workouts" }
+  | { kind: "needs_day_gap" };
+
 type WeightProps = {
   variant?: "weight";
   heaviest: number | null;
-  best1RM: number | null;
+  strengthVelocity: WeightStrengthVelocity;
   maxRepsAtHeaviest: number | null;
   strengthProgress: Extract<StrengthProgressResult, { kind: "weight" }> | null;
 };
@@ -141,8 +147,14 @@ export function ExercisePRs(props: Props) {
     );
   }
 
-  const { heaviest, best1RM, maxRepsAtHeaviest, strengthProgress } = props;
-  if (heaviest == null && best1RM == null && strengthProgress == null) {
+  const { heaviest, strengthVelocity, maxRepsAtHeaviest, strengthProgress } = props;
+  if (
+    heaviest == null &&
+    maxRepsAtHeaviest == null &&
+    strengthProgress == null &&
+    (strengthVelocity.kind === "prompt_more_workouts" ||
+      strengthVelocity.kind === "needs_day_gap")
+  ) {
     return null;
   }
   const strengthColorClass =
@@ -199,15 +211,26 @@ export function ExercisePRs(props: Props) {
               : "—"}
           </p>
         </div>
-        <div className="card-tap rounded-xl bg-zinc-900/40 px-4 py-3">
-          <p className="text-xs text-zinc-500">Est. 1RM</p>
-          <p className="text-lg font-semibold">
-            {best1RM != null ? (
-              <>
-                {formatWeight(best1RM, { units })} {weightLabel}
-              </>
+        <div className="card-tap min-w-0 rounded-xl bg-zinc-900/40 px-4 py-3">
+          <p className="text-xs text-zinc-500">Strength Velocity</p>
+          <p
+            className={[
+              "text-base font-semibold tabular-nums leading-snug tracking-tight sm:text-lg break-words",
+              strengthVelocity.kind === "ok"
+                ? strengthVelocity.kgPerMonth > 0
+                  ? "text-emerald-400"
+                  : strengthVelocity.kgPerMonth < 0
+                    ? "text-red-400"
+                    : "text-zinc-300"
+                : "text-zinc-500",
+            ].join(" ")}
+          >
+            {strengthVelocity.kind === "ok" ? (
+              formatStrengthVelocityLine(strengthVelocity.kgPerMonth, units)
+            ) : strengthVelocity.kind === "prompt_more_workouts" ? (
+              "Log one more workout to calculate"
             ) : (
-              "—"
+              "Log a workout on another day"
             )}
           </p>
         </div>

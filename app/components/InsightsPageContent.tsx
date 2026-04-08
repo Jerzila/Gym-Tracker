@@ -24,6 +24,12 @@ import {
   type InsightItem,
   type Estimated1RMByExercise,
 } from "@/app/actions/insights";
+import { normalizeLoadType } from "@/lib/loadType";
+import {
+  computeStrengthVelocityFromMaxWeights,
+  type MaxSessionWeightByExercise,
+} from "@/lib/strengthVelocity";
+import { computeTopImprovementsDisplayMetrics } from "@/lib/topImprovementsDisplay";
 import { getCurrentYearMonth } from "@/lib/insightsDates";
 import type { Exercise } from "@/lib/types";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
@@ -46,7 +52,13 @@ import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
 import { InstallPromptOnNewRank } from "@/app/components/InstallPromptOnNewRank";
 import { MuscleProgressCompareModal } from "@/app/components/MuscleProgressCompareModal";
-import { AlertTriangleIcon, FireIcon, ScaleIcon, SwapHorizontalIcon, TrendingDownIcon, TrendingUpIcon } from "@/components/icons";
+import {
+  ExerciseProgressRankingsModal,
+  ProgressRankingRow,
+  type ExerciseProgressRankRow,
+} from "@/app/components/ExerciseProgressRankingsModal";
+import { SwapHorizontalIcon } from "@/components/icons";
+import { AdvancedStrengthAnalyticsSection } from "@/app/components/AdvancedStrengthAnalyticsSection";
 
 const MuscleRadarChart = dynamic(
   () => import("@/app/components/MuscleRadarChart").then((m) => ({ default: m.MuscleRadarChart })),
@@ -114,7 +126,12 @@ const ONE_RM_RANGES: { value: "30" | "90" | "all"; label: string }[] = [
   { value: "all", label: "All time" },
 ];
 
-export function InsightsPageContent({ exercises, gender = "male", strengthRanking, earliestWorkoutDate }: Props) {
+export function InsightsPageContent({
+  exercises,
+  gender = "male",
+  strengthRanking,
+  earliestWorkoutDate,
+}: Props) {
   const router = useRouter();
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
@@ -124,6 +141,8 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   const [oneRMRange, setOneRMRange] = useState<"30" | "90" | "all">("90");
   /** Precomputed on initial load; charts read from this (no fetch on exercise/range change). */
   const [estimated1RMByExercise, setEstimated1RMByExercise] = useState<Estimated1RMByExercise>({});
+  const [maxSessionWeightByExercise, setMaxSessionWeightByExercise] =
+    useState<MaxSessionWeightByExercise>({});
   const [monthly, setMonthly] = useState<MonthlySummary | null>(null);
   const [topStrengthGains, setTopStrengthGains] = useState<TopStrengthGain[]>([]);
   const [topStrengthGainsAllTime, setTopStrengthGainsAllTime] = useState<TopStrengthGain[]>([]);
@@ -149,6 +168,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   monthlyCacheRef.current = monthlyAnalyticsCache;
   const [showDeferred, setShowDeferred] = useState(false);
   const [showCompareModal, setShowCompareModal] = useState(false);
+  const [showProgressRankingsModal, setShowProgressRankingsModal] = useState(false);
   const cache = useWorkoutDataCache();
   useEffect(() => {
     const t = setTimeout(() => setShowDeferred(true), 0);
@@ -156,6 +176,72 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   }, []);
 
   const exerciseList = useMemo(() => exercises.filter((e) => e.id), [exercises]);
+  /**
+   * All exercises with positive progress rate (kg/mo), sorted by rate desc then earliest
+   * velocity window start (stable tie-break). Same `computeStrengthVelocityFromMaxWeights` as before.
+   */
+  const progressRateRankings = useMemo((): ExerciseProgressRankRow[] => {
+    type Raw = {
+      exerciseId: string;
+      name: string;
+      velocityKgPerMonth: number;
+      fromDate: string;
+      totalProgressKg: number;
+      rateKgPerMonth: number | null;
+    };
+    const raw: Raw[] = [];
+    for (const ex of exerciseList) {
+      if (normalizeLoadType(ex.load_type) === "timed") continue;
+      const pts = maxSessionWeightByExercise[ex.id] ?? [];
+      const validWorkouts = pts.filter((p) => p.date && p.maxWeightKg > 0);
+      if (validWorkouts.length < 2) continue;
+
+      const r = computeStrengthVelocityFromMaxWeights(pts);
+      if (r.kind !== "ok" || r.velocityKgPerMonth <= 0) continue;
+
+      const disp = computeTopImprovementsDisplayMetrics(pts);
+      if (!disp) continue;
+
+      let totalProgressKg = disp.totalKg;
+      let rateKgPerMonth = disp.rateKgPerMonth;
+      if (!Number.isFinite(totalProgressKg)) {
+        totalProgressKg = 0;
+        if (rateKgPerMonth == null && r.kind === "ok") {
+          rateKgPerMonth = Math.round(r.velocityKgPerMonth * 10) / 10;
+        }
+      }
+
+      raw.push({
+        exerciseId: ex.id,
+        name: ex.name,
+        velocityKgPerMonth: r.velocityKgPerMonth,
+        fromDate: r.fromDate,
+        totalProgressKg,
+        rateKgPerMonth,
+      });
+    }
+    raw.sort((a, b) => {
+      if (b.velocityKgPerMonth !== a.velocityKgPerMonth) {
+        return b.velocityKgPerMonth - a.velocityKgPerMonth;
+      }
+      const dateCmp = a.fromDate.localeCompare(b.fromDate);
+      if (dateCmp !== 0) return dateCmp;
+      return a.exerciseId.localeCompare(b.exerciseId);
+    });
+
+    return raw.map((r, i) => ({
+      rank: i + 1,
+      exerciseId: r.exerciseId,
+      name: r.name,
+      totalProgressKg: r.totalProgressKg,
+      rateKgPerMonth: r.rateKgPerMonth,
+    }));
+  }, [exerciseList, maxSessionWeightByExercise]);
+
+  const topProgressRatePreview = useMemo(
+    () => progressRateRankings.slice(0, 3),
+    [progressRateRankings]
+  );
   const defaultExId = exerciseList[0]?.id ?? "";
 
   useEffect(() => {
@@ -186,6 +272,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
       setTrainingBalance(cached.trainingBalance ?? null);
       setInsightItems(cached.insightItems);
       setEstimated1RMByExercise(cached.estimated1RMByExercise ?? {});
+      setMaxSessionWeightByExercise(cached.maxSessionWeightByExercise ?? {});
       setBalanceDatasets((prev) => ({ ...prev, this_week: buildRangeDataFromInitial(cached) }));
       setLoading(false);
       const context: InsightsRangeContext = {
@@ -221,6 +308,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
       setTrainingBalance(data.trainingBalance ?? null);
       setInsightItems(data.insightItems);
       setEstimated1RMByExercise(data.estimated1RMByExercise ?? {});
+      setMaxSessionWeightByExercise(data.maxSessionWeightByExercise ?? {});
       setBalanceDatasets((prev) => ({ ...prev, this_week: buildRangeDataFromInitial(data) }));
       setLoading(false);
       const context: InsightsRangeContext = {
@@ -321,7 +409,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <InstallPromptOnNewRank overallRankSlug={strengthRanking?.overallRankSlug} />
       {/* Section 1: Top Rank Card */}
       {strengthRanking && (
@@ -342,7 +430,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         </section>
       )}
 
-      <div className="border-t border-zinc-800/60 pt-2 sm:pt-4" aria-hidden />
+      <div className="border-t border-zinc-800/60 pt-2 sm:pt-3" aria-hidden />
 
       {/* Muscle Strength — diagram, list, weakest */}
       {strengthRanking && (
@@ -382,12 +470,19 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         }}
       />
 
+      <ExerciseProgressRankingsModal
+        open={showProgressRankingsModal}
+        onClose={() => setShowProgressRankingsModal(false)}
+        rows={progressRateRankings}
+        units={units}
+      />
+
       {/* Muscle Balance — total sets per muscle group; tap chart for details */}
-      <section id="muscle-balance" className="mt-10">
+      <section id="muscle-balance" className="mt-6">
         <h3 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Muscle Balance
         </h3>
-        <p className="mb-3 text-xs text-zinc-500">
+        <p className="mb-2 text-xs text-zinc-500">
           Total sets per muscle group for the selected period. Tap a muscle group to see details.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
@@ -416,7 +511,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
           />
         )}
         {balanceRangeReady && currentRangeData?.trainingBalance && (
-          <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+          <div className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
             <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
               Training Balance
             </h4>
@@ -431,18 +526,18 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         )}
       </section>
 
-      <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+      <div className="border-t border-zinc-800/60 pt-4" aria-hidden />
 
       {/* Strength Progress (1RM) */}
       <section>
-        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Estimated 1RM progression
         </h3>
-        <div className="mb-3 flex flex-wrap items-center gap-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <select
             value={selectedExerciseId}
             onChange={(e) => setSelectedExerciseId(e.target.value)}
-            className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+            className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-sm text-zinc-200 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
           >
             {exerciseList.map((ex) => (
               <option key={ex.id} value={ex.id}>
@@ -470,78 +565,61 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         </div>
         <StrengthProgressChart data={oneRMData} />
 
-        <div className="mt-4">
-          <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
-            Biggest Strength Gains
+        <div className="mt-3">
+          <h4 className="mb-1.5 text-xs font-medium uppercase tracking-wider text-zinc-500">
+            Top Improvements
           </h4>
-          {topStrengthGainsAllTime.length > 0 ? (
-            <ul className="space-y-2">
-              {topStrengthGainsAllTime.map((g, i) => (
-                <li
-                  key={i}
-                  className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3 transition hover:border-zinc-700"
-                >
-                  <p className="font-medium text-zinc-100">{g.name}</p>
-                  <p className="mt-0.5 font-medium text-emerald-400">
-                    +{formatWeight(g.improvementKg, { units })} {weightLabel} estimated 1RM
-                  </p>
-                  {g.fromKg != null && g.toKg != null && (
-                    <p className="mt-1 text-xs text-zinc-500">
-                      From {formatWeight(g.fromKg, { units })} {weightLabel} → {formatWeight(g.toKg, { units })} {weightLabel}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4 text-center">
-              <p className="text-sm text-zinc-500">No strength improvements recorded yet.</p>
-              <p className="mt-1 text-xs text-zinc-500">
-                Start logging workouts to track your strength gains.
+          {loading ? (
+            <p className="min-h-[3.5rem] rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5 text-center text-sm leading-snug text-zinc-500">
+              Loading…
+            </p>
+          ) : progressRateRankings.length === 0 ? (
+            <div className="min-h-[3.5rem] rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2.5 text-center">
+              <p className="text-sm leading-snug text-zinc-500">
+                No improvement data yet. Log more workouts to see rankings.
               </p>
             </div>
+          ) : (
+            <>
+              <ul className="space-y-2">
+                {topProgressRatePreview.map((row) => (
+                  <li
+                    key={row.exerciseId}
+                    className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-2.5 py-2 transition hover:border-zinc-700"
+                  >
+                    <ProgressRankingRow row={row} units={units} />
+                  </li>
+                ))}
+              </ul>
+              {progressRateRankings.length > 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowProgressRankingsModal(true)}
+                  className="tap-feedback mt-2 w-full rounded-lg py-1.5 text-left text-xs font-semibold text-amber-400 transition hover:text-amber-300 active:scale-[0.99]"
+                >
+                  See More →
+                </button>
+              ) : null}
+            </>
           )}
         </div>
       </section>
 
-      <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+      <div className="border-t border-zinc-800/60 pt-4" aria-hidden />
 
-      {/* Training Insights — deferred (secondary content) */}
-      {showDeferred && (
-      <section>
-        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
-          Training Insights
-        </h3>
-        {(!balanceRangeReady || (currentRangeData?.insightItems ?? []).length === 0) ? (
-          <p className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-6 text-center text-sm text-zinc-500">
-            {!balanceRangeReady ? "Loading…" : "Log more workouts to see insights."}
-          </p>
-        ) : (
-          <ul className="space-y-2.5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4">
-            {(currentRangeData?.insightItems ?? []).map((item, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-zinc-300">
-                <span className="mt-0.5">
-                  <InsightIcon icon={item.icon} />
-                </span>
-                <span>{item.text}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-      )}
+      <AdvancedStrengthAnalyticsSection />
 
-      <div className="border-t border-zinc-800/60 pt-8" aria-hidden />
+      <div className="border-t border-zinc-800/60 pt-4" aria-hidden />
 
       {/* Monthly Analytics Dashboard — deferred (secondary content) */}
       {showDeferred && (
       <section className="transition-opacity duration-200">
-        <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-zinc-500">
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
           Monthly analytics
         </h3>
 
         {/* Month selector */}
-        <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="mb-2 flex flex-wrap items-center gap-2">
           <span className="text-sm text-zinc-500">Month:</span>
           <select
             value={`${selectedMonth.year}-${selectedMonth.month}`}
@@ -549,7 +627,7 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
               const [y, m] = e.target.value.split("-").map(Number);
               setSelectedMonth({ year: y, month: m });
             }}
-            className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-3 py-2 text-sm text-zinc-200 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
+            className="rounded-lg border border-zinc-700 bg-zinc-800/80 px-2.5 py-1.5 text-sm text-zinc-200 focus:border-amber-500/50 focus:outline-none focus:ring-1 focus:ring-amber-500/50"
             aria-label="Select month"
           >
             {monthOptions.map((opt) => (
@@ -567,26 +645,30 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
         </div>
 
         {loadingMonthly && !monthlyAnalytics ? (
-          <div className="space-y-6">
-            <SkeletonPanel height="h-80" />
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <div key={i} className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-                  <div className="animate-skeleton-pulse h-3 w-16 rounded bg-zinc-700/60" />
-                  <div className="animate-skeleton-pulse mt-1 h-6 w-10 rounded bg-zinc-700/60" />
+          <div className="space-y-3">
+            <SkeletonPanel height="h-56" />
+            <div className="grid grid-cols-2 gap-2.5">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+                  <div className="animate-skeleton-pulse h-2.5 w-14 rounded bg-zinc-700/60" />
+                  <div className="animate-skeleton-pulse mt-1 h-5 w-8 rounded bg-zinc-700/60" />
                 </div>
               ))}
             </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+              <div className="animate-skeleton-pulse h-2.5 w-24 rounded bg-zinc-700/60" />
+              <div className="animate-skeleton-pulse mt-1 h-5 w-12 rounded bg-zinc-700/60" />
+            </div>
           </div>
         ) : !monthlyAnalytics || (monthlyAnalytics.totalSets === 0 && monthlyAnalytics.workoutsCompleted === 0) ? (
-          <p className="rounded-xl bg-zinc-900/40 px-4 py-6 text-center text-sm text-zinc-500">
+          <p className="rounded-lg bg-zinc-900/40 px-3 py-3 text-center text-sm text-zinc-500">
             No data for this month yet.
           </p>
         ) : (
-          <div className="space-y-6 animate-fade-in">
+          <div className="space-y-3 animate-fade-in">
             {/* Donut chart */}
             <div>
-              <p className="mb-2 text-xs text-zinc-500">
+              <p className="mb-1 text-xs text-zinc-500">
                 Share of total sets per category
               </p>
               <MonthlyDonutChart
@@ -595,8 +677,8 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
               />
             </div>
 
-            {/* Summary metrics */}
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {/* Summary metrics — compact 2×2 + strength change */}
+            <div className="grid grid-cols-2 gap-2.5">
               <MetricCard
                 label="Workouts"
                 value={String(monthlyAnalytics.workoutsCompleted)}
@@ -606,36 +688,33 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
                 value={String(monthlyAnalytics.totalSets)}
               />
               <MetricCard
-                label="Exercises Used"
+                label="Exercises"
                 value={String(monthlyAnalytics.exercisesUsed)}
               />
-              <MetricCard
-                label="PRs Hit"
-                value={String(monthlyAnalytics.prsHit)}
-              />
-              <MetricCard
-                label="Strength Change"
-                value={
-                  monthlyAnalytics.strengthChangePct != null ? (
-                    <span
-                      className={
-                        monthlyAnalytics.strengthChangePct >= 0
-                          ? "text-emerald-400"
-                          : "text-red-400"
-                      }
-                    >
-                      {monthlyAnalytics.strengthChangePct >= 0 ? "+" : ""}
-                      {monthlyAnalytics.strengthChangePct}%
-                    </span>
-                  ) : (
-                    "—"
-                  )
-                }
-              />
+              <MetricCard label="PRs" value={String(monthlyAnalytics.prsHit)} />
             </div>
+            <MetricCard
+              label="Strength Change"
+              value={
+                monthlyAnalytics.strengthChangePct != null ? (
+                  <span
+                    className={
+                      monthlyAnalytics.strengthChangePct >= 0
+                        ? "text-emerald-400"
+                        : "text-red-400"
+                    }
+                  >
+                    {monthlyAnalytics.strengthChangePct >= 0 ? "+" : ""}
+                    {monthlyAnalytics.strengthChangePct}%
+                  </span>
+                ) : (
+                  "—"
+                )
+              }
+            />
 
             {/* Training balance */}
-            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-4 py-3">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
               <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
                 Training Balance
               </h4>
@@ -658,20 +737,18 @@ export function InsightsPageContent({ exercises, gender = "male", strengthRankin
 
             {/* Top exercise */}
             {monthlyAnalytics.topExercise && (
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-4">
-                <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+                <h4 className="mb-1 text-xs font-medium uppercase tracking-wider text-zinc-500">
                   Top Exercise
                 </h4>
-                <p className="text-lg font-medium text-zinc-100">
+                <p className="text-base font-medium leading-tight text-zinc-100">
                   {monthlyAnalytics.topExercise.name}
                 </p>
-                <p className="mt-1 text-sm text-emerald-400">
+                <p className="mt-0.5 text-sm leading-snug text-emerald-400">
                   Strength Gain: +{formatWeight(monthlyAnalytics.topExercise.strengthGainKg, { units })} {weightLabel}
                   estimated 1RM
                 </p>
-                <p className="text-sm text-zinc-500">
-                  Sessions: {monthlyAnalytics.topExercise.sessions}
-                </p>
+                <p className="text-xs text-zinc-500">Sessions: {monthlyAnalytics.topExercise.sessions}</p>
               </div>
             )}
           </div>
@@ -692,9 +769,9 @@ const MetricCard = memo(function MetricCard({
   sub?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 px-4 py-3">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-0.5 text-lg font-semibold text-zinc-100">{value}</p>
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
+      <p className="mt-0.5 text-base font-semibold tabular-nums text-zinc-100">{value}</p>
       {sub != null && (
         <p className="mt-0.5 text-xs text-zinc-500">{sub}</p>
       )}
@@ -714,7 +791,7 @@ const StrengthProgressChart = memo(function StrengthProgressChart({ data }: { da
 
   if (data.length === 0) {
     return (
-      <div className="flex h-56 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/50 text-sm text-zinc-500">
+      <div className="flex min-h-[200px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-500">
         No 1RM data for this exercise
       </div>
     );
@@ -722,11 +799,11 @@ const StrengthProgressChart = memo(function StrengthProgressChart({ data }: { da
 
   return (
     <div
-      className="h-56 w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-3"
-      style={{ minHeight: 224 }}
+      className="h-[200px] w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-2"
+      style={{ minHeight: 200 }}
     >
-      <ResponsiveContainer width="100%" height={224}>
-        <LineChart data={data} margin={{ top: 5, right: 5, left: 0, bottom: 5 }}>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 4, right: 4, left: 0, bottom: 4 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#3f3f46" />
           <XAxis
             dataKey="date"
@@ -822,16 +899,18 @@ const MonthlyDonutChart = memo(function MonthlyDonutChart({
 
   if (data.length === 0) {
     return (
-      <div className="flex h-80 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/50 text-sm text-zinc-500">
+      <div className="flex min-h-[180px] items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2 text-sm text-zinc-500">
         No training data for this month
       </div>
     );
   }
 
+  const chartSize = 220;
+
   return (
-    <div className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-      <div className="relative w-full" style={{ height: 320 }}>
-        <ResponsiveContainer width="100%" height={320}>
+    <div className="w-full rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+      <div className="relative w-full" style={{ height: chartSize }}>
+        <ResponsiveContainer width="100%" height={chartSize}>
           <PieChart>
             <Pie
               data={chartData}
@@ -839,9 +918,9 @@ const MonthlyDonutChart = memo(function MonthlyDonutChart({
               nameKey="name"
               cx="50%"
               cy="50%"
-              innerRadius={80}
-              outerRadius={120}
-              paddingAngle={4}
+              innerRadius={52}
+              outerRadius={82}
+              paddingAngle={3}
               animationDuration={0}
               isAnimationActive={false}
             >
@@ -864,27 +943,24 @@ const MonthlyDonutChart = memo(function MonthlyDonutChart({
         </ResponsiveContainer>
         {/* Center label: total sets (inside chart area so it aligns with donut hole) */}
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-3xl font-semibold tabular-nums text-zinc-100">
+          <span className="text-2xl font-semibold tabular-nums text-zinc-100">
             {totalSets}
           </span>
-          <span className="mt-0.5 text-xs font-medium uppercase tracking-wider text-zinc-500">
+          <span className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-zinc-500">
             Total Sets
           </span>
         </div>
       </div>
-      {/* Legend: Category — X sets — Y% (sorted by percentage, dot = slice color) */}
-      <div className="mt-4 flex flex-wrap justify-center gap-x-4 gap-y-2 sm:gap-x-6">
+      <div className="mt-2 space-y-0.5 text-xs leading-snug text-zinc-400">
         {data.map((d, i) => (
-          <div
-            key={d.category}
-            className="flex items-center gap-2 text-sm text-zinc-300"
-          >
+          <div key={d.category} className="flex items-baseline gap-1.5">
             <span
-              className="h-2.5 w-2.5 flex-shrink-0 rounded-full"
+              className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 rounded-full"
               style={{ backgroundColor: DONUT_COLORS[i % DONUT_COLORS.length] }}
+              aria-hidden
             />
             <span>
-              {d.category} — {d.sets} sets — {d.percentage}%
+              {d.category} • {d.sets} sets • {d.percentage}%
             </span>
           </div>
         ))}
@@ -892,18 +968,4 @@ const MonthlyDonutChart = memo(function MonthlyDonutChart({
     </div>
   );
 });
-
-function InsightIcon({ icon }: { icon: string }) {
-  const common = { size: 18, className: "text-zinc-400 shrink-0", "aria-hidden": "true" as const };
-  if (icon === "📈") return <TrendingUpIcon {...common} />;
-  if (icon === "📉") return <TrendingDownIcon {...common} />;
-  if (icon === "⚖") return <ScaleIcon {...common} />;
-  if (icon === "⚠") return <AlertTriangleIcon {...common} />;
-  if (icon === "fire") return <FireIcon {...common} />;
-  return (
-    <span className="text-base text-zinc-400 leading-none" aria-hidden>
-      {icon}
-    </span>
-  );
-}
 

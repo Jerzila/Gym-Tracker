@@ -176,7 +176,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
                 <RankBadge rank={muscleCard.rank} tier={muscleCard.tier} size={isMobile ? 56 : 72} />
               </div>
               <p className="text-center text-sm font-medium text-zinc-300">
-                {muscleCard.rankLabel}
+                <span className="whitespace-nowrap">{muscleCard.rankLabel}</span>
               </p>
               <p className={`text-center text-zinc-400 ${isMobile ? "text-sm" : "text-xs"}`}>{muscleCard.topLabel}</p>
             </>
@@ -204,7 +204,9 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
           )}
           {!muscleCard.isEmpty && (
             <div className="mt-2">
-              <p className={`text-zinc-500 ${isMobile ? "text-xs" : "text-[10px]"}`}>Next: {muscleCard.nextLabel}</p>
+              <p className={`text-zinc-500 ${isMobile ? "text-xs" : "text-[10px]"}`}>
+                Next: <span className="whitespace-nowrap">{muscleCard.nextLabel}</span>
+              </p>
               <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
                 <div
                   className="h-full rounded-full bg-amber-500 transition-all duration-200"

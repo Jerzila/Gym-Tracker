@@ -36,11 +36,15 @@ export function InsightsRankCard({ display }: Props) {
     <div className="card-tap flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
       <RankBadge rank={rank} tier={tier} size={120} />
       <div className="min-w-0 flex-1">
-        <p className="text-lg font-semibold tracking-tight text-zinc-100">{rankLabel}</p>
+        <p className="text-lg font-semibold tracking-tight text-zinc-100">
+          <span className="whitespace-nowrap">{rankLabel}</span>
+        </p>
         <p className="mt-0.5 text-xs text-zinc-400">{topLabel}</p>
         {nextLabel ? (
           <>
-            <p className="mt-1.5 text-xs text-zinc-500">Next rank: {nextLabel}</p>
+            <p className="mt-1.5 text-xs text-zinc-500">
+              Next rank: <span className="whitespace-nowrap">{nextLabel}</span>
+            </p>
             <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-zinc-800">
               <div
                 className="h-full rounded-full bg-amber-500 transition-all duration-300"

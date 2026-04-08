@@ -83,6 +83,27 @@ export function sessionBestStrengthSetFromSets(
   return best;
 }
 
+/**
+ * Heaviest resolved load (kg) logged in the session — max bar/extra+bw load, not Epley estimate.
+ * Falls back to bodyweight + extra or workout row weight when there are no sets.
+ */
+export function sessionMaxResolvedLoadKg(
+  sets: SessionSetRow[],
+  workoutFallbackKg: number,
+  loadType: LoadType | unknown,
+  ctx?: SessionStrengthContext
+): number {
+  const t = normalizeLoadType(loadType);
+  if (t === "timed") return 0;
+  const best = sessionBestStrengthSetFromSets(sets, workoutFallbackKg, loadType, ctx);
+  if (best != null && best.weightKg > 0) return best.weightKg;
+  if (t === "bodyweight" && ctx?.userBodyweightKg != null) {
+    const frac = ctx.bodyweightLoadFraction ?? 1;
+    return ctx.userBodyweightKg * frac + Math.max(0, Number(workoutFallbackKg) || 0);
+  }
+  return Math.max(0, Number(workoutFallbackKg) || 0);
+}
+
 export function sessionEstimated1RMFromSets(
   sets: SessionSetRow[],
   workoutFallbackKg: number,
