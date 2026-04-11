@@ -10,7 +10,7 @@ import {
 } from "@/lib/sessionStrength";
 import type { MaxSessionWeightPoint } from "@/lib/strengthVelocity";
 import {
-  getAllStrengthChartSeries,
+  getStrengthChartSeriesForExerciseIds,
   type OneRMPoint,
   type StrengthChartSeriesBundle,
 } from "@/app/actions/insights";
@@ -602,8 +602,12 @@ export async function getAdvancedStrengthAnalytics(
         .find((c) => c.id === categoryId)
         ?.exercises.find((e) => e.id === selected)?.name ?? "Exercise";
 
+    const analyticsExerciseIds = [
+      ...new Set(categories.flatMap((c) => c.exercises.map((e) => e.id))),
+    ];
+
     const [seriesRes, prWorkouts] = await Promise.all([
-      getAllStrengthChartSeries(),
+      getStrengthChartSeriesForExerciseIds(analyticsExerciseIds),
       loadPrAnalysisWorkoutsForExercise(supabase, user.id, selected),
     ]);
 

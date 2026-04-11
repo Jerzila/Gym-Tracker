@@ -1341,6 +1341,127 @@ export type StrengthChartSeriesBundle = {
   maxSessionWeightByExercise: MaxSessionWeightByExercise;
 };
 
+type WorkoutRowForStrengthSeries = {
+  id: string;
+  exercise_id: string;
+  date: string;
+  weight: number | null;
+  estimated_1rm?: number | null;
+};
+
+async function fetchStrengthChartSeriesBundle(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  exerciseIdsFilter?: string[] | null
+): Promise<{ data: StrengthChartSeriesBundle; error?: string }> {
+  let wq = supabase
+    .from("workouts")
+    .select("id, exercise_id, date, weight, estimated_1rm")
+    .eq("user_id", userId)
+    .order("date", { ascending: true });
+  if (exerciseIdsFilter?.length) {
+    wq = wq.in("exercise_id", exerciseIdsFilter);
+  }
+
+  const { data: workouts, error: wError } = await wq;
+
+  if (wError) {
+    return {
+      data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
+      error: wError.message,
+    };
+  }
+  if (!workouts?.length) {
+    return { data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} } };
+  }
+
+  const typedWorkouts = workouts as WorkoutRowForStrengthSeries[];
+
+  const workoutIds = typedWorkouts.map((w) => w.id);
+  const { data: sets, error: sError } = await supabase
+    .from("sets")
+    .select("workout_id, reps, weight")
+    .in("workout_id", workoutIds);
+
+  if (sError) {
+    return {
+      data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
+      error: sError.message,
+    };
+  }
+  const allExerciseIds = [...new Set(typedWorkouts.map((w) => w.exercise_id))];
+  const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, allExerciseIds);
+  const bwSeries = await loadBodyweightSeriesForUser(supabase, userId);
+  const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(
+    supabase,
+    allExerciseIds,
+    userId
+  );
+  const setsByWorkout = new Map<string, SessionSetRow[]>();
+  for (const s of sets ?? []) {
+    const list = setsByWorkout.get(s.workout_id) ?? [];
+    list.push({
+      reps: Number(s.reps) || 0,
+      weight: (s as { weight?: number | null }).weight ?? null,
+    });
+    setsByWorkout.set(s.workout_id, list);
+  }
+
+  const byExercise: Estimated1RMByExercise = {};
+  const maxByExercise: MaxSessionWeightByExercise = {};
+  for (const w of typedWorkouts) {
+    const repsList = setsByWorkout.get(w.id) ?? [];
+    const lt = loadTypeByExerciseId.get(w.exercise_id) ?? "weight";
+    const ctx = bodyweightStrengthContext(
+      lt,
+      String(w.date),
+      bwSeries,
+      categoryNameByExerciseId.get(w.exercise_id)
+    );
+    const bestSet = sessionBestStrengthSetFromSets(
+      repsList,
+      Number(w.weight) || 0,
+      lt,
+      ctx
+    );
+    const stored = w.estimated_1rm;
+    const best =
+      stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0
+        ? Number(stored)
+        : sessionEstimated1RMFromSets(repsList, Number(w.weight) || 0, lt, ctx);
+    const strengthSessionReps =
+      bestSet != null
+        ? bestSet.reps
+        : repsList.length > 0
+          ? Math.max(...repsList.map((s) => Math.max(0, Number(s.reps) || 0)))
+          : undefined;
+    if (best > 0) {
+      const points = byExercise[w.exercise_id] ?? [];
+      points.push({
+        date: w.date,
+        estimated1RM: Math.round(best * 10) / 10,
+        ...(strengthSessionReps != null && strengthSessionReps > 0
+          ? { strengthSessionReps }
+          : {}),
+      });
+      byExercise[w.exercise_id] = points;
+    }
+
+    const maxLoadKg = sessionMaxResolvedLoadKg(
+      repsList,
+      Number(w.weight) || 0,
+      lt,
+      ctx
+    );
+    if (maxLoadKg > 0) {
+      const mwl = maxByExercise[w.exercise_id] ?? [];
+      mwl.push({ date: w.date, maxWeightKg: Math.round(maxLoadKg * 10) / 10 });
+      maxByExercise[w.exercise_id] = mwl;
+    }
+  }
+  return { data: { estimated1RMByExercise: byExercise, maxSessionWeightByExercise: maxByExercise } };
+}
+
 /** Fetches workouts + sets once; builds 1RM progression and per-workout max load series. Single DB round-trip. */
 export async function getAllStrengthChartSeries(): Promise<{
   data: StrengthChartSeriesBundle;
@@ -1358,105 +1479,43 @@ export async function getAllStrengthChartSeries(): Promise<{
       };
     }
 
-    const { data: workouts, error: wError } = await supabase
-      .from("workouts")
-      .select("id, exercise_id, date, weight, estimated_1rm")
-      .eq("user_id", user.id)
-      .order("date", { ascending: true });
+    return fetchStrengthChartSeriesBundle(supabase, user.id, null);
+  } catch (e) {
+    return {
+      data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
+      error: e instanceof Error ? e.message : "Something went wrong.",
+    };
+  }
+}
 
-    if (wError) {
+/**
+ * Same as {@link getAllStrengthChartSeries} but only loads workouts/sets for the given exercise ids.
+ * Used by advanced strength analytics so a large history of unrelated exercises does not slow the page.
+ */
+export async function getStrengthChartSeriesForExerciseIds(
+  exerciseIds: string[]
+): Promise<{
+  data: StrengthChartSeriesBundle;
+  error?: string;
+}> {
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
       return {
         data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
-        error: wError.message,
+        error: "Not authenticated",
       };
     }
-    if (!workouts?.length) {
+
+    const unique = [...new Set(exerciseIds.filter((id) => typeof id === "string" && id.length > 0))];
+    if (unique.length === 0) {
       return { data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} } };
     }
 
-    const workoutIds = workouts.map((w) => w.id);
-    const { data: sets, error: sError } = await supabase
-      .from("sets")
-      .select("workout_id, reps, weight")
-      .in("workout_id", workoutIds);
-
-    if (sError) {
-      return {
-        data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },
-        error: sError.message,
-      };
-    }
-    const allExerciseIds = [...new Set(workouts.map((w) => w.exercise_id))];
-    const loadTypeByExerciseId = await getLoadTypeByExerciseId(supabase, allExerciseIds);
-    const bwSeries = await loadBodyweightSeriesForUser(supabase, user.id);
-    const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(
-      supabase,
-      allExerciseIds,
-      user.id
-    );
-    const setsByWorkout = new Map<string, SessionSetRow[]>();
-    for (const s of sets ?? []) {
-      const list = setsByWorkout.get(s.workout_id) ?? [];
-      list.push({
-        reps: Number(s.reps) || 0,
-        weight: (s as { weight?: number | null }).weight ?? null,
-      });
-      setsByWorkout.set(s.workout_id, list);
-    }
-
-    const byExercise: Estimated1RMByExercise = {};
-    const maxByExercise: MaxSessionWeightByExercise = {};
-    for (const w of workouts) {
-      const repsList = setsByWorkout.get(w.id) ?? [];
-      const lt = loadTypeByExerciseId.get(w.exercise_id) ?? "weight";
-      const ctx = bodyweightStrengthContext(
-        lt,
-        String(w.date),
-        bwSeries,
-        categoryNameByExerciseId.get(w.exercise_id)
-      );
-      const bestSet = sessionBestStrengthSetFromSets(
-        repsList,
-        Number(w.weight) || 0,
-        lt,
-        ctx
-      );
-      const stored = (w as { estimated_1rm?: number | null }).estimated_1rm;
-      const best =
-        stored != null && Number.isFinite(Number(stored)) && Number(stored) > 0
-          ? Number(stored)
-          : sessionEstimated1RMFromSets(repsList, Number(w.weight) || 0, lt, ctx);
-      const strengthSessionReps =
-        bestSet != null
-          ? bestSet.reps
-          : repsList.length > 0
-            ? Math.max(...repsList.map((s) => Math.max(0, Number(s.reps) || 0)))
-            : undefined;
-      if (best > 0) {
-        const points = byExercise[w.exercise_id] ?? [];
-        points.push({
-          date: w.date,
-          estimated1RM: Math.round(best * 10) / 10,
-          ...(strengthSessionReps != null && strengthSessionReps > 0
-            ? { strengthSessionReps }
-            : {}),
-        });
-        byExercise[w.exercise_id] = points;
-      }
-
-      const maxLoadKg = sessionMaxResolvedLoadKg(
-        repsList,
-        Number(w.weight) || 0,
-        lt,
-        ctx
-      );
-      if (maxLoadKg > 0) {
-        const mwl = maxByExercise[w.exercise_id] ?? [];
-        mwl.push({ date: w.date, maxWeightKg: Math.round(maxLoadKg * 10) / 10 });
-        maxByExercise[w.exercise_id] = mwl;
-      }
-    }
-    return { data: { estimated1RMByExercise: byExercise, maxSessionWeightByExercise: maxByExercise } };
+    return fetchStrengthChartSeriesBundle(supabase, user.id, unique);
   } catch (e) {
     return {
       data: { estimated1RMByExercise: {}, maxSessionWeightByExercise: {} },

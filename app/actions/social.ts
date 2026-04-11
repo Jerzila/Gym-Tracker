@@ -65,6 +65,14 @@ export type FriendProfilePageData = {
   lastWorkoutDisplay: string | null;
 };
 
+export type SocialProfileRelationship = "friend" | "none" | "request_sent" | "request_received";
+
+export type UserProfilePageData = FriendProfilePageData & {
+  subjectUserId: string;
+  relationship: SocialProfileRelationship;
+  hasFriendDetailStats: boolean;
+};
+
 export type FriendLeaderboardEntry = {
   user_id: string;
   /** True for the logged-in row (highlight in UI). */
@@ -443,109 +451,200 @@ export async function getFriendsList(): Promise<{ friends: FriendListItem[]; err
   return { friends: friends.filter((f) => f.username) };
 }
 
-/** Profile + lifetime workout stats for an accepted friend only. */
-export async function getFriendProfilePageData(
-  friendId: string
-): Promise<{ data: FriendProfilePageData | null; error?: string }> {
+/**
+ * Another user’s profile: full stats when you are friends; denormalized profile fields when not.
+ */
+export async function getProfilePageDataForViewer(
+  subjectUserId: string
+): Promise<{ data: UserProfilePageData | null; error?: string }> {
   const supabase = await createServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return { data: null, error: "Not authenticated" };
 
-  const fid = String(friendId || "").trim();
-  if (!fid || fid === user.id) return { data: null, error: "not_friend" };
+  const fid = String(subjectUserId || "").trim();
+  if (!fid) return { data: null, error: "not_found" };
+  if (fid === user.id) return { data: null, error: "self" };
 
-  const { data: friendRow } = await supabase
-    .from("friends")
-    .select("id")
-    .eq("user_id", user.id)
-    .eq("friend_id", fid)
-    .maybeSingle();
-  if (!friendRow) return { data: null, error: "not_friend" };
-
-  const weekBounds = getWeekBoundsMondaySundayInTimeZone("UTC");
-
-  const [profileRes, aggRes, rankingsRes, lastWorkoutRes, weekWorkoutsRes] = await Promise.all([
+  const [{ data: friendRow }, { data: outReq }, { data: inReq }] = await Promise.all([
+    supabase.from("friends").select("id").eq("user_id", user.id).eq("friend_id", fid).maybeSingle(),
     supabase
-      .from("profiles")
-      .select("username, overall_rank, overall_percentile, rank_badge, gender")
-      .eq("id", fid)
+      .from("friend_requests")
+      .select("id")
+      .eq("sender_id", user.id)
+      .eq("receiver_id", fid)
+      .eq("status", "pending")
       .maybeSingle(),
-    getUserLifetimeWorkoutAggregatesForUserId(fid),
-    supabase.from("rankings").select("muscle_ranks, muscle_scores").eq("user_id", fid).maybeSingle(),
-    supabase.from("workouts").select("date").eq("user_id", fid).order("date", { ascending: false }).limit(1).maybeSingle(),
     supabase
-      .from("workouts")
-      .select("date")
-      .eq("user_id", fid)
-      .gte("date", weekBounds.start)
-      .lte("date", weekBounds.end),
+      .from("friend_requests")
+      .select("id")
+      .eq("sender_id", fid)
+      .eq("receiver_id", user.id)
+      .eq("status", "pending")
+      .maybeSingle(),
   ]);
 
-  const { data: profile, error: pErr } = profileRes;
+  const relationship: SocialProfileRelationship = friendRow
+    ? "friend"
+    : outReq
+      ? "request_sent"
+      : inReq
+        ? "request_received"
+        : "none";
+
+  const isFriend = Boolean(friendRow);
+
+  if (isFriend) {
+    const weekBounds = getWeekBoundsMondaySundayInTimeZone("UTC");
+
+    const [profileRes, aggRes, rankingsRes, lastWorkoutRes, weekWorkoutsRes] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select("username, overall_rank, overall_percentile, rank_badge, gender")
+        .eq("id", fid)
+        .maybeSingle(),
+      getUserLifetimeWorkoutAggregatesForUserId(fid),
+      supabase.from("rankings").select("muscle_ranks, muscle_scores").eq("user_id", fid).maybeSingle(),
+      supabase.from("workouts").select("date").eq("user_id", fid).order("date", { ascending: false }).limit(1).maybeSingle(),
+      supabase
+        .from("workouts")
+        .select("date")
+        .eq("user_id", fid)
+        .gte("date", weekBounds.start)
+        .lte("date", weekBounds.end),
+    ]);
+
+    const { data: profile, error: pErr } = profileRes;
+    if (pErr) return { data: null, error: pErr.message };
+    if (!profile) return { data: null, error: "not_found" };
+
+    const { error: aErr } = aggRes;
+    if (aErr) return { data: null, error: aErr };
+    const agg = aggRes.data;
+
+    const rkRow = rankingsRes.data;
+    const strengthRankingView = await rankingWithExercisesFromStoredRankingsJson(
+      rkRow?.muscle_ranks,
+      rkRow?.muscle_scores
+    );
+    const parsedMuscles = strongestMuscleSummaryFromPayload(
+      strengthRankingView.muscleRanks,
+      strengthRankingView.muscleScores
+    );
+    const bestMuscle = parsedMuscles
+      ? { linePrimary: parsedMuscles.linePrimary, linePercentile: parsedMuscles.linePercentile }
+      : null;
+
+    const lastWorkoutDate = lastWorkoutRes.data?.date ? String(lastWorkoutRes.data.date) : null;
+    const lastWorkoutDisplay = formatFriendLastWorkout(lastWorkoutDate);
+
+    const weekRows = weekWorkoutsRes.data ?? [];
+    const workoutsThisWeek = new Set(weekRows.map((r) => String((r as { date: string }).date))).size;
+
+    let workoutStreak = 0;
+    if (lastWorkoutDate) {
+      const streakMin = format(subDays(parseISODateOnly(lastWorkoutDate), 500), "yyyy-MM-dd");
+      const { data: streakRows } = await supabase
+        .from("workouts")
+        .select("date")
+        .eq("user_id", fid)
+        .gte("date", streakMin);
+      const dateSet = new Set((streakRows ?? []).map((r) => String((r as { date: string }).date)));
+      workoutStreak = workoutStreakFromDateSet(dateSet, lastWorkoutDate);
+    }
+
+    const pctRaw = Number((profile as { overall_percentile?: unknown }).overall_percentile);
+    const overall_percentile = Number.isFinite(pctRaw) ? pctRaw : 100;
+    const genderRaw = (profile as { gender?: string | null }).gender;
+    const gender: "male" | "female" = genderRaw === "female" ? "female" : "male";
+
+    const friendUsername =
+      String((profile as { username?: string | null }).username ?? "").trim() || "Member";
+
+    return {
+      data: {
+        username: friendUsername,
+        overall_rank: String((profile as { overall_rank?: string | null }).overall_rank ?? "Newbie I"),
+        overall_percentile,
+        rank_badge: parseRankBadgeSlug((profile as { rank_badge?: string | null }).rank_badge),
+        top_percentile_display: formatTopPercentDisplay(overall_percentile),
+        workoutCount: agg?.workoutCount ?? 0,
+        prCount: agg?.prCount ?? 0,
+        totalVolumeKg: agg?.totalVolumeKg ?? 0,
+        gender,
+        strengthRankingView,
+        bestMuscle,
+        workoutsThisWeek,
+        workoutStreak,
+        lastWorkoutDate,
+        lastWorkoutDisplay,
+        subjectUserId: fid,
+        relationship,
+        hasFriendDetailStats: true,
+      },
+    };
+  }
+
+  const { data: profile, error: pErr } = await supabase
+    .from("profiles")
+    .select(
+      "username, overall_rank, overall_percentile, rank_badge, gender, total_volume, total_prs, workouts_last_30_days"
+    )
+    .eq("id", fid)
+    .maybeSingle();
+
   if (pErr) return { data: null, error: pErr.message };
   if (!profile) return { data: null, error: "not_found" };
 
-  const { error: aErr } = aggRes;
-  if (aErr) return { data: null, error: aErr };
-  const agg = aggRes.data;
-
-  const rkRow = rankingsRes.data;
-  const strengthRankingView = await rankingWithExercisesFromStoredRankingsJson(
-    rkRow?.muscle_ranks,
-    rkRow?.muscle_scores
-  );
-  const parsedMuscles = strongestMuscleSummaryFromPayload(
-    strengthRankingView.muscleRanks,
-    strengthRankingView.muscleScores
-  );
-  const bestMuscle = parsedMuscles
-    ? { linePrimary: parsedMuscles.linePrimary, linePercentile: parsedMuscles.linePercentile }
-    : null;
-
-  const lastWorkoutDate = lastWorkoutRes.data?.date ? String(lastWorkoutRes.data.date) : null;
-  const lastWorkoutDisplay = formatFriendLastWorkout(lastWorkoutDate);
-
-  const weekRows = weekWorkoutsRes.data ?? [];
-  const workoutsThisWeek = new Set(weekRows.map((r) => String((r as { date: string }).date))).size;
-
-  let workoutStreak = 0;
-  if (lastWorkoutDate) {
-    const streakMin = format(subDays(parseISODateOnly(lastWorkoutDate), 500), "yyyy-MM-dd");
-    const { data: streakRows } = await supabase
-      .from("workouts")
-      .select("date")
-      .eq("user_id", fid)
-      .gte("date", streakMin);
-    const dateSet = new Set((streakRows ?? []).map((r) => String((r as { date: string }).date)));
-    workoutStreak = workoutStreakFromDateSet(dateSet, lastWorkoutDate);
-  }
+  const rawUsername = String((profile as { username?: string | null }).username ?? "").trim();
+  const username = rawUsername || "Member";
 
   const pctRaw = Number((profile as { overall_percentile?: unknown }).overall_percentile);
   const overall_percentile = Number.isFinite(pctRaw) ? pctRaw : 100;
   const genderRaw = (profile as { gender?: string | null }).gender;
   const gender: "male" | "female" = genderRaw === "female" ? "female" : "male";
 
+  const prRaw = Number((profile as { total_prs?: unknown }).total_prs);
+  const volRaw = Number((profile as { total_volume?: unknown }).total_volume);
+  const prCount = Number.isFinite(prRaw) ? Math.max(0, Math.round(prRaw)) : 0;
+  const totalVolumeKg = Number.isFinite(volRaw) ? Math.max(0, volRaw) : 0;
+
+  const strengthRankingView = await rankingWithExercisesFromStoredRankingsJson(null, null);
+
   return {
     data: {
-      username: String((profile as { username?: string | null }).username ?? ""),
+      username,
       overall_rank: String((profile as { overall_rank?: string | null }).overall_rank ?? "Newbie I"),
       overall_percentile,
       rank_badge: parseRankBadgeSlug((profile as { rank_badge?: string | null }).rank_badge),
       top_percentile_display: formatTopPercentDisplay(overall_percentile),
-      workoutCount: agg?.workoutCount ?? 0,
-      prCount: agg?.prCount ?? 0,
-      totalVolumeKg: agg?.totalVolumeKg ?? 0,
+      workoutCount: 0,
+      prCount,
+      totalVolumeKg,
       gender,
       strengthRankingView,
-      bestMuscle,
-      workoutsThisWeek,
-      workoutStreak,
-      lastWorkoutDate,
-      lastWorkoutDisplay,
+      bestMuscle: null,
+      workoutsThisWeek: 0,
+      workoutStreak: 0,
+      lastWorkoutDate: null,
+      lastWorkoutDisplay: null,
+      subjectUserId: fid,
+      relationship,
+      hasFriendDetailStats: false,
     },
   };
+}
+
+/** @deprecated Prefer getProfilePageDataForViewer */
+export async function getFriendProfilePageData(
+  friendId: string
+): Promise<{ data: FriendProfilePageData | null; error?: string }> {
+  const res = await getProfilePageDataForViewer(friendId);
+  if (!res.data || res.error) return { data: null, error: res.error };
+  if (res.data.relationship !== "friend") return { data: null, error: "not_friend" };
+  const { subjectUserId: _a, relationship: _b, hasFriendDetailStats: _c, ...rest } = res.data;
+  return { data: rest };
 }
 
 export type StrengthCompareWithFriendPageData = {

@@ -59,6 +59,18 @@ function shortLabel(category: string, maxLen: number = 12): string {
   return trimmed.slice(0, maxLen - 1).trim() + "…";
 }
 
+/** Share of total sets; 0–1 decimal when rendering (e.g. 32 or 32.5). */
+function formatMuscleSharePct(rawPct: number): string {
+  const rounded = Math.round(rawPct * 10) / 10;
+  if (Number.isInteger(rounded)) return `${rounded}`;
+  return rounded.toFixed(1);
+}
+
+function muscleShareFromSets(sets: number, totalSets: number): number {
+  if (totalSets <= 0) return 0;
+  return (sets / totalSets) * 100;
+}
+
 function getDomainMax(current: { value: number }[], previous: { value: number }[] | null): number {
   const allValues = [
     ...current.map((c) => c.value),
@@ -116,6 +128,108 @@ function MuscleRadarChartInner({ range, distribution }: Props) {
   const segments = distribution?.segments ?? [];
 
   const hasPrevious = segments.some((s) => s.percentagePrevious !== null);
+
+  const totalCurrentSets = useMemo(
+    () =>
+      CATEGORIES.reduce(
+        (sum, cat) => sum + (segmentByCategory(segments, cat)?.sets ?? 0),
+        0
+      ),
+    [segments]
+  );
+
+  const setsByCategory = useMemo(() => {
+    const m = {} as Record<MuscleName, number>;
+    for (const cat of CATEGORIES) {
+      m[cat] = segmentByCategory(segments, cat)?.sets ?? 0;
+    }
+    return m;
+  }, [segments]);
+
+  const maxSetsAcross = useMemo(
+    () => Math.max(...CATEGORIES.map((c) => setsByCategory[c])),
+    [setsByCategory]
+  );
+  const minSetsAcross = useMemo(
+    () => Math.min(...CATEGORIES.map((c) => setsByCategory[c])),
+    [setsByCategory]
+  );
+  const allSetsEqual = maxSetsAcross === minSetsAcross;
+
+  const lowTieCount = useMemo(
+    () => CATEGORIES.filter((c) => setsByCategory[c] === minSetsAcross).length,
+    [setsByCategory, minSetsAcross]
+  );
+
+  const renderMuscleAngleTick = useCallback(
+    (props: {
+      x: number | string;
+      y: number | string;
+      textAnchor: string;
+      payload: { value?: unknown };
+    }) => {
+      const raw = props.payload?.value;
+      const cat =
+        typeof raw === "string" && (CATEGORIES as readonly string[]).includes(raw)
+          ? (raw as MuscleName)
+          : null;
+      const nx = Number(props.x);
+      const ny = Number(props.y);
+      if (cat == null || Number.isNaN(nx) || Number.isNaN(ny)) return null;
+
+      const sets = setsByCategory[cat];
+      const share = muscleShareFromSets(sets, totalCurrentSets);
+      const pct = formatMuscleSharePct(share);
+      const textAnchor = props.textAnchor as "start" | "middle" | "end";
+
+      const isHigh =
+        !allSetsEqual && sets === maxSetsAcross && maxSetsAcross > 0;
+      const isLow =
+        !allSetsEqual && sets === minSetsAcross && maxSetsAcross > 0;
+
+      const nameFill = isHigh ? "#f4f4f5" : AXIS_LABEL_FILL;
+      const nameWeight = isHigh ? 600 : 400;
+      const pctFill = isLow ? "#71717a" : isHigh ? "#e4e4e7" : "#a1a1aa";
+      const pctSize = isLow ? 9 : 9.5;
+
+      return (
+        <text
+          x={nx}
+          y={ny}
+          textAnchor={textAnchor}
+          className="pointer-events-none select-none"
+        >
+          <tspan
+            x={nx}
+            dy="-0.65em"
+            fill={nameFill}
+            fontSize={11}
+            fontWeight={nameWeight}
+          >
+            {shortLabel(cat)}
+          </tspan>
+          <tspan
+            x={nx}
+            dy="1.2em"
+            fill={pctFill}
+            fontSize={pctSize}
+            fontWeight={isLow ? 400 : 500}
+          >
+            {isLow && lowTieCount === 1 ? "⚠️ " : ""}
+            {pct}%
+          </tspan>
+        </text>
+      );
+    },
+    [
+      allSetsEqual,
+      lowTieCount,
+      maxSetsAcross,
+      minSetsAcross,
+      setsByCategory,
+      totalCurrentSets,
+    ]
+  );
 
   const data = useMemo(() => {
     return CATEGORIES.map((category) => {
@@ -198,18 +312,16 @@ function MuscleRadarChartInner({ range, distribution }: Props) {
         aria-label="Muscle balance chart. Tap inside the radar to select a muscle group."
       >
         <ResponsiveContainer width="100%" height={288}>
-          <RadarChart data={data} margin={{ top: 24, right: 24, left: 24, bottom: 24 }}>
+          <RadarChart data={data} margin={{ top: 28, right: 28, left: 28, bottom: 28 }}>
             <Tooltip active={false} />
             <PolarGrid stroke="#3f3f46" />
-            <PolarAngleAxis
-              dataKey="category"
-              tick={{ fill: AXIS_LABEL_FILL, fontSize: 11 }}
-              tickFormatter={(value) => shortLabel(String(value))}
-            />
+            <PolarAngleAxis dataKey="category" tick={renderMuscleAngleTick} />
             <PolarRadiusAxis
               angle={90}
+              axisLine={false}
+              tick={false}
+              tickLine={false}
               domain={[0, domainMax]}
-              tick={{ fill: AXIS_LABEL_FILL, fontSize: 10 }}
             />
             {hasPrevious && (
               <Radar

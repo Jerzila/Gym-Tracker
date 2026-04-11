@@ -5,6 +5,11 @@ export function normalizeUsernameInput(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
+/** True if `value` looks like a UUID (for `/user/{id}` vs handle). */
+export function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+}
+
 export function validateUsernameFormat(username: string): string | undefined {
   const u = normalizeUsernameInput(username);
   if (u.length < 3 || u.length > 20) {

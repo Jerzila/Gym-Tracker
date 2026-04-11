@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AppHeader } from "@/app/components/AppHeader";
 import { BackArrowButton } from "@/app/components/BackArrowButton";
 import { FriendProfileStrengthMap } from "@/app/components/FriendProfileStrengthMap";
+import { ProfileFriendActions } from "@/app/components/ProfileFriendActions";
 import { RankBadge } from "@/app/components/RankBadge";
-import { getFriendProfilePageData } from "@/app/actions/social";
+import { getProfilePageDataForViewer } from "@/app/actions/social";
 import { tierFromStoredOverallRank } from "@/lib/tierFromStoredOverallRank";
 
 type Props = { params: Promise<{ userId: string }> };
@@ -28,8 +29,22 @@ function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
 
 export default async function FriendProfilePage({ params }: Props) {
   const { userId } = await params;
-  const { data, error } = await getFriendProfilePageData(userId);
-  if (error || !data || !data.username) notFound();
+  const rawId = decodeURIComponent(String(userId ?? "").trim());
+
+  const { data, error } = await getProfilePageDataForViewer(rawId);
+
+  if (error === "Not authenticated") {
+    const back = `/friend/${encodeURIComponent(rawId)}`;
+    redirect(`/login?redirect=${encodeURIComponent(back)}`);
+  }
+  if (error === "self") {
+    redirect("/account/edit-profile");
+  }
+  if (error || !data) {
+    notFound();
+  }
+
+  const compareHref = `/insights/strength-compare?with=${encodeURIComponent(data.subjectUserId)}`;
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100">
@@ -50,14 +65,22 @@ export default async function FriendProfilePage({ params }: Props) {
             </div>
           </div>
 
-          <section className="mt-6" aria-labelledby="friend-strength-map-heading">
-            <SectionTitle>
-              <span id="friend-strength-map-heading">Strength Map</span>
-            </SectionTitle>
-            <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 sm:p-4">
-              <FriendProfileStrengthMap data={data.strengthRankingView} gender={data.gender} />
-            </div>
-          </section>
+          <ProfileFriendActions subjectUserId={data.subjectUserId} initialRelationship={data.relationship} />
+
+          {data.hasFriendDetailStats ? (
+            <section className="mt-6" aria-labelledby="friend-strength-map-heading">
+              <SectionTitle>
+                <span id="friend-strength-map-heading">Strength Map</span>
+              </SectionTitle>
+              <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 sm:p-4">
+                <FriendProfileStrengthMap data={data.strengthRankingView} gender={data.gender} />
+              </div>
+            </section>
+          ) : (
+            <p className="mt-6 text-sm leading-relaxed text-zinc-500">
+              Add this person as a friend to see their strength map, activity, and full stats.
+            </p>
+          )}
 
           <section className="mt-6" aria-labelledby="friend-stats-grid-heading">
             <SectionTitle>
@@ -66,7 +89,13 @@ export default async function FriendProfilePage({ params }: Props) {
             <div className="mt-3 grid grid-cols-2 gap-3">
               <StatCard
                 label="Total Workouts"
-                value={data.workoutCount.toLocaleString("en-US")}
+                value={
+                  data.hasFriendDetailStats ? (
+                    data.workoutCount.toLocaleString("en-US")
+                  ) : (
+                    <span className="text-zinc-500">—</span>
+                  )
+                }
               />
               <StatCard label="Total PRs" value={data.prCount.toLocaleString("en-US")} />
               <StatCard label="Total Volume" value={<>{formatVolumeKg(data.totalVolumeKg)} kg</>} />
@@ -74,7 +103,7 @@ export default async function FriendProfilePage({ params }: Props) {
             </div>
           </section>
 
-          {data.bestMuscle ? (
+          {data.hasFriendDetailStats && data.bestMuscle ? (
             <section className="mt-6" aria-labelledby="friend-best-muscle-heading">
               <SectionTitle>
                 <span id="friend-best-muscle-heading">Best Muscle</span>
@@ -86,41 +115,45 @@ export default async function FriendProfilePage({ params }: Props) {
             </section>
           ) : null}
 
-          <section className="mt-6" aria-labelledby="friend-activity-heading">
-            <SectionTitle>
-              <span id="friend-activity-heading">Activity</span>
-            </SectionTitle>
-            <div className="mt-3 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-              <div className="flex items-center justify-between gap-3 border-b border-zinc-800/80 pb-3 last:border-0 last:pb-0">
-                <span className="text-sm text-zinc-400">Workouts this week</span>
-                <span className="text-sm font-semibold tabular-nums text-zinc-100">
-                  {data.workoutsThisWeek.toLocaleString("en-US")}
-                </span>
+          {data.hasFriendDetailStats ? (
+            <section className="mt-6" aria-labelledby="friend-activity-heading">
+              <SectionTitle>
+                <span id="friend-activity-heading">Activity</span>
+              </SectionTitle>
+              <div className="mt-3 space-y-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-800/80 pb-3 last:border-0 last:pb-0">
+                  <span className="text-sm text-zinc-400">Workouts this week</span>
+                  <span className="text-sm font-semibold tabular-nums text-zinc-100">
+                    {data.workoutsThisWeek.toLocaleString("en-US")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3 border-b border-zinc-800/80 pb-3 last:border-0 last:pb-0">
+                  <span className="text-sm text-zinc-400">Current workout streak</span>
+                  <span className="text-sm font-semibold tabular-nums text-zinc-100">
+                    {data.workoutStreak.toLocaleString("en-US")}{" "}
+                    <span className="font-normal text-zinc-500">days</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm text-zinc-400">Last workout</span>
+                  <span className="text-right text-sm font-medium text-zinc-100">
+                    {data.lastWorkoutDisplay ?? "—"}
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center justify-between gap-3 border-b border-zinc-800/80 pb-3 last:border-0 last:pb-0">
-                <span className="text-sm text-zinc-400">Current workout streak</span>
-                <span className="text-sm font-semibold tabular-nums text-zinc-100">
-                  {data.workoutStreak.toLocaleString("en-US")}{" "}
-                  <span className="font-normal text-zinc-500">days</span>
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-zinc-400">Last workout</span>
-                <span className="text-right text-sm font-medium text-zinc-100">
-                  {data.lastWorkoutDisplay ?? "—"}
-                </span>
-              </div>
-            </div>
-          </section>
+            </section>
+          ) : null}
 
-          <div className="mt-8">
-            <Link
-              href={`/insights/strength-compare?with=${encodeURIComponent(userId)}`}
-              className="tap-feedback flex w-full items-center justify-center rounded-xl bg-amber-500 px-4 py-3.5 text-sm font-semibold text-zinc-950 transition hover:bg-amber-400"
-            >
-              Compare With Me
-            </Link>
-          </div>
+          {data.relationship === "friend" ? (
+            <div className="mt-8">
+              <Link
+                href={compareHref}
+                className="tap-feedback flex w-full items-center justify-center rounded-xl bg-amber-500 px-4 py-3.5 text-sm font-semibold text-zinc-950 transition hover:bg-amber-400"
+              >
+                Compare With Me
+              </Link>
+            </div>
+          ) : null}
         </div>
       </main>
     </div>

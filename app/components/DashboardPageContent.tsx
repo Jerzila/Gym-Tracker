@@ -35,6 +35,14 @@ const DashboardRankWidget = dynamic(
   { ssr: false }
 );
 
+const FriendsLeaderboard = dynamic(
+  () =>
+    import("@/app/components/FriendsLeaderboard").then((m) => ({
+      default: m.FriendsLeaderboard,
+    })),
+  { ssr: false, loading: () => <SkeletonPanel height="h-[200px]" /> }
+);
+
 const WeeklyProgressWidget = dynamic(
   () =>
     import("@/app/components/WeeklyProgressWidget").then((m) => ({
@@ -261,6 +269,11 @@ export function DashboardPageContent({
             </p>
           </div>
         </div>
+      </section>
+
+      {/* Friends leaderboard (same widget as Social) */}
+      <section className="animate-fade-in" style={{ animationDelay: "150ms" }}>
+        <FriendsLeaderboard />
       </section>
     </div>
   );

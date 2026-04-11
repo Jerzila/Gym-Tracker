@@ -5,9 +5,9 @@ import { useState } from "react";
 import { BoltIcon, CalendarIcon, ChartIcon, StarIcon, TrophyIcon } from "@/components/icons";
 import { haptic } from "@/lib/haptic";
 
-type Plan = "monthly" | "yearly";
+type Plan = "noAds" | "monthly" | "yearly";
 
-const DEFAULT_PLAN: Plan = "yearly";
+const DEFAULT_PLAN: Plan = "monthly";
 
 const ICON_PX = 18;
 const iconClass = "shrink-0 text-[#f59e0b]";
@@ -121,8 +121,17 @@ function Timeline() {
 export function ProUpgradePaywall() {
   const [plan, setPlan] = useState<Plan>(DEFAULT_PLAN);
 
+  const trialFooter =
+    plan === "noAds"
+      ? "€4.99/month • Removes ads only"
+      : plan === "monthly"
+        ? "Then €5.99/month • Cancel anytime during your trial"
+        : "Then €49.99/year • Cancel anytime during your trial";
+
+  const ctaLabel = plan === "noAds" ? "Remove Ads" : "Start your free trial";
+
   return (
-    <section className="relative max-h-[100dvh] min-h-[100dvh] overflow-hidden bg-[#0f0f10] text-zinc-100">
+    <section className="relative flex h-screen max-h-screen min-h-0 flex-col overflow-hidden bg-[#0f0f10] text-zinc-100">
       <button
         type="button"
         className="absolute left-2 top-[max(0.35rem,env(safe-area-inset-top))] z-10 flex h-10 w-10 items-center justify-center rounded-full text-zinc-400 transition-colors hover:bg-white/[0.06] hover:text-zinc-200 tap-feedback"
@@ -133,26 +142,26 @@ export function ProUpgradePaywall() {
         </svg>
       </button>
 
-      <div className="mx-auto flex h-full min-h-0 max-h-[100dvh] w-full max-w-md flex-col gap-1.5 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(2.1rem,calc(env(safe-area-inset-top)+1.5rem))] min-[390px]:gap-2">
-        {/* Trial headline — gold border + glow (globals.css .trial-highlight) */}
-        <header className="shrink-0 text-center">
-          <div className="trial-highlight">
-            <h1 className="text-[22px] font-bold leading-[1.1] tracking-[-0.45px] text-zinc-50 min-[390px]:text-[26px]">
-              Your first week&apos;s on us
-            </h1>
-            <p className="mx-auto mt-0.5 max-w-[20rem] text-[11px] leading-snug text-zinc-400 min-[390px]:mt-1 min-[390px]:text-[14px]">
-              7 days free, then Liftly Pro unlocks your full training potential.
-            </p>
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-md flex-col justify-between px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(2.1rem,calc(env(safe-area-inset-top)+1.5rem))]">
+        {/* SECTION 1 — header (trial + timeline) */}
+        <div className="shrink-0 space-y-1.5 min-[390px]:space-y-2">
+          <header className="text-center">
+            <div className="trial-highlight">
+              <h1 className="text-[22px] font-bold leading-[1.1] tracking-[-0.45px] text-zinc-50 min-[390px]:text-[26px]">
+                Your first week&apos;s on us
+              </h1>
+              <p className="mx-auto mt-0.5 max-w-[20rem] text-[11px] leading-snug text-zinc-400 min-[390px]:mt-1 min-[390px]:text-[14px]">
+                7 days free, then Liftly Pro unlocks your full training potential.
+              </p>
+            </div>
+          </header>
+          <div className="w-full px-0.5">
+            <Timeline />
           </div>
-        </header>
-
-        {/* Timeline — sits closer to trial block so feature list gets more room */}
-        <div className="w-full shrink-0 px-0.5 pt-0 min-[390px]:pt-0.5">
-          <Timeline />
         </div>
 
-        {/* Features: equal flex rows so all five fit without scrolling */}
-        <div className="flex min-h-0 flex-1 flex-col">
+        {/* SECTION 2 — features (flexible; shrinks, no page scroll) */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           <ul
             className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden min-[390px]:gap-1.5"
             aria-label="Liftly Pro features"
@@ -178,29 +187,53 @@ export function ProUpgradePaywall() {
               );
             })}
           </ul>
+        </div>
 
-          {/* Pricing + CTA — anchored to bottom */}
-          <div className="mt-auto shrink-0 space-y-1.5 pt-3 min-[390px]:space-y-2 min-[390px]:pt-4">
+        {/* SECTION 3 — pricing + CTA (fixed band at bottom) */}
+        <div className="shrink-0 space-y-1.5 min-[390px]:space-y-2">
             <div role="radiogroup" aria-label="Subscription plan">
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid min-w-0 grid-cols-3 gap-1 min-[390px]:gap-1.5">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={plan === "noAds"}
+                  onClick={() => setPlan("noAds")}
+                  className={`min-w-0 rounded-[12px] p-1.5 text-left transition-all tap-feedback min-[390px]:p-2 ${
+                    plan === "noAds"
+                      ? "border-2 border-[#f59e0b] bg-white/[0.05] shadow-[0_0_12px_rgba(245,158,11,0.28)] ring-1 ring-[#f59e0b]/35"
+                      : "border border-white/[0.08] bg-white/[0.02] hover:border-white/[0.14]"
+                  }`}
+                >
+                  <p className="text-[7px] font-semibold uppercase tracking-wide text-zinc-500 min-[390px]:text-[8px]">
+                    No ads
+                  </p>
+                  <p className="mt-0.5 text-[10px] font-bold leading-tight text-zinc-50 min-[390px]:text-[11px]">
+                    €4.99 <span className="text-[8px] font-medium text-zinc-400">/ month</span>
+                  </p>
+                  <p className="mt-1 text-[7px] leading-tight text-zinc-500 min-[390px]:text-[8px]">Removes ads</p>
+                </button>
+
                 <button
                   type="button"
                   role="radio"
                   aria-checked={plan === "monthly"}
                   onClick={() => setPlan("monthly")}
-                  className={`rounded-[12px] p-1.5 text-left transition-all tap-feedback min-[390px]:p-2 ${
+                  className={`min-w-0 rounded-[12px] p-1.5 text-left transition-all tap-feedback min-[390px]:p-2 ${
                     plan === "monthly"
                       ? "border-2 border-[#f59e0b] bg-white/[0.05] shadow-[0_0_12px_rgba(245,158,11,0.28)] ring-1 ring-[#f59e0b]/35"
                       : "border border-white/[0.08] bg-white/[0.02] hover:border-white/[0.14]"
                   }`}
                 >
-                  <p className="text-[8px] font-semibold uppercase tracking-wide text-zinc-500 min-[390px]:text-[9px]">
-                    Monthly
+                  <p className="text-[7px] font-semibold uppercase tracking-wide text-zinc-500 min-[390px]:text-[8px]">
+                    Most popular
                   </p>
-                  <p className="mt-0.5 text-[11px] font-bold leading-tight text-zinc-50 min-[390px]:text-xs">
-                    €5.99 <span className="text-[9px] font-medium text-zinc-400">/ month</span>
+                  <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-wide text-zinc-500 min-[390px]:text-[9px]">
+                    Pro
                   </p>
-                  <p className="mt-1 text-[8px] leading-tight text-zinc-500 min-[390px]:text-[9px]">Cancel anytime</p>
+                  <p className="mt-0.5 text-[10px] font-bold leading-tight text-zinc-50 min-[390px]:text-[11px]">
+                    €5.99 <span className="text-[8px] font-medium text-zinc-400">/ month</span>
+                  </p>
+                  <p className="mt-1 text-[7px] leading-tight text-zinc-500 min-[390px]:text-[8px]">Full Pro</p>
                 </button>
 
                 <button
@@ -208,20 +241,23 @@ export function ProUpgradePaywall() {
                   role="radio"
                   aria-checked={plan === "yearly"}
                   onClick={() => setPlan("yearly")}
-                  className={`rounded-[12px] p-1.5 text-left transition-all tap-feedback min-[390px]:p-2 ${
+                  className={`min-w-0 rounded-[12px] p-1.5 text-left transition-all tap-feedback min-[390px]:p-2 ${
                     plan === "yearly"
                       ? "border-2 border-[#f59e0b] bg-white/[0.03] shadow-[0_0_12px_rgba(245,158,11,0.28)] ring-1 ring-[#f59e0b]/35"
                       : "border border-white/[0.08] bg-white/[0.02] hover:border-white/[0.14]"
                   }`}
                 >
-                  <p className="text-[8px] font-semibold uppercase tracking-wide text-zinc-500 min-[390px]:text-[9px]">
-                    Yearly Pro
+                  <p className="text-[7px] font-semibold uppercase tracking-wide text-zinc-500 min-[390px]:text-[8px]">
+                    Best value
                   </p>
-                  <p className="mt-0.5 text-[11px] font-bold leading-tight text-zinc-50 min-[390px]:text-xs">
-                    €49.99 <span className="text-[9px] font-medium text-zinc-400">/ year</span>
+                  <p className="mt-0.5 text-[8px] font-semibold uppercase tracking-wide text-zinc-500 min-[390px]:text-[9px]">
+                    Yearly
                   </p>
-                  <p className="mt-1 text-[9px] font-semibold text-[#f59e0b] min-[390px]:text-[10px]">Save 30%</p>
-                  <p className="mt-0.5 text-[8px] text-zinc-400 min-[390px]:text-[9px]">
+                  <p className="mt-0.5 text-[10px] font-bold leading-tight text-zinc-50 min-[390px]:text-[11px]">
+                    €49.99 <span className="text-[8px] font-medium text-zinc-400">/ year</span>
+                  </p>
+                  <p className="mt-0.5 text-[7px] font-semibold text-[#f59e0b] min-[390px]:text-[8px]">Save 30%</p>
+                  <p className="text-[7px] text-zinc-400 min-[390px]:text-[8px]">
                     €4.16 <span className="text-zinc-500">/ month</span>
                   </p>
                 </button>
@@ -230,16 +266,16 @@ export function ProUpgradePaywall() {
 
             <button
               type="button"
-              onClick={() => haptic()}
+              onClick={() => {
+                haptic();
+                console.log("Pro upgrade CTA", { plan });
+              }}
               className="w-full rounded-[14px] bg-gradient-to-r from-[#f59e0b] to-[#ffb020] px-4 py-2.5 text-[15px] font-semibold leading-tight text-zinc-950 shadow-[0_6px_20px_rgba(245,158,11,0.45)] transition-opacity hover:opacity-95 tap-feedback min-[390px]:py-3 min-[390px]:text-base"
             >
-              Start your free trial
+              {ctaLabel}
             </button>
-            <p className="text-center text-[10px] leading-tight text-zinc-500 min-[390px]:text-[11px]">
-              Cancel anytime during your trial.
-            </p>
+            <p className="text-center text-[10px] leading-tight text-zinc-500 min-[390px]:text-[11px]">{trialFooter}</p>
           </div>
-        </div>
       </div>
     </section>
   );

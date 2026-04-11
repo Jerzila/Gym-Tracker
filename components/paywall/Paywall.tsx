@@ -5,9 +5,9 @@ import { useState } from "react";
 import { BoltIcon, CalendarIcon, ChartIcon, TrophyIcon } from "@/components/icons";
 import { haptic } from "@/lib/haptic";
 
-type Plan = "monthly" | "yearly";
+type Plan = "noAds" | "monthly" | "yearly";
 
-const DEFAULT_PLAN: Plan = "yearly";
+const DEFAULT_PLAN: Plan = "monthly";
 
 const ICON_PX = 20;
 const iconClass = "shrink-0 text-[#f59e0b]";
@@ -66,14 +66,18 @@ export function Paywall() {
   const [plan, setPlan] = useState<Plan>(DEFAULT_PLAN);
 
   const trialSubline =
-    plan === "monthly"
-      ? "Then €5.99/month • Cancel anytime"
-      : "Then €49.99/year • Cancel anytime";
+    plan === "noAds"
+      ? "€4.99/month • Removes ads only"
+      : plan === "monthly"
+        ? "Then €5.99/month • Cancel anytime"
+        : "Then €49.99/year • Cancel anytime";
+
+  const ctaLabel = plan === "noAds" ? "Remove Ads" : "Start 7-Day Free Trial";
 
   return (
-    <section className="min-h-[100dvh] overflow-hidden bg-[#0f0f10] text-zinc-100">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-xl flex-col gap-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))]">
-        {/* SECTION 1 — hero header + gold radial glow */}
+    <section className="flex h-screen max-h-screen min-h-0 flex-col overflow-hidden bg-[#0f0f10] text-zinc-100">
+      <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col justify-between px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))]">
+        {/* SECTION 1 — hero header + gold radial glow (fixed height band) */}
         <div className="-mx-3 shrink-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,170,0,0.18),rgba(255,170,0,0.06)_40%,transparent_70%)] px-3 pb-0 pt-0.5 text-center">
           <header>
             <h1 className="mb-2 text-[30px] font-bold leading-[1.15] tracking-[-0.5px] text-zinc-50">
@@ -87,23 +91,23 @@ export function Paywall() {
           </header>
         </div>
 
-        {/* SECTION 2 — vertical feature list (icon + title + description) */}
-        <div className="min-h-0 flex-1 overflow-y-auto pt-0.5 [-webkit-overflow-scrolling:touch]">
-          <ul className="flex flex-col gap-2" aria-label="Pro features">
+        {/* SECTION 2 — features (flexible; shrinks, no page scroll) */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-0.5">
+          <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden" aria-label="Pro features">
             {featureListItems.map((item) => {
               const Icon = item.Icon;
               return (
-                <li key={item.title}>
-                  <div className="flex items-start gap-2.5 rounded-[12px] border border-white/[0.08] bg-white/[0.03] p-[10px] shadow-[0_0_20px_rgba(255,170,0,0.05)] transition-colors hover:bg-white/[0.05] active:bg-white/[0.07]">
+                <li key={item.title} className="flex min-h-0 min-w-0 flex-1 flex-col">
+                  <div className="flex h-full min-h-0 flex-1 items-start gap-2.5 overflow-hidden rounded-[12px] border border-white/[0.08] bg-white/[0.03] p-2 shadow-[0_0_20px_rgba(255,170,0,0.05)] transition-colors hover:bg-white/[0.05] active:bg-white/[0.07]">
                     <span
                       className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center"
                       aria-hidden
                     >
                       <Icon size={ICON_PX} className={iconClass} />
                     </span>
-                    <div className="min-w-0 flex-1 text-left">
+                    <div className="min-h-0 min-w-0 flex-1 overflow-hidden text-left">
                       <p className="text-sm font-semibold leading-snug text-zinc-100">{item.title}</p>
-                      <p className="mt-0.5 text-[13px] leading-[1.35] text-zinc-500">{item.description}</p>
+                      <p className="mt-0.5 line-clamp-3 text-[13px] leading-[1.35] text-zinc-500">{item.description}</p>
                     </div>
                   </div>
                 </li>
@@ -112,31 +116,51 @@ export function Paywall() {
           </ul>
         </div>
 
-        {/* Plan widgets + 7-day trial CTA (stacked, no spacer pushing to bottom edge) */}
-        <div className="mt-2 shrink-0 space-y-1.5">
+        {/* SECTION 3 — pricing + CTA (fixed band at bottom) */}
+        <div className="shrink-0 space-y-1.5">
           <div role="radiogroup" aria-label="Subscription plan">
-            <div className="grid grid-cols-2 items-stretch gap-2 overflow-visible pt-0.5">
+            <div className="grid min-w-0 grid-cols-3 items-stretch gap-1.5 overflow-visible pt-0.5 sm:gap-2">
+              <button
+                type="button"
+                role="radio"
+                aria-checked={plan === "noAds"}
+                onClick={() => setPlan("noAds")}
+                className={`min-w-0 origin-center rounded-[14px] p-2 text-left transition-all tap-feedback sm:p-2.5 ${
+                  plan === "noAds"
+                    ? "scale-[1.02] border-2 border-[#f59e0b] bg-white/[0.05] shadow-[0_0_20px_rgba(245,158,11,0.35),0_0_48px_rgba(245,158,11,0.12)] ring-1 ring-[#f59e0b]/45 hover:shadow-[0_0_24px_rgba(245,158,11,0.45),0_0_56px_rgba(245,158,11,0.15)]"
+                    : "border border-white/[0.08] bg-white/[0.02] hover:border-white/[0.18]"
+                }`}
+              >
+                <span className="inline-block rounded-full border border-white/[0.1] bg-white/[0.04] px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-zinc-500 sm:px-2 sm:text-[10px]">
+                  No ads
+                </span>
+                <p className="mt-1 text-[11px] font-bold leading-tight text-zinc-50 sm:mt-1.5 sm:text-xs">
+                  €4.99 <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ month</span>
+                </p>
+                <p className="mt-1 text-[9px] leading-snug text-zinc-500 sm:text-[10px]">Removes ads only</p>
+              </button>
+
               <button
                 type="button"
                 role="radio"
                 aria-checked={plan === "monthly"}
                 onClick={() => setPlan("monthly")}
-                className={`origin-center rounded-[14px] p-3 text-left transition-all tap-feedback ${
+                className={`min-w-0 origin-center rounded-[14px] p-2 text-left transition-all tap-feedback sm:p-2.5 ${
                   plan === "monthly"
                     ? "scale-[1.02] border-2 border-[#f59e0b] bg-white/[0.05] shadow-[0_0_20px_rgba(245,158,11,0.35),0_0_48px_rgba(245,158,11,0.12)] ring-1 ring-[#f59e0b]/45 hover:shadow-[0_0_24px_rgba(245,158,11,0.45),0_0_56px_rgba(245,158,11,0.15)]"
                     : "border border-white/[0.08] bg-white/[0.02] hover:border-white/[0.18]"
                 }`}
               >
-                <span className="inline-block rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-                  MOST FLEXIBLE
+                <span className="inline-block rounded-full bg-[#f59e0b] px-1.5 py-0.5 text-[9px] font-semibold text-zinc-950 sm:px-2 sm:text-[10px]">
+                  Most popular
                 </span>
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
-                  Monthly
+                <p className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-zinc-500 sm:mt-1.5 sm:text-[10px]">
+                  Pro
                 </p>
-                <p className="mt-0.5 text-xs font-bold text-zinc-50">
-                  €5.99 <span className="text-[10px] font-medium text-zinc-400">/ month</span>
+                <p className="mt-0.5 text-[11px] font-bold leading-tight text-zinc-50 sm:text-xs">
+                  €5.99 <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ month</span>
                 </p>
-                <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">Cancel anytime</p>
+                <p className="mt-1 text-[9px] leading-snug text-zinc-500 sm:text-[10px]">Full Pro access</p>
               </button>
 
               <button
@@ -144,23 +168,23 @@ export function Paywall() {
                 role="radio"
                 aria-checked={plan === "yearly"}
                 onClick={() => setPlan("yearly")}
-                className={`origin-center rounded-[14px] p-3 text-left transition-all tap-feedback ${
+                className={`min-w-0 origin-center rounded-[14px] p-2 text-left transition-all tap-feedback sm:p-2.5 ${
                   plan === "yearly"
                     ? "scale-[1.02] border-2 border-[#f59e0b] bg-white/[0.02] shadow-[0_0_20px_rgba(245,158,11,0.35),0_0_48px_rgba(245,158,11,0.12)] ring-1 ring-[#f59e0b]/45 hover:shadow-[0_0_24px_rgba(245,158,11,0.45),0_0_56px_rgba(245,158,11,0.15)]"
                     : "border border-white/[0.08] bg-white/[0.02] hover:border-white/[0.18]"
                 }`}
               >
-                <span className="inline-block rounded-full bg-[#f59e0b] px-2 py-0.5 text-[11px] font-semibold text-zinc-950">
+                <span className="inline-block rounded-full bg-[#f59e0b] px-1.5 py-0.5 text-[9px] font-semibold text-zinc-950 sm:px-2 sm:text-[10px]">
                   Best value
                 </span>
-                <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-500">
+                <p className="mt-1 text-[9px] font-semibold uppercase tracking-wide text-zinc-500 sm:mt-1.5 sm:text-[10px]">
                   Yearly Pro
                 </p>
-                <p className="mt-0.5 text-xs font-bold text-zinc-50">
-                  €49.99 <span className="text-[10px] font-medium text-zinc-400">/ year</span>
+                <p className="mt-0.5 text-[11px] font-bold leading-tight text-zinc-50 sm:text-xs">
+                  €49.99 <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ year</span>
                 </p>
-                <p className="mt-0.5 text-[10px] font-semibold text-[#f59e0b]">Save 30%</p>
-                <p className="text-[10px] text-zinc-400">
+                <p className="mt-0.5 text-[9px] font-semibold text-[#f59e0b] sm:text-[10px]">Save 30%</p>
+                <p className="text-[9px] text-zinc-400 sm:text-[10px]">
                   €4.16 <span className="text-zinc-500">/ month</span>
                 </p>
               </button>
@@ -172,11 +196,11 @@ export function Paywall() {
               type="button"
               onClick={() => {
                 haptic();
-                console.log("Start trial");
+                console.log("Paywall CTA", { plan });
               }}
               className="w-full rounded-[14px] bg-gradient-to-r from-[#f59e0b] to-[#ffb020] px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-[0_6px_20px_rgba(245,158,11,0.45)] transition-opacity hover:opacity-95 tap-feedback"
             >
-              Start 7-Day Free Trial
+              {ctaLabel}
             </button>
             <p className="text-center text-[10px] leading-tight text-zinc-400">{trialSubline}</p>
             <button

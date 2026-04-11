@@ -7,6 +7,7 @@ import { AppHeader } from "@/app/components/AppHeader";
 import { BottomNav } from "@/app/components/BottomNav";
 import { CalendarIcon, SearchIcon, SettingsIcon, UserPlusIcon } from "@/components/icons";
 import { BackArrowButton } from "@/app/components/BackArrowButton";
+import { SocialInviteHeaderButton } from "@/app/components/SocialInviteHeaderButton";
 
 function getPageTitle(pathname: string): string {
   if (pathname === "/profile-setup") return "Complete Your Profile";
@@ -101,6 +102,8 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
 
   if (!isMainTab && showFixedHeader) {
     leftSlot = <BackArrowButton />;
+  } else if (pathname === "/social") {
+    leftSlot = <SocialInviteHeaderButton />;
   }
 
   if (pathname === "/") {

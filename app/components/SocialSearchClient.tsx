@@ -11,12 +11,18 @@ import {
 const inputClass =
   "w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-[rgba(255,170,0,0.6)] focus:outline-none focus:ring-0";
 
-export function SocialSearchClient() {
-  const [query, setQuery] = useState("");
+type SearchProps = {
+  /** Pre-fill from URL (e.g. invite fallback). */
+  initialQuery?: string | null;
+};
+
+export function SocialSearchClient({ initialQuery }: SearchProps) {
+  const initial = (initialQuery ?? "").trim();
+  const [query, setQuery] = useState(() => initial);
   const [searching, setSearching] = useState(false);
   const [results, setResults] = useState<SocialUserSearchResult[]>([]);
   const [sentTo, setSentTo] = useState<Set<string>>(new Set());
-  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(() => initial.length >= 2);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {

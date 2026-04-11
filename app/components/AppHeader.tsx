@@ -13,20 +13,16 @@ export function AppHeader({
 }) {
   return (
     <header
-      className="relative mx-auto flex h-14 w-full max-w-3xl items-center justify-center border-b border-white/[0.05] bg-zinc-950 px-4"
+      className="relative mx-auto grid h-14 w-full max-w-3xl grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-white/[0.05] bg-zinc-950 px-4"
       role="banner"
     >
-      {leftSlot ? (
-        <div className="absolute left-4 z-10">{leftSlot}</div>
-      ) : null}
+      <div className="z-10 flex min-w-0 items-center justify-start gap-2">{leftSlot}</div>
 
-      <h1 className="pointer-events-none whitespace-nowrap px-12 text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
+      <h1 className="z-0 max-w-[min(20rem,72vw)] truncate text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
         {title}
       </h1>
 
-      {rightSlot ? (
-        <div className="absolute right-4 z-10 flex items-center gap-2.5">{rightSlot}</div>
-      ) : null}
+      <div className="z-10 flex min-w-0 items-center justify-end gap-2">{rightSlot}</div>
     </header>
   );
 }
