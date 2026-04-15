@@ -8,9 +8,9 @@ const landingDisplay = Syne({
 });
 
 export const metadata: Metadata = {
-  title: "Liftly — Strength tracking & progressive overload",
+  title: "Liftly — AI Gym Tracker & Progressive Overload App",
   description:
-    "Log workouts, track PRs and estimated 1RM, visualize muscle strength, and progress with clarity. Built for serious lifters.",
+    "Track workouts, build strength, and improve faster with AI-powered insights. Liftly helps you log workouts, measure progress, and stay consistent.",
   robots: { index: false, follow: false },
 };
 

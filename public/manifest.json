@@ -1,7 +1,7 @@
 {
   "name": "Liftly",
   "short_name": "Liftly",
-  "description": "Personal strength tracking with progressive overload",
+  "description": "Track workouts, build strength, and improve faster with AI-powered insights. Log workouts, measure progress, and stay consistent.",
   "start_url": "/",
   "display": "standalone",
   "theme_color": "#000000",
@@ -9,14 +9,22 @@
   "orientation": "portrait",
   "icons": [
     {
-      "src": "/liftlyicon.jpg",
+      "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/jpeg"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
-      "src": "/liftlyicon.jpg",
+      "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/jpeg"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ]
 }

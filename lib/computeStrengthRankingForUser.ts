@@ -95,7 +95,8 @@ function exerciseNameMapsToTriceps(name: string): boolean {
   );
 }
 
-function getEffectiveMusclesForExercise(
+/** Muscles whose strength rank can move from logging this exercise (category + name heuristics). */
+export function getStrengthRankMusclesForExercise(
   categoryName: string,
   exerciseName: string
 ): StrengthRankMuscle[] {
@@ -332,7 +333,7 @@ export async function computeStrengthRankingBundleForUser(
   for (const w of workouts ?? []) {
     const name = exerciseNameById.get(w.exercise_id) ?? "";
     const categoryName = categoryByExercise[w.exercise_id] ?? "";
-    const muscles = getEffectiveMusclesForExercise(categoryName, name);
+    const muscles = getStrengthRankMusclesForExercise(categoryName, name);
     if (muscles.includes("core")) continue;
 
     const loadType = loadTypeByExercise[w.exercise_id] ?? "weight";
@@ -435,13 +436,13 @@ export async function computeStrengthRankingBundleForUser(
     core: 0,
   };
   for (const ex of allExercises ?? []) {
-    const muscles = getEffectiveMusclesForExercise(categoryByExercise[ex.id] ?? "", ex.name);
+    const muscles = getStrengthRankMusclesForExercise(categoryByExercise[ex.id] ?? "", ex.name);
     for (const m of muscles) exerciseCountByMuscle[m] += 1;
   }
 
   const coreExerciseIds = (allExercises ?? [])
     .filter((e) =>
-      getEffectiveMusclesForExercise(categoryByExercise[e.id] ?? "", e.name).includes("core")
+      getStrengthRankMusclesForExercise(categoryByExercise[e.id] ?? "", e.name).includes("core")
     )
     .map((e) => e.id);
 

@@ -20,10 +20,18 @@ import {
   computeUserLifetimeWorkoutAggregatesForUser,
   type UserLifetimeWorkoutAggregates,
 } from "@/lib/computeUserWorkoutAggregates";
+import type { MuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPayload";
+import { buildMuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPayload";
+import {
+  computeStrengthRankingBundleForUser,
+  getStrengthRankMusclesForExercise,
+} from "@/lib/computeStrengthRankingForUser";
+import { recalculateUserRankings } from "@/lib/recalculateUserRankings";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 
 export type { UserLifetimeWorkoutAggregates };
+export type { MuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPayload";
 
 /** Workout for calendar: one row per workout with exercise name and sets */
 export type CalendarWorkout = {
@@ -44,7 +52,13 @@ export type CalendarMonthPayload = {
   bodyweightContext: { profileKg: number; logsAsc: { date: string; weight: number }[] };
 };
 
-type CreateResult = { message?: string; error?: string; hitPr?: boolean };
+type CreateResult = {
+  message?: string;
+  error?: string;
+  hitPr?: boolean;
+  workoutId?: string;
+  rankUp?: MuscleRankUpClientPayload;
+};
 
 function isConnectionError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
@@ -64,7 +78,7 @@ export async function createWorkout(
 
     const { data: exercise, error: exError } = await supabase
       .from("exercises")
-      .select("rep_min, rep_max, load_type, category_id")
+      .select("rep_min, rep_max, load_type, category_id, name")
       .eq("id", exerciseId)
       .single();
 
@@ -129,20 +143,20 @@ export async function createWorkout(
     const { profileKg, logsAsc } = await loadBodyweightSeriesForUser(supabase, user.id);
     const userBwForDate = resolveBodyweightKgFromLogs(date, logsAsc, profileKg);
 
-    let categoryNameForBw = "";
-    if (loadType === "bodyweight" && (exercise as { category_id?: string }).category_id) {
+    let categoryName = "";
+    if ((exercise as { category_id?: string }).category_id) {
       const { data: catRow } = await supabase
         .from("categories")
         .select("name")
         .eq("id", (exercise as { category_id: string }).category_id)
         .eq("user_id", user.id)
         .maybeSingle();
-      categoryNameForBw = (catRow as { name?: string } | null)?.name ?? "";
+      categoryName = (catRow as { name?: string } | null)?.name ?? "";
     }
 
     const bwStrengthCtx =
       loadType === "bodyweight"
-        ? bodyweightStrengthSessionContext(userBwForDate, categoryNameForBw)
+        ? bodyweightStrengthSessionContext(userBwForDate, categoryName)
         : undefined;
     const bwFrac = bwStrengthCtx?.bodyweightLoadFraction ?? 1;
 
@@ -223,7 +237,7 @@ export async function createWorkout(
             loggedWeight,
             loadType,
             loadType === "bodyweight"
-              ? bodyweightStrengthSessionContext(bwAt, categoryNameForBw)
+              ? bodyweightStrengthSessionContext(bwAt, categoryName)
               : undefined
           );
         }
@@ -237,6 +251,10 @@ export async function createWorkout(
       loadType === "timed"
         ? priorList.length > 0 && newSessionBestTime > bestBefore
         : priorList.length > 0 && bestSetEstimated1RM > bestBefore;
+
+    const exerciseName = String((exercise as { name?: string }).name ?? "");
+    const beforeRankBundle = await computeStrengthRankingBundleForUser(supabase, user.id);
+    const affectedMuscles = getStrengthRankMusclesForExercise(categoryName, exerciseName);
 
     const { data: workout, error: wError } = await supabase
       .from("workouts")
@@ -275,9 +293,29 @@ export async function createWorkout(
     revalidatePath("/exercises");
     revalidatePath(`/exercise/${exerciseId}`);
 
-    after(async () => {
-      await refreshUserRankingsSafe(user.id);
-    });
+    let recalcSnapshot: Awaited<ReturnType<typeof recalculateUserRankings>> | null = null;
+    try {
+      recalcSnapshot = await recalculateUserRankings(user.id);
+    } catch (rankErr) {
+      console.error("[createWorkout] recalculateUserRankings failed", rankErr);
+      after(async () => {
+        await refreshUserRankingsSafe(user.id);
+      });
+    }
+
+    let rankUp: MuscleRankUpClientPayload | undefined;
+    if (beforeRankBundle.ok && recalcSnapshot) {
+      rankUp =
+        buildMuscleRankUpClientPayload({
+          affectedMuscles,
+          beforeOutput: beforeRankBundle.bundle.output,
+          beforePoints: beforeRankBundle.bundle.exerciseDataPoints,
+          afterOutput: recalcSnapshot.output,
+          afterPoints: recalcSnapshot.exerciseDataPoints,
+          workoutsLast30Days: recalcSnapshot.workoutsLast30Days,
+          workoutId: workout.id as string,
+        }) ?? undefined;
+    }
 
     const message =
       loadType === "timed"
@@ -289,7 +327,7 @@ export async function createWorkout(
               exercise.rep_max,
               parsedSets.map((s) => s.reps)
             );
-    return { message, hitPr };
+    return { message, hitPr, workoutId: workout.id as string, rankUp };
   } catch (e) {
     if (isConnectionError(e)) {
       return { error: "Can't connect to Supabase. Check your .env.local." };

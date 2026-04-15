@@ -13,8 +13,19 @@ import { useUnits } from "@/app/components/UnitsContext";
 import { lbToKg } from "@/lib/units";
 import { weightUnitLabel } from "@/lib/formatWeight";
 import { normalizeLoadType, type LoadType } from "@/lib/loadType";
+import type { MuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPayload";
+import { MuscleRankUpModal } from "@/app/components/MuscleRankUpModal";
+import { useMuscleRankUpFromWorkoutSave } from "@/app/hooks/useMuscleRankUpFromWorkoutSave";
 
-type State = { message?: string; error?: string; hitPr?: boolean } | undefined;
+type State =
+  | {
+      message?: string;
+      error?: string;
+      hitPr?: boolean;
+      workoutId?: string;
+      rankUp?: MuscleRankUpClientPayload;
+    }
+  | undefined;
 
 function formAction(_: State, formData: FormData) {
   const exerciseId = formData.get("exercise_id") as string;
@@ -147,7 +158,10 @@ export function LogWorkoutForm({
     });
   }, [advancedLogging, setValues.weight]);
 
+  const rankUpModal = useMuscleRankUpFromWorkoutSave(state ?? null);
+
   return (
+    <>
     <div className="space-y-3">
       {!expanded && (
         <button
@@ -565,5 +579,11 @@ export function LogWorkoutForm({
         </div>
       </div>
     </div>
+    <MuscleRankUpModal
+      open={rankUpModal.open}
+      payload={rankUpModal.payload}
+      onClose={rankUpModal.dismiss}
+    />
+    </>
   );
 }

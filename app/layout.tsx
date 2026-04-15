@@ -15,9 +15,18 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const siteUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ??
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
+const siteTitle = "Liftly — AI Gym Tracker & Progressive Overload App";
+const siteDescription =
+  "Track workouts, build strength, and improve faster with AI-powered insights. Liftly helps you log workouts, measure progress, and stay consistent.";
+
 export const metadata: Metadata = {
-  title: "Liftly – Gym Tracker & Progressive Overload",
-  description: "Personal strength tracking with progressive overload",
+  metadataBase: new URL(siteUrl),
+  title: siteTitle,
+  description: siteDescription,
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -25,8 +34,31 @@ export const metadata: Metadata = {
     title: "Liftly",
   },
   icons: {
-    icon: "/liftlyicon.jpg",
-    apple: "/liftlyicon.jpg",
+    icon: [
+      { url: "/favicon.ico" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  openGraph: {
+    title: "Liftly — AI Gym Tracker",
+    description: "AI-powered workout tracking and strength analytics.",
+    type: "website",
+    images: [
+      {
+        url: "/preview.png",
+        width: 1200,
+        height: 630,
+        alt: "Liftly",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Liftly — AI Gym Tracker",
+    description: "AI-powered workout tracking and strength analytics.",
+    images: ["/preview.png"],
   },
   themeColor: "#000000",
 };
@@ -47,10 +79,6 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <head>
-        <link rel="icon" href="/liftlyicon.jpg" />
-        <link rel="apple-touch-icon" href="/liftlyicon.jpg" />
-      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

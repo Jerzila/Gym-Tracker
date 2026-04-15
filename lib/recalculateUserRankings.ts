@@ -6,8 +6,15 @@ import {
   countWorkoutSessionsFromDate,
   isoDateDaysAgoUTC,
 } from "@/lib/computeUserWorkoutAggregates";
+import type { ExerciseDataPoint, StrengthRankingOutput } from "@/lib/strengthRanking";
 import { computeStrengthRanking } from "@/lib/strengthRanking";
 import { createServerClient } from "@/lib/supabase/server";
+
+export type RecalculateUserRankingsSnapshot = {
+  output: StrengthRankingOutput;
+  exerciseDataPoints: ExerciseDataPoint[];
+  workoutsLast30Days: number;
+};
 
 function overallPercentileNumberFromTopLabel(label: string): number {
   const m = String(label ?? "").trim().match(/Top\s*([\d.]+)\s*%/i);
@@ -15,7 +22,7 @@ function overallPercentileNumberFromTopLabel(label: string): number {
   return 100;
 }
 
-export async function recalculateUserRankings(userId: string): Promise<void> {
+export async function recalculateUserRankings(userId: string): Promise<RecalculateUserRankingsSnapshot> {
   const supabase = await createServerClient();
 
   const computed = await computeStrengthRankingBundleForUser(supabase, userId);
@@ -24,6 +31,7 @@ export async function recalculateUserRankings(userId: string): Promise<void> {
     computed.ok
       ? computed.bundle.output
       : computeStrengthRanking({ exerciseDataPoints: [], bodyweightKg: 0 });
+  const exerciseDataPoints: ExerciseDataPoint[] = computed.ok ? computed.bundle.exerciseDataPoints : [];
 
   const { error: rankingsErr } = await supabase.from("rankings").upsert(
     {
@@ -64,4 +72,10 @@ export async function recalculateUserRankings(userId: string): Promise<void> {
     } as Record<string, unknown>)
     .eq("id", userId);
   if (profileErr) throw new Error(profileErr.message);
+
+  return {
+    output: result,
+    exerciseDataPoints,
+    workoutsLast30Days: workoutsLast30,
+  };
 }

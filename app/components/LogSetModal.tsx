@@ -12,8 +12,19 @@ import { lbToKg } from "@/lib/units";
 import { weightUnitLabel } from "@/lib/formatWeight";
 import type { Exercise } from "@/lib/types";
 import { normalizeLoadType } from "@/lib/loadType";
+import type { MuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPayload";
+import { MuscleRankUpModal } from "@/app/components/MuscleRankUpModal";
+import { useMuscleRankUpFromWorkoutSave } from "@/app/hooks/useMuscleRankUpFromWorkoutSave";
 
-type State = { message?: string; error?: string } | undefined;
+type State =
+  | {
+      message?: string;
+      error?: string;
+      hitPr?: boolean;
+      workoutId?: string;
+      rankUp?: MuscleRankUpClientPayload;
+    }
+  | undefined;
 
 type Props = {
   exercise: Exercise;
@@ -65,8 +76,10 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
         lastShownRef.current = state.message;
         toast.show(state.message);
       }
-      onCloseRef.current();
       onSuccessRef.current?.();
+      if (!state.rankUp) {
+        onCloseRef.current();
+      }
     }
   }, [state, toast, cache, router]);
 
@@ -89,7 +102,10 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
     });
   }, [advancedLogging, setValues.weight]);
 
+  const rankUpModal = useMuscleRankUpFromWorkoutSave(state ?? null);
+
   return (
+    <>
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       role="dialog"
@@ -443,5 +459,14 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
         </form>
       </div>
     </div>
+    <MuscleRankUpModal
+      open={rankUpModal.open}
+      payload={rankUpModal.payload}
+      onClose={() => {
+        rankUpModal.dismiss();
+        onCloseRef.current();
+      }}
+    />
+    </>
   );
 }
