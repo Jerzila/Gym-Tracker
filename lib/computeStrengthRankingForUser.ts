@@ -149,7 +149,7 @@ function isBodyweightRepCore(
 }
 
 /** Bodyweight rep volume: each rep counts this many points toward core endurance score. */
-const CORE_REP_VOLUME_POINTS_PER_REP = 2;
+const CORE_REP_VOLUME_POINTS_PER_REP = 7;
 
 /** Maps strength ratio to pseudo-seconds for sorting/display of weighted core only (cap 240s). */
 const CORE_NON_PLANK_RATIO_TO_SECONDS = 100;

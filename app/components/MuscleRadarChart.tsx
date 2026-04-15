@@ -181,6 +181,8 @@ function MuscleRadarChartInner({ range, distribution }: Props) {
       const share = muscleShareFromSets(sets, totalCurrentSets);
       const pct = formatMuscleSharePct(share);
       const textAnchor = props.textAnchor as "start" | "middle" | "end";
+      const labelX =
+        textAnchor === "end" ? nx + 10 : textAnchor === "start" ? nx - 10 : nx;
 
       const isHigh =
         !allSetsEqual && sets === maxSetsAcross && maxSetsAcross > 0;
@@ -194,13 +196,13 @@ function MuscleRadarChartInner({ range, distribution }: Props) {
 
       return (
         <text
-          x={nx}
+          x={labelX}
           y={ny}
           textAnchor={textAnchor}
           className="pointer-events-none select-none"
         >
           <tspan
-            x={nx}
+            x={labelX}
             dy="-0.65em"
             fill={nameFill}
             fontSize={11}
@@ -209,7 +211,7 @@ function MuscleRadarChartInner({ range, distribution }: Props) {
             {shortLabel(cat)}
           </tspan>
           <tspan
-            x={nx}
+            x={labelX}
             dy="1.2em"
             fill={pctFill}
             fontSize={pctSize}
@@ -312,7 +314,7 @@ function MuscleRadarChartInner({ range, distribution }: Props) {
         aria-label="Muscle balance chart. Tap inside the radar to select a muscle group."
       >
         <ResponsiveContainer width="100%" height={288}>
-          <RadarChart data={data} margin={{ top: 28, right: 28, left: 28, bottom: 28 }}>
+          <RadarChart data={data} margin={{ top: 28, right: 40, left: 40, bottom: 28 }}>
             <Tooltip active={false} />
             <PolarGrid stroke="#3f3f46" />
             <PolarAngleAxis dataKey="category" tick={renderMuscleAngleTick} />
