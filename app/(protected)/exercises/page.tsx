@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { getExercises } from "@/app/actions/exercises";
+import { getDeletedExercises, getExercises } from "@/app/actions/exercises";
 import { getCategories } from "@/app/actions/categories";
 import { CreateExerciseForm } from "@/app/components/CreateExerciseForm";
 import { ExerciseListByCategoryAccordion } from "@/app/components/ExerciseListByCategoryAccordion";
 import { ThisWeekSection } from "@/app/components/ThisWeekSection";
 import { RestoreExercisesScroll } from "@/app/components/RestoreExercisesScroll";
+import { HiddenExercisesPanel } from "@/app/components/HiddenExercisesPanel";
 
 export default async function ExercisesPage({
   searchParams,
@@ -16,11 +17,17 @@ export default async function ExercisesPage({
 
   let exercises: Awaited<ReturnType<typeof getExercises>> = [];
   let categories: Awaited<ReturnType<typeof getCategories>> = [];
+  let deletedExercises: Awaited<ReturnType<typeof getDeletedExercises>> = [];
   let loadError: string | null = null;
   try {
     [categories, exercises] = await Promise.all([getCategories(), getExercises()]);
   } catch (e) {
     loadError = e instanceof Error ? e.message : "Failed to load exercises";
+  }
+  try {
+    deletedExercises = await getDeletedExercises();
+  } catch {
+    deletedExercises = [];
   }
 
   const categoryIdsWithExercises = [
@@ -75,6 +82,7 @@ export default async function ExercisesPage({
             defaultExpandedCategoryIds={defaultExpandedCategoryIds}
           />
         )}
+        <HiddenExercisesPanel deletedExercises={deletedExercises} categories={categories} />
       </section>
     </main>
   );

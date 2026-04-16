@@ -123,8 +123,13 @@ export function buildMuscleRankUpClientPayload(args: {
     if (pct > 0) percentStrengthIncrease = pct;
   }
 
-  const kgInc = totalKgIncreaseForMuscle(args.beforePoints, args.afterPoints, winner);
-  const totalStrengthIncreaseKg = kgInc > 0 ? kgInc : null;
+  const totalStrengthIncreaseKg =
+    args.beforePoints.length === 0
+      ? null
+      : (() => {
+          const kgInc = totalKgIncreaseForMuscle(args.beforePoints, args.afterPoints, winner);
+          return kgInc > 0 ? kgInc : null;
+        })();
 
   const w = args.workoutsLast30Days;
   const workoutsLast30Days = Number.isFinite(w) && w > 0 ? Math.round(w) : null;

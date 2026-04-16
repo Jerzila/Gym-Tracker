@@ -21,6 +21,7 @@ import { TimeOverTimeChart } from "@/app/components/TimeOverTimeChart";
 import { WorkoutHistory } from "@/app/components/WorkoutHistory";
 import { getStrengthRecommendation } from "@/lib/strengthRecommendation";
 import { ExerciseLogAndNotes } from "@/app/components/ExerciseLogAndNotes";
+import { ExerciseRemovedBanner } from "@/app/components/ExerciseRemovedBanner";
 import { createServerClient } from "@/lib/supabase/server";
 import { bodyweightLoadFractionFromCategoryName } from "@/lib/bodyweightCategoryFraction";
 import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
@@ -73,6 +74,7 @@ export default async function ExercisePage({ params }: Props) {
         : 0;
 
   const workouts = exercise.workouts ?? [];
+  const isRemovedFromList = Boolean(exercise.deleted_at);
   const prWorkouts = workouts.map((w) => ({
     weight: w.weight,
     date: w.date,
@@ -223,6 +225,9 @@ export default async function ExercisePage({ params }: Props) {
       </div>
 
       <main className="mx-auto max-w-xl px-4 pt-5 sm:px-6">
+        {isRemovedFromList ? (
+          <ExerciseRemovedBanner exerciseId={id} exerciseName={exercise.name} />
+        ) : null}
         <section className="pb-6">
           <ExerciseLogAndNotes
             exerciseId={id}
@@ -230,6 +235,7 @@ export default async function ExercisePage({ params }: Props) {
             repMax={exercise.rep_max}
             loadType={exercise.load_type}
             initialNotes={exercise.notes ?? null}
+            loggingDisabled={isRemovedFromList}
           />
         </section>
 

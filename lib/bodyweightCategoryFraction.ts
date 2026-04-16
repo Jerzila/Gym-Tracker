@@ -35,3 +35,15 @@ export function bodyweightLoadFractionFromCategoryName(categoryName: string): nu
 
   return 1;
 }
+
+/** When an exercise is in multiple categories, use the highest bodyweight fraction among them. */
+export function bodyweightLoadFractionFromCategoryNames(categoryNames: readonly string[]): number {
+  const names = [...categoryNames].map((s) => s.trim()).filter(Boolean);
+  if (names.length === 0) return 1;
+  let max = 0;
+  for (const n of names) {
+    const f = bodyweightLoadFractionFromCategoryName(n);
+    if (f > max) max = f;
+  }
+  return max > 0 ? max : 1;
+}

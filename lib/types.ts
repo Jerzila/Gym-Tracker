@@ -45,6 +45,8 @@ export type Exercise = {
   rep_max: number;
   notes: string | null;
   created_at: string;
+  /** Set when the exercise is hidden from the list (workouts are kept). */
+  deleted_at?: string | null;
 };
 
 export type Workout = {

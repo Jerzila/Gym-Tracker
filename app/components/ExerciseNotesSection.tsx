@@ -8,9 +8,10 @@ import { useToast } from "@/app/components/Toast";
 type Props = {
   exerciseId: string;
   initialNotes: string | null;
+  readOnly?: boolean;
 };
 
-export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
+export function ExerciseNotesSection({ exerciseId, initialNotes, readOnly }: Props) {
   const [savedNote, setSavedNote] = useState(initialNotes ?? "");
   const [editBuffer, setEditBuffer] = useState("");
   const [editing, setEditing] = useState(false);
@@ -48,7 +49,7 @@ export function ExerciseNotesSection({ exerciseId, initialNotes }: Props) {
         <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">
           Notes
         </h3>
-        {!editing && (
+        {!editing && !readOnly && (
           <button
             type="button"
             onClick={startEditing}

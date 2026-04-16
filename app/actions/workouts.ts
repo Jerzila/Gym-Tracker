@@ -1,7 +1,7 @@
 "use server";
 
 import { createServerClient } from "@/lib/supabase/server";
-import { bodyweightLoadFractionFromCategoryName } from "@/lib/bodyweightCategoryFraction";
+import { bodyweightLoadFractionFromCategoryNames } from "@/lib/bodyweightCategoryFraction";
 import {
   getBodyweightProgressMessage,
   getProgressiveOverloadMessage,
@@ -9,12 +9,8 @@ import {
 } from "@/lib/progression";
 import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
 import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
-import { fetchCategoryNameByExerciseId } from "@/lib/exerciseCategoryMeta";
-import {
-  bodyweightStrengthSessionContext,
-  sessionEstimated1RMFromSets,
-  type SessionSetRow,
-} from "@/lib/sessionStrength";
+import { fetchCategoryNamesByExerciseId } from "@/lib/exerciseCategoryMeta";
+import { sessionEstimated1RMFromSets, type SessionSetRow } from "@/lib/sessionStrength";
 import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
 import {
   computeUserLifetimeWorkoutAggregatesForUser,
@@ -24,8 +20,11 @@ import type { MuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPay
 import { buildMuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPayload";
 import {
   computeStrengthRankingBundleForUser,
-  getStrengthRankMusclesForExercise,
+  getStrengthRankMusclesForExerciseCategories,
 } from "@/lib/computeStrengthRankingForUser";
+import { strengthRankingOutputFromRankingsRow } from "@/lib/strengthRankingFromRankingsRow";
+import type { ExerciseDataPoint, StrengthRankingOutput } from "@/lib/strengthRanking";
+import { computeStrengthRanking } from "@/lib/strengthRanking";
 import { recalculateUserRankings } from "@/lib/recalculateUserRankings";
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
@@ -76,11 +75,21 @@ export async function createWorkout(
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: "You must be signed in to log a workout." };
 
-    const { data: exercise, error: exError } = await supabase
-      .from("exercises")
-      .select("rep_min, rep_max, load_type, category_id, name")
-      .eq("id", exerciseId)
-      .single();
+    const [{ data: exercise, error: exError }, { data: rankingsRow }] = await Promise.all([
+      supabase
+        .from("exercises")
+        .select("rep_min, rep_max, load_type, category_id, name")
+        .eq("id", exerciseId)
+        .is("deleted_at", null)
+        .single(),
+      supabase
+        .from("rankings")
+        .select(
+          "overall_score, overall_rank, overall_rank_label, overall_rank_slug, overall_tier, overall_progress_to_next_pct, overall_next_rank_label, overall_top_percentile_label, muscle_scores, muscle_ranks"
+        )
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
 
     if (exError || !exercise) {
       return { error: "Exercise not found" };
@@ -143,20 +152,19 @@ export async function createWorkout(
     const { profileKg, logsAsc } = await loadBodyweightSeriesForUser(supabase, user.id);
     const userBwForDate = resolveBodyweightKgFromLogs(date, logsAsc, profileKg);
 
-    let categoryName = "";
-    if ((exercise as { category_id?: string }).category_id) {
-      const { data: catRow } = await supabase
-        .from("categories")
-        .select("name")
-        .eq("id", (exercise as { category_id: string }).category_id)
-        .eq("user_id", user.id)
-        .maybeSingle();
-      categoryName = (catRow as { name?: string } | null)?.name ?? "";
-    }
+    const categoryNamesByExerciseId = await fetchCategoryNamesByExerciseId(
+      supabase,
+      [exerciseId],
+      user.id
+    );
+    const exerciseCategoryNames = categoryNamesByExerciseId.get(exerciseId) ?? [];
 
     const bwStrengthCtx =
       loadType === "bodyweight"
-        ? bodyweightStrengthSessionContext(userBwForDate, categoryName)
+        ? {
+            userBodyweightKg: userBwForDate,
+            bodyweightLoadFraction: bodyweightLoadFractionFromCategoryNames(exerciseCategoryNames),
+          }
         : undefined;
     const bwFrac = bwStrengthCtx?.bodyweightLoadFraction ?? 1;
 
@@ -237,7 +245,10 @@ export async function createWorkout(
             loggedWeight,
             loadType,
             loadType === "bodyweight"
-              ? bodyweightStrengthSessionContext(bwAt, categoryName)
+              ? {
+                  userBodyweightKg: bwAt,
+                  bodyweightLoadFraction: bodyweightLoadFractionFromCategoryNames(exerciseCategoryNames),
+                }
               : undefined
           );
         }
@@ -253,8 +264,28 @@ export async function createWorkout(
         : priorList.length > 0 && bestSetEstimated1RM > bestBefore;
 
     const exerciseName = String((exercise as { name?: string }).name ?? "");
-    const beforeRankBundle = await computeStrengthRankingBundleForUser(supabase, user.id);
-    const affectedMuscles = getStrengthRankMusclesForExercise(categoryName, exerciseName);
+    const persistedBefore = strengthRankingOutputFromRankingsRow(
+      rankingsRow as Record<string, unknown> | null | undefined
+    );
+    let beforeOutput: StrengthRankingOutput;
+    let beforePoints: ExerciseDataPoint[];
+    if (persistedBefore) {
+      beforeOutput = persistedBefore;
+      beforePoints = [];
+    } else {
+      const beforeBundle = await computeStrengthRankingBundleForUser(supabase, user.id);
+      if (beforeBundle.ok) {
+        beforeOutput = beforeBundle.bundle.output;
+        beforePoints = beforeBundle.bundle.exerciseDataPoints;
+      } else {
+        beforeOutput = computeStrengthRanking({ exerciseDataPoints: [], bodyweightKg: 0 });
+        beforePoints = [];
+      }
+    }
+    const affectedMuscles = getStrengthRankMusclesForExerciseCategories(
+      exerciseCategoryNames,
+      exerciseName
+    );
 
     const { data: workout, error: wError } = await supabase
       .from("workouts")
@@ -288,14 +319,9 @@ export async function createWorkout(
 
     if (sError) return { error: sError.message };
 
-    revalidatePath("/");
-    revalidatePath("/account");
-    revalidatePath("/exercises");
-    revalidatePath(`/exercise/${exerciseId}`);
-
     let recalcSnapshot: Awaited<ReturnType<typeof recalculateUserRankings>> | null = null;
     try {
-      recalcSnapshot = await recalculateUserRankings(user.id);
+      recalcSnapshot = await recalculateUserRankings(user.id, { supabase });
     } catch (rankErr) {
       console.error("[createWorkout] recalculateUserRankings failed", rankErr);
       after(async () => {
@@ -303,13 +329,18 @@ export async function createWorkout(
       });
     }
 
+    revalidatePath("/");
+    revalidatePath("/account");
+    revalidatePath("/exercises");
+    revalidatePath(`/exercise/${exerciseId}`);
+
     let rankUp: MuscleRankUpClientPayload | undefined;
-    if (beforeRankBundle.ok && recalcSnapshot) {
+    if (recalcSnapshot) {
       rankUp =
         buildMuscleRankUpClientPayload({
           affectedMuscles,
-          beforeOutput: beforeRankBundle.bundle.output,
-          beforePoints: beforeRankBundle.bundle.exerciseDataPoints,
+          beforeOutput,
+          beforePoints,
           afterOutput: recalcSnapshot.output,
           afterPoints: recalcSnapshot.exerciseDataPoints,
           workoutsLast30Days: recalcSnapshot.workoutsLast30Days,
@@ -532,7 +563,11 @@ export async function getWorkoutsByMonth(
     const loadTypeById = new Map(
       (exercises ?? []).map((e) => [e.id, normalizeLoadType((e as { load_type?: unknown }).load_type)])
     );
-    const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(supabase, exerciseIds, user.id);
+    const categoryNamesByExerciseId = await fetchCategoryNamesByExerciseId(
+      supabase,
+      exerciseIds,
+      user.id
+    );
 
     const workoutIds = workouts.map((w) => w.id);
     const { data: sets, error: sError } = await supabase
@@ -550,7 +585,7 @@ export async function getWorkoutsByMonth(
 
     const list: CalendarWorkout[] = workouts.map((w) => {
       const lt = loadTypeById.get(w.exercise_id) ?? "weight";
-      const cat = categoryNameByExerciseId.get(w.exercise_id);
+      const cats = categoryNamesByExerciseId.get(w.exercise_id) ?? [];
       return {
         id: w.id,
         date: w.date,
@@ -560,7 +595,7 @@ export async function getWorkoutsByMonth(
         exercise_id: w.exercise_id,
         exercise_name: nameById.get(w.exercise_id) ?? "Unknown",
         ...(lt === "bodyweight"
-          ? { bodyweight_load_fraction: bodyweightLoadFractionFromCategoryName(cat ?? "") }
+          ? { bodyweight_load_fraction: bodyweightLoadFractionFromCategoryNames(cats) }
           : {}),
         sets: setsByWorkout.get(w.id) ?? [],
       };
@@ -655,21 +690,17 @@ export async function getLastWorkoutSummary(): Promise<{
     );
     const exerciseIdsInOrder = dayWorkouts.map((w) => w.exercise_id);
 
-    const categoryIds = [...new Set(exercises.map((e) => e.category_id))];
-    const { data: categories, error: catError } = await supabase
-      .from("categories")
-      .select("id, name")
-      .in("id", categoryIds);
-
-    const catNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
-    const categoryNameByExerciseId = new Map(
-      (exercises as { id: string; category_id: string }[]).map((e) => [
-        e.id,
-        catNameById.get(e.category_id) ?? "",
-      ])
+    const allCategoryNamesByExercise = await fetchCategoryNamesByExerciseId(
+      supabase,
+      exerciseIds,
+      user.id
     );
-    const categoryNames = [...new Set(exercises.map((e) => catNameById.get(e.category_id) ?? "Other"))].filter(Boolean);
-    const title = categoryNames.length > 0 ? categoryNames.join(" + ") : "Workout";
+    const titleNameSet = new Set<string>();
+    for (const exId of exerciseIds) {
+      for (const n of allCategoryNamesByExercise.get(exId) ?? []) titleNameSet.add(n);
+    }
+    const uniqueCategoryLabels = [...titleNameSet].sort((a, b) => a.localeCompare(b));
+    const title = uniqueCategoryLabels.length > 0 ? uniqueCategoryLabels.join(" + ") : "Workout";
 
     const workoutIds = dayWorkouts.map((w) => w.id);
     const { data: sets } = await supabase
@@ -706,7 +737,12 @@ export async function getLastWorkoutSummary(): Promise<{
               loggedWeight,
               lt,
               lt === "bodyweight"
-                ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(w.exercise_id))
+                ? {
+                    userBodyweightKg: bwAt,
+                    bodyweightLoadFraction: bodyweightLoadFractionFromCategoryNames(
+                      allCategoryNamesByExercise.get(w.exercise_id) ?? []
+                    ),
+                  }
                 : undefined
             );
       return {
@@ -762,7 +798,7 @@ export async function getPRsForDate(
       (exerciseRows ?? []).map((e) => [e.id, normalizeLoadType((e as { load_type?: unknown }).load_type)])
     );
 
-    const categoryNameByExerciseId = await fetchCategoryNameByExerciseId(
+    const categoryNamesByExerciseId = await fetchCategoryNamesByExerciseId(
       supabase,
       sessionExerciseIds,
       user.id
@@ -826,7 +862,12 @@ export async function getPRsForDate(
             loggedWeight,
             lt,
             lt === "bodyweight"
-              ? bodyweightStrengthSessionContext(bwAt, categoryNameByExerciseId.get(exercise_id))
+              ? {
+                  userBodyweightKg: bwAt,
+                  bodyweightLoadFraction: bodyweightLoadFractionFromCategoryNames(
+                    categoryNamesByExerciseId.get(exercise_id) ?? []
+                  ),
+                }
               : undefined
           );
         }

@@ -22,8 +22,16 @@ function overallPercentileNumberFromTopLabel(label: string): number {
   return 100;
 }
 
-export async function recalculateUserRankings(userId: string): Promise<RecalculateUserRankingsSnapshot> {
-  const supabase = await createServerClient();
+type RecalculateOptions = {
+  /** Reuse an existing server client (avoids a second Supabase session on hot paths). */
+  supabase?: Awaited<ReturnType<typeof createServerClient>>;
+};
+
+export async function recalculateUserRankings(
+  userId: string,
+  options?: RecalculateOptions
+): Promise<RecalculateUserRankingsSnapshot> {
+  const supabase = options?.supabase ?? (await createServerClient());
 
   const computed = await computeStrengthRankingBundleForUser(supabase, userId);
 

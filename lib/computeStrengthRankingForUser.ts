@@ -3,13 +3,10 @@
  * Used by rankings persistence and the Insights server action.
  */
 
+import { bodyweightLoadFractionFromCategoryNames } from "@/lib/bodyweightCategoryFraction";
 import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
 import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
-import {
-  bodyweightStrengthSessionContext,
-  sessionEstimated1RMFromSets,
-  type SessionSetRow,
-} from "@/lib/sessionStrength";
+import { sessionEstimated1RMFromSets, type SessionSetRow } from "@/lib/sessionStrength";
 import {
   computeStrengthRanking,
   categoryToStrengthMuscles,
@@ -113,6 +110,24 @@ export function getStrengthRankMusclesForExercise(
   return [...set];
 }
 
+/** Union of muscle mappings for every category the exercise belongs to (primary + `exercise_categories`). */
+export function getStrengthRankMusclesForExerciseCategories(
+  categoryNames: readonly string[],
+  exerciseName: string
+): StrengthRankMuscle[] {
+  const unique = [...new Set(categoryNames.map((c) => c.trim()).filter(Boolean))];
+  if (unique.length === 0) {
+    return getStrengthRankMusclesForExercise("", exerciseName);
+  }
+  const merged = new Set<StrengthRankMuscle>();
+  for (const cat of unique) {
+    for (const m of getStrengthRankMusclesForExercise(cat, exerciseName)) {
+      merged.add(m);
+    }
+  }
+  return [...merged];
+}
+
 function normalizeCoreExerciseType(exerciseName: string): CoreExerciseType {
   const n = exerciseName.trim().toLowerCase();
   if (n.includes("plank")) return "plank";
@@ -174,7 +189,7 @@ function coreScoreFromBestPerformance(args: {
 }
 
 /**
- * Next-rank target is total core volume (seconds + 2×reps) per CORE_VOLUME_STEPS.
+ * Next-rank target is total core volume (seconds + points-per-rep × reps) per CORE_VOLUME_STEPS.
  */
 function formatCoreImprovementComposite(args: {
   type: CoreExerciseType;
@@ -208,7 +223,7 @@ function formatCoreImprovementComposite(args: {
   return gap <= 0 ? "+0" : `+${Math.max(1, Math.round(gap))} volume`;
 }
 
-/** Core endurance volume: best hold seconds + 2 × best bodyweight reps (historical bests). */
+/** Core endurance volume: best hold seconds + (CORE_REP_VOLUME_POINTS_PER_REP × best bodyweight reps). */
 function coreVolumeScoreFromBests(bestTimed: number, bestReps: number): number {
   const timedVol = Math.max(0, bestTimed);
   const repVol = Math.max(0, bestReps) * CORE_REP_VOLUME_POINTS_PER_REP;
@@ -221,7 +236,10 @@ export type StrengthRankingComputeBundle = {
   output: StrengthRankingOutput;
   exerciseDataPoints: ExerciseDataPoint[];
   exerciseCountByMuscle: Record<StrengthRankMuscle, number>;
+  /** Primary category display name per exercise (legacy / single label). */
   categoryByExercise: Record<string, string>;
+  /** All category labels for each exercise (primary + `exercise_categories`). */
+  categoryNamesByExercise: Record<string, string[]>;
   loadTypeByExercise: Record<string, LoadType>;
   allExercises: { id: string; name: string; category_id: string; load_type?: unknown }[];
   coreImprovementSuggestions: CoreImprovementSuggestion[];
@@ -285,7 +303,21 @@ export async function computeStrengthRankingBundleForUser(
     return { ok: false, reason: "no_exercises_and_no_bodyweight" };
   }
 
-  const categoryIds = [...new Set((allExercises ?? []).map((e) => e.category_id))];
+  const exerciseIds = (allExercises ?? []).map((e) => e.id);
+  const { data: exerciseCategoryMappings } =
+    exerciseIds.length > 0
+      ? await supabase
+          .from("exercise_categories")
+          .select("exercise_id, category_id")
+          .in("exercise_id", exerciseIds)
+      : { data: [] as { exercise_id: string; category_id: string }[] };
+
+  const categoryIds = [
+    ...new Set([
+      ...(allExercises ?? []).map((e) => e.category_id),
+      ...(exerciseCategoryMappings ?? []).map((m) => m.category_id),
+    ]),
+  ];
   const { data: categories } = await supabase
     .from("categories")
     .select("id, name")
@@ -293,11 +325,31 @@ export async function computeStrengthRankingBundleForUser(
     .in("id", categoryIds);
 
   const categoryNameById = new Map((categories ?? []).map((c) => [c.id, c.name]));
+  const categoryNamesByExerciseId = new Map<string, string[]>();
+  const pushCategoryName = (exerciseId: string, rawName: string | null | undefined) => {
+    const n = (rawName ?? "").trim();
+    if (!n) return;
+    const list = categoryNamesByExerciseId.get(exerciseId) ?? [];
+    if (!list.includes(n)) list.push(n);
+    categoryNamesByExerciseId.set(exerciseId, list);
+  };
+
+  for (const e of allExercises ?? []) {
+    pushCategoryName(e.id, categoryNameById.get(e.category_id));
+  }
+  for (const m of exerciseCategoryMappings ?? []) {
+    pushCategoryName(m.exercise_id, categoryNameById.get(m.category_id));
+  }
+
   const categoryByExercise: Record<string, string> = {};
+  const categoryNamesByExercise: Record<string, string[]> = {};
   const loadTypeByExercise: Record<string, LoadType> = {};
   for (const e of allExercises ?? []) {
-    const catName = categoryNameById.get(e.category_id);
-    if (catName != null) categoryByExercise[e.id] = catName;
+    const names = categoryNamesByExerciseId.get(e.id) ?? [];
+    const primary = categoryNameById.get(e.category_id);
+    categoryNamesByExercise[e.id] = names;
+    categoryByExercise[e.id] =
+      names.length > 0 ? names.join(" · ") : primary != null ? primary : "";
     loadTypeByExercise[e.id] = normalizeLoadType((e as { load_type?: unknown }).load_type);
   }
 
@@ -332,8 +384,10 @@ export async function computeStrengthRankingBundleForUser(
   const bwForRatio = bodyweightKgRaw > 0 ? bodyweightKgRaw : 0;
   for (const w of workouts ?? []) {
     const name = exerciseNameById.get(w.exercise_id) ?? "";
-    const categoryName = categoryByExercise[w.exercise_id] ?? "";
-    const muscles = getStrengthRankMusclesForExercise(categoryName, name);
+    const categoryNamesForEx = categoryNamesByExercise[w.exercise_id] ?? [];
+    const categoryName =
+      categoryNamesForEx.length > 0 ? categoryNamesForEx.join(" · ") : "";
+    const muscles = getStrengthRankMusclesForExerciseCategories(categoryNamesForEx, name);
     if (muscles.includes("core")) continue;
 
     const loadType = loadTypeByExercise[w.exercise_id] ?? "weight";
@@ -376,7 +430,10 @@ export async function computeStrengthRankingBundleForUser(
       Number(w.weight) || 0,
       loadType,
       loadType === "bodyweight"
-        ? bodyweightStrengthSessionContext(bwAt, categoryName)
+        ? {
+            userBodyweightKg: bwAt,
+            bodyweightLoadFraction: bodyweightLoadFractionFromCategoryNames(categoryNamesForEx),
+          }
         : undefined
     );
 
@@ -436,13 +493,16 @@ export async function computeStrengthRankingBundleForUser(
     core: 0,
   };
   for (const ex of allExercises ?? []) {
-    const muscles = getStrengthRankMusclesForExercise(categoryByExercise[ex.id] ?? "", ex.name);
+    const names = categoryNamesByExercise[ex.id] ?? [];
+    const muscles = getStrengthRankMusclesForExerciseCategories(names, ex.name);
     for (const m of muscles) exerciseCountByMuscle[m] += 1;
   }
 
   const coreExerciseIds = (allExercises ?? [])
     .filter((e) =>
-      getStrengthRankMusclesForExercise(categoryByExercise[e.id] ?? "", e.name).includes("core")
+      getStrengthRankMusclesForExerciseCategories(categoryNamesByExercise[e.id] ?? [], e.name).includes(
+        "core"
+      )
     )
     .map((e) => e.id);
 
@@ -639,6 +699,7 @@ export async function computeStrengthRankingBundleForUser(
       exerciseDataPoints,
       exerciseCountByMuscle,
       categoryByExercise,
+      categoryNamesByExercise,
       loadTypeByExercise,
       allExercises: allExercises ?? [],
       coreImprovementSuggestions,

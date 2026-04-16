@@ -92,9 +92,9 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
               setShowDeleteConfirm(true);
             }}
             className={`${buttonClass.danger} px-2 py-1.5 text-xs`}
-            aria-label="Delete exercise"
+            aria-label="Remove exercise from list"
           >
-            Delete
+            Remove
           </button>
         </div>
       </li>
@@ -117,7 +117,8 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
           >
             <div className="my-auto w-full max-w-sm rounded-lg border border-zinc-800 bg-zinc-900 p-4 shadow-xl">
               <h3 id="delete-exercise-title" className="text-sm font-medium text-zinc-100">
-                Delete &quot;{exercise.name}&quot;? This will remove the exercise and all its workout history.
+                Remove &quot;{exercise.name}&quot; from your list? Workout history is kept. You can restore it from
+                &quot;Removed exercises&quot; at the bottom of this page.
               </h3>
               <div className="mt-4 flex justify-end gap-2">
                 <button
@@ -133,7 +134,7 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
                   disabled={deletePending}
                   className={buttonClass.modalConfirm}
                 >
-                  {deletePending ? "Deleting…" : "Delete"}
+                  {deletePending ? "Removing…" : "Remove"}
                 </button>
               </div>
             </div>

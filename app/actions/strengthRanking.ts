@@ -159,7 +159,7 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
       output,
       exerciseDataPoints,
       exerciseCountByMuscle,
-      categoryByExercise,
+      categoryNamesByExercise,
       bodyweightKg,
       coreImprovementSuggestions,
       coreTopExercisesForDisplay,
@@ -237,7 +237,9 @@ export async function getStrengthRanking(): Promise<GetStrengthRankingResult> {
     }
 
     const hasExerciseFor = (muscle: StrengthRankMuscle) =>
-      Object.values(categoryByExercise).some((cat) => categoryToStrengthMuscles(cat).includes(muscle));
+      Object.values(categoryNamesByExercise).some((cats) =>
+        cats.some((cat) => categoryToStrengthMuscles(cat).includes(muscle))
+      );
 
     const visibleMuscles: StrengthRankMuscle[] = [
       ...PRIMARY_STRENGTH_RANK_MUSCLES,
@@ -319,7 +321,7 @@ export async function getStrengthRankingAtDate(endDateISO: string): Promise<GetS
       output,
       exerciseDataPoints,
       exerciseCountByMuscle,
-      categoryByExercise,
+      categoryNamesByExercise,
       bodyweightKg,
       coreImprovementSuggestions,
       coreTopExercisesForDisplay,
@@ -397,7 +399,9 @@ export async function getStrengthRankingAtDate(endDateISO: string): Promise<GetS
     }
 
     const hasExerciseFor = (muscle: StrengthRankMuscle) =>
-      Object.values(categoryByExercise).some((cat) => categoryToStrengthMuscles(cat).includes(muscle));
+      Object.values(categoryNamesByExercise).some((cats) =>
+        cats.some((cat) => categoryToStrengthMuscles(cat).includes(muscle))
+      );
 
     const visibleMuscles: StrengthRankMuscle[] = [
       ...PRIMARY_STRENGTH_RANK_MUSCLES,

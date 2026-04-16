@@ -13,6 +13,50 @@ function isConnectionError(e: unknown): boolean {
   return msg.includes("fetch failed") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("network");
 }
 
+async function exercisesWithCategoryMappings(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  deletedFilter: "active" | "deleted"
+): Promise<Exercise[]> {
+  let q = supabase.from("exercises").select("*").eq("user_id", userId).order("name");
+  if (deletedFilter === "active") {
+    q = q.is("deleted_at", null);
+  } else {
+    q = q.not("deleted_at", "is", null);
+  }
+
+  const { data: exercises, error } = await q;
+  if (error) throw new Error(error.message);
+
+  const exerciseList = (exercises ?? []) as Exercise[];
+  if (exerciseList.length === 0) return [];
+
+  const { data: mappings, error: mappingsError } = await supabase
+    .from("exercise_categories")
+    .select("exercise_id, category_id")
+    .in("exercise_id", exerciseList.map((e) => e.id));
+  if (mappingsError) throw new Error(mappingsError.message);
+
+  const byExerciseId = new Map(exerciseList.map((e) => [e.id, e]));
+  const expanded: Exercise[] = [];
+  for (const mapping of mappings ?? []) {
+    const ex = byExerciseId.get(mapping.exercise_id);
+    if (!ex) continue;
+    expanded.push({
+      ...ex,
+      category_id: mapping.category_id,
+    });
+  }
+
+  const mappedIds = new Set(expanded.map((e) => e.id));
+  for (const ex of exerciseList) {
+    if (!mappedIds.has(ex.id)) expanded.push(ex);
+  }
+
+  expanded.sort((a, b) => a.name.localeCompare(b.name));
+  return expanded;
+}
+
 /** Remote DB missing migration 020+ (still only allows bilateral/unilateral) while the app sends `weight`. */
 function friendlyLoadTypeConstraintError(raw: string): string | null {
   if (!raw.includes("exercises_load_type_check")) return null;
@@ -27,42 +71,21 @@ export async function getExercises(): Promise<Exercise[]> {
     const supabase = await createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return [];
-
-    const { data: exercises, error } = await supabase
-      .from("exercises")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("name");
-    if (error) throw new Error(error.message);
-
-    const exerciseList = (exercises ?? []) as Exercise[];
-    if (exerciseList.length === 0) return [];
-
-    const { data: mappings, error: mappingsError } = await supabase
-      .from("exercise_categories")
-      .select("exercise_id, category_id")
-      .in("exercise_id", exerciseList.map((e) => e.id));
-    if (mappingsError) throw new Error(mappingsError.message);
-
-    const byExerciseId = new Map(exerciseList.map((e) => [e.id, e]));
-    const expanded: Exercise[] = [];
-    for (const mapping of mappings ?? []) {
-      const ex = byExerciseId.get(mapping.exercise_id);
-      if (!ex) continue;
-      expanded.push({
-        ...ex,
-        category_id: mapping.category_id,
-      });
+    return await exercisesWithCategoryMappings(supabase, user.id, "active");
+  } catch (e) {
+    if (isConnectionError(e)) {
+      throw new Error("Can't connect to Supabase. Check NEXT_PUBLIC_SUPABASE_URL and your API key in .env.local.");
     }
+    throw e;
+  }
+}
 
-    // Fallback for any exercise rows without mapping.
-    const mappedIds = new Set(expanded.map((e) => e.id));
-    for (const ex of exerciseList) {
-      if (!mappedIds.has(ex.id)) expanded.push(ex);
-    }
-
-    expanded.sort((a, b) => a.name.localeCompare(b.name));
-    return expanded;
+export async function getDeletedExercises(): Promise<Exercise[]> {
+  try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    return await exercisesWithCategoryMappings(supabase, user.id, "deleted");
   } catch (e) {
     if (isConnectionError(e)) {
       throw new Error("Can't connect to Supabase. Check NEXT_PUBLIC_SUPABASE_URL and your API key in .env.local.");
@@ -112,6 +135,7 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
       .from("exercises")
       .select("id, name")
       .eq("user_id", user.id)
+      .is("deleted_at", null)
       .ilike("name", name);
     if (existingError) return { error: existingError.message };
 
@@ -208,7 +232,8 @@ export async function updateExercise(
     const { error } = await supabase
       .from("exercises")
       .update({ name, load_type: loadType, rep_min: repMin, rep_max: repMax } as Record<string, unknown>)
-      .eq("id", id);
+      .eq("id", id)
+      .is("deleted_at", null);
 
     if (error) {
       return { error: friendlyLoadTypeConstraintError(error.message) ?? error.message };
@@ -244,34 +269,47 @@ export async function deleteExercise(id: string): Promise<{ error?: string }> {
     } = await supabase.auth.getUser();
     if (!user) return { error: "Not authenticated" };
 
-    const { data: workouts, error: wError } = await supabase
-      .from("workouts")
-      .select("id")
-      .eq("exercise_id", id);
-
-    if (wError) return { error: wError.message };
-    const workoutIds = (workouts ?? []).map((w) => w.id);
-
-    if (workoutIds.length > 0) {
-      const { error: setsError } = await supabase
-        .from("sets")
-        .delete()
-        .in("workout_id", workoutIds);
-      if (setsError) return { error: setsError.message };
-
-      const { error: delWorkoutsError } = await supabase
-        .from("workouts")
-        .delete()
-        .eq("exercise_id", id);
-      if (delWorkoutsError) return { error: delWorkoutsError.message };
-    }
-
-    const { error: exError } = await supabase.from("exercises").delete().eq("id", id);
+    const now = new Date().toISOString();
+    const { error: exError } = await supabase
+      .from("exercises")
+      .update({ deleted_at: now } as Record<string, unknown>)
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .is("deleted_at", null);
     if (exError) return { error: exError.message };
 
-    await refreshUserRankingsSafe(user.id);
+    revalidatePath("/");
+    revalidatePath("/exercises");
+    revalidatePath(`/exercise/${id}`);
+    return {};
+  } catch (e) {
+    if (isConnectionError(e)) {
+      return { error: "Can't connect to Supabase. Check NEXT_PUBLIC_SUPABASE_URL and your API key in .env.local." };
+    }
+    return { error: e instanceof Error ? e.message : "Something went wrong." };
+  }
+}
+
+export async function restoreExercise(id: string): Promise<{ error?: string }> {
+  if (!id) return { error: "Missing exercise id" };
+  try {
+    const supabase = await createServerClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { error: "Not authenticated" };
+
+    const { error } = await supabase
+      .from("exercises")
+      .update({ deleted_at: null } as Record<string, unknown>)
+      .eq("id", id)
+      .eq("user_id", user.id);
+
+    if (error) return { error: error.message };
 
     revalidatePath("/");
+    revalidatePath("/exercises");
+    revalidatePath(`/exercise/${id}`);
     return {};
   } catch (e) {
     if (isConnectionError(e)) {
@@ -291,7 +329,8 @@ export async function updateExerciseNotes(
     const { error } = await supabase
       .from("exercises")
       .update({ notes: notes?.trim() || null } as Record<string, unknown>)
-      .eq("id", id);
+      .eq("id", id)
+      .is("deleted_at", null);
     if (error) return { error: error.message };
     revalidatePath("/");
     revalidatePath(`/exercise/${id}`);
