@@ -9,8 +9,10 @@ import {
   type IncomingFriendRequest,
 } from "@/app/actions/social";
 import { haptic } from "@/lib/haptic";
+import { useFriendIncomingRequests } from "@/app/components/FriendIncomingRequestsContext";
 
 export function SocialRequestsClient() {
+  const { refresh: refreshPendingCount } = useFriendIncomingRequests();
   const [loading, setLoading] = useState(true);
   const [requests, setRequests] = useState<IncomingFriendRequest[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -46,12 +48,14 @@ export function SocialRequestsClient() {
     if (res.error) return;
     haptic();
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    void refreshPendingCount();
   }
 
   async function onDecline(requestId: string) {
     const res = await declineIncomingFriendRequest(requestId);
     if (res.error) return;
     setRequests((prev) => prev.filter((r) => r.id !== requestId));
+    void refreshPendingCount();
   }
 
   return (

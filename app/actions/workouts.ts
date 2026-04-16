@@ -329,7 +329,10 @@ export async function createWorkout(
       });
     }
 
-    revalidatePath("/");
+    // "layout" purges the client Router Cache so Dashboard muscle strength refetches
+    // after logging from another route (plain "/" only revalidated the page segment).
+    revalidatePath("/", "layout");
+    revalidatePath("/insights", "layout");
     revalidatePath("/account");
     revalidatePath("/exercises");
     revalidatePath(`/exercise/${exerciseId}`);
@@ -393,13 +396,16 @@ export async function deleteWorkout(
 
     if (workoutError) return { error: workoutError.message };
 
-    revalidatePath("/");
+    try {
+      await refreshUserRankingsSafe(user.id);
+    } catch (e) {
+      console.error("[deleteWorkout] refreshUserRankingsSafe failed", e);
+    }
+
+    revalidatePath("/", "layout");
+    revalidatePath("/insights", "layout");
     revalidatePath("/account");
     revalidatePath(`/exercise/${exerciseId}`);
-
-    after(async () => {
-      await refreshUserRankingsSafe(user.id);
-    });
     return {};
   } catch (e) {
     if (isConnectionError(e)) {

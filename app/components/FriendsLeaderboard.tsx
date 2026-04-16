@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { Button } from "@/app/components/Button";
 import { RankBadge } from "@/app/components/RankBadge";
 import { getFriendsLeaderboard, type FriendLeaderboardEntry } from "@/app/actions/social";
 import {
@@ -82,12 +83,19 @@ const tabBase =
 const tabIdle = "border border-transparent bg-zinc-900/60 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200";
 const tabActive = "border border-amber-500/40 bg-amber-950/30 text-amber-100";
 
+const PREVIEW_LIMIT = 5;
+
 export function FriendsLeaderboard() {
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<FriendLeaderboardEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<FriendLeaderboardCategory>("overall");
   const [muscle, setMuscle] = useState<FriendLeaderboardMuscleTab>("chest");
+  const [showFullLeaderboard, setShowFullLeaderboard] = useState(false);
+
+  useEffect(() => {
+    setShowFullLeaderboard(false);
+  }, [category, muscle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,48 +175,63 @@ export function FriendsLeaderboard() {
       ) : entries.length === 0 ? (
         <p className="mt-3 text-sm text-zinc-500">No leaderboard data yet.</p>
       ) : (
-        <ul className="mt-3 space-y-2">
-          {entries.map((e, index) => {
-            const position = index + 1;
-            const rowClass = `flex items-center gap-3 rounded-lg border px-3 py-3 tap-feedback ${
-              e.is_current_user
-                ? "border-amber-500/35 bg-amber-950/20"
-                : "border-zinc-800 bg-[#1a1a1a] transition-colors hover:border-zinc-700"
-            }`;
-            const inner = (
-              <>
-                <div className="flex min-w-0 flex-1 items-center gap-2.5">
-                  <span className="sr-only">{`Rank ${position}`}</span>
-                  <RankMedal position={position} />
-                  <span
-                    className="truncate text-sm font-medium leading-snug text-zinc-100"
-                    title={e.is_current_user ? e.username : undefined}
-                  >
-                    {e.is_current_user ? "You" : e.username}
-                  </span>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <RankBadge rank={e.rank_badge} tier={tierFromStoredOverallRank(e.overall_rank)} size={40} />
-                  <div className="flex min-h-[40px] flex-col items-end justify-center text-right leading-tight">
-                    <span className="text-sm font-medium text-zinc-100">{e.overall_rank}</span>
-                    <span className="mt-1 text-xs text-zinc-500">{e.top_percentile_display}</span>
+        <>
+          <ul className="mt-3 space-y-2">
+            {(showFullLeaderboard ? entries : entries.slice(0, PREVIEW_LIMIT)).map((e, index) => {
+              const position = index + 1;
+              const rowClass = `flex items-center gap-3 rounded-lg border px-3 py-3 tap-feedback ${
+                e.is_current_user
+                  ? "border-amber-500/35 bg-amber-950/20"
+                  : "border-zinc-800 bg-[#1a1a1a] transition-colors hover:border-zinc-700"
+              }`;
+              const inner = (
+                <>
+                  <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                    <span className="sr-only">{`Rank ${position}`}</span>
+                    <RankMedal position={position} />
+                    <span
+                      className="truncate text-sm font-medium leading-snug text-zinc-100"
+                      title={e.is_current_user ? e.username : undefined}
+                    >
+                      {e.is_current_user ? "You" : e.username}
+                    </span>
                   </div>
-                </div>
-              </>
-            );
-            return (
-              <li key={e.user_id}>
-                {e.is_current_user ? (
-                  <div className={rowClass}>{inner}</div>
-                ) : (
-                  <Link href={`/friend/${e.user_id}`} className={`block ${rowClass}`}>
-                    {inner}
-                  </Link>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+                  <div className="flex shrink-0 items-center gap-3">
+                    <RankBadge rank={e.rank_badge} tier={tierFromStoredOverallRank(e.overall_rank)} size={40} />
+                    <div className="flex min-h-[40px] flex-col items-end justify-center text-right leading-tight">
+                      <span className="text-sm font-medium text-zinc-100">{e.overall_rank}</span>
+                      <span className="mt-1 text-xs text-zinc-500">{e.top_percentile_display}</span>
+                    </div>
+                  </div>
+                </>
+              );
+              return (
+                <li key={e.user_id}>
+                  {e.is_current_user ? (
+                    <div className={rowClass}>{inner}</div>
+                  ) : (
+                    <Link href={`/friend/${e.user_id}`} className={`block ${rowClass}`}>
+                      {inner}
+                    </Link>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {entries.length > PREVIEW_LIMIT ? (
+            <div className="mt-3 flex justify-center">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowFullLeaderboard((v) => !v)}
+                aria-expanded={showFullLeaderboard}
+              >
+                {showFullLeaderboard ? "Show less" : "See full leaderboard"}
+              </Button>
+            </div>
+          ) : null}
+        </>
       )}
     </section>
   );

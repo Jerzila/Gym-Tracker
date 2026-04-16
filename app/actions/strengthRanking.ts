@@ -69,7 +69,7 @@ const emptyMuscleRank = {
   rankSlug: "newbie" as const,
   progressToNextPct: 0,
   nextRankLabel: "Newbie II" as string | null,
-  topPercentileLabel: "Top 96.6%",
+  topPercentileLabel: "Top 97%",
 };
 
 function defaultStrengthRankingWithExercises(): StrengthRankingWithExercises {
@@ -125,8 +125,8 @@ function defaultStrengthRankingWithExercises(): StrengthRankingWithExercises {
     overallNextRankLabel: "Newbie II",
     overallNextRankSlug: "newbie" as const,
     overallNextRankTier: "II" as const,
-    overallTopPercentileLabel: "Top 96.6%",
-    overallNextTopPercentileLabel: "Top 93.3%",
+    overallTopPercentileLabel: "Top 97%",
+    overallNextTopPercentileLabel: "Top 93%",
     overallPercentile: 0,
     bestExerciseByMuscle,
     topExercisesByMuscle,

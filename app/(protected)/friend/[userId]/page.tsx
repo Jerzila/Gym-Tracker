@@ -6,6 +6,8 @@ import { FriendProfileStrengthMap } from "@/app/components/FriendProfileStrength
 import { ProfileFriendActions } from "@/app/components/ProfileFriendActions";
 import { RankBadge } from "@/app/components/RankBadge";
 import { getProfilePageDataForViewer } from "@/app/actions/social";
+import { formatFriendCategoryLiftSummary } from "@/lib/friendProfileCategoryTopLifts";
+import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { tierFromStoredOverallRank } from "@/lib/tierFromStoredOverallRank";
 
 type Props = { params: Promise<{ userId: string }> };
@@ -18,13 +20,46 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   return <h2 className="text-sm font-semibold tracking-tight text-zinc-200">{children}</h2>;
 }
 
-function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
+function StatCard({
+  label,
+  value,
+  compact,
+}: {
+  label: string;
+  value: React.ReactNode;
+  /** Narrow row of three (e.g. Body) — smaller type and padding so all stay on one line */
+  compact?: boolean;
+}) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">{label}</p>
-      <p className="mt-1 text-lg font-semibold tabular-nums leading-snug text-zinc-100">{value}</p>
+    <div
+      className={`min-w-0 rounded-xl border border-zinc-800 bg-zinc-900/50 ${
+        compact ? "px-2 py-3 sm:px-3 sm:py-3.5" : "p-4"
+      }`}
+    >
+      <p
+        className={`font-medium uppercase tracking-wider text-zinc-500 ${
+          compact ? "text-[10px] sm:text-[11px]" : "text-[11px]"
+        }`}
+      >
+        {label}
+      </p>
+      <p
+        className={`mt-1 font-semibold tabular-nums leading-snug text-zinc-100 ${
+          compact ? "text-sm sm:text-base" : "text-lg"
+        }`}
+      >
+        {value}
+      </p>
     </div>
   );
+}
+
+function formatHeightForDisplay(heightCm: number, units: "metric" | "imperial"): string {
+  if (units === "imperial") {
+    const inches = heightCm / 2.54;
+    return `${Math.round(inches * 10) / 10} in`;
+  }
+  return `${Math.round(heightCm * 10) / 10} cm`;
 }
 
 export default async function FriendProfilePage({ params }: Props) {
@@ -68,6 +103,57 @@ export default async function FriendProfilePage({ params }: Props) {
           <ProfileFriendActions subjectUserId={data.subjectUserId} initialRelationship={data.relationship} />
 
           {data.hasFriendDetailStats ? (
+            <section className="mt-6" aria-labelledby="friend-body-heading">
+              <SectionTitle>
+                <span id="friend-body-heading">Body</span>
+              </SectionTitle>
+              <div className="mt-3 grid grid-cols-3 gap-2 sm:gap-3">
+                <StatCard
+                  compact
+                  label="Weight"
+                  value={
+                    data.bodyWeightKg != null ? (
+                      <>
+                        {formatWeight(data.bodyWeightKg, { units: data.displayUnits })}{" "}
+                        {weightUnitLabel(data.displayUnits)}
+                      </>
+                    ) : (
+                      <span className="text-zinc-500">Not set</span>
+                    )
+                  }
+                />
+                <StatCard
+                  compact
+                  label="Height"
+                  value={
+                    data.heightCm != null ? (
+                      formatHeightForDisplay(data.heightCm, data.displayUnits)
+                    ) : (
+                      <span className="text-zinc-500">Not set</span>
+                    )
+                  }
+                />
+                <StatCard
+                  compact
+                  label="BMI"
+                  value={
+                    data.bmi != null && data.bmiCategory ? (
+                      <span className="flex flex-col gap-0.5">
+                        <span>{data.bmi}</span>
+                        <span className="text-xs font-medium normal-case" style={{ color: data.bmiCategory.color }}>
+                          {data.bmiCategory.label}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-zinc-500">—</span>
+                    )
+                  }
+                />
+              </div>
+            </section>
+          ) : null}
+
+          {data.hasFriendDetailStats ? (
             <section className="mt-6" aria-labelledby="friend-strength-map-heading">
               <SectionTitle>
                 <span id="friend-strength-map-heading">Strength Map</span>
@@ -103,15 +189,42 @@ export default async function FriendProfilePage({ params }: Props) {
             </div>
           </section>
 
-          {data.hasFriendDetailStats && data.bestMuscle ? (
-            <section className="mt-6" aria-labelledby="friend-best-muscle-heading">
+          {data.hasFriendDetailStats && data.bestExerciseByLoad ? (
+            <section className="mt-6" aria-labelledby="friend-best-exercise-heading">
               <SectionTitle>
-                <span id="friend-best-muscle-heading">Best Muscle</span>
+                <span id="friend-best-exercise-heading">Best exercise</span>
               </SectionTitle>
               <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-                <p className="text-base font-semibold text-zinc-100">{data.bestMuscle.linePrimary}</p>
-                <p className="mt-1 text-sm text-zinc-400">{data.bestMuscle.linePercentile}</p>
+                <p className="text-base font-semibold text-zinc-100">{data.bestExerciseByLoad.exerciseName}</p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Heaviest weight in{" "}
+                  <span className="font-medium text-zinc-300">{data.bestExerciseByLoad.categoryName}</span>
+                  {": "}
+                  <span className="font-semibold tabular-nums text-zinc-100">
+                    {formatWeight(data.bestExerciseByLoad.heaviestKgInCategory, { units: data.displayUnits })}{" "}
+                    {weightUnitLabel(data.displayUnits)}
+                  </span>
+                </p>
               </div>
+            </section>
+          ) : null}
+
+          {data.hasFriendDetailStats && data.topLiftsByCategory.length > 0 ? (
+            <section className="mt-6" aria-labelledby="friend-category-lifts-heading">
+              <SectionTitle>
+                <span id="friend-category-lifts-heading">Top lift by category</span>
+              </SectionTitle>
+              <ul className="mt-3 divide-y divide-zinc-800/90 rounded-xl border border-zinc-800 bg-zinc-900/50">
+                {data.topLiftsByCategory.map((row) => (
+                  <li key={row.categoryName} className="px-4 py-3.5 first:rounded-t-xl last:rounded-b-xl">
+                    <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">{row.categoryName}</p>
+                    <p className="mt-1 text-sm font-semibold text-zinc-100">{row.exerciseName}</p>
+                    <p className="mt-0.5 text-sm text-zinc-400">
+                      {formatFriendCategoryLiftSummary(row, data.displayUnits)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
             </section>
           ) : null}
 

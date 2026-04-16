@@ -2,13 +2,20 @@
 
 import { createServerClient } from "@/lib/supabase/server";
 import { RANK_SLUGS, type RankSlug } from "@/lib/rankBadges";
-import { computeStrengthRankingBundleForUser } from "@/lib/computeStrengthRankingForUser";
+import {
+  computeStrengthRankingBundleForUser,
+} from "@/lib/computeStrengthRankingForUser";
+import {
+  buildFriendTopLiftsByCategoryFromBundle,
+  type FriendCategoryTopLiftRow,
+} from "@/lib/friendProfileCategoryTopLifts";
+import { calculateBMI, getBMICategory } from "@/lib/bmi";
 import {
   computeUserLifetimeWorkoutAggregatesForUser,
   countWorkoutSessionsFromDate,
   isoDateDaysAgoUTC,
 } from "@/lib/computeUserWorkoutAggregates";
-import { strongestMuscleSummaryFromPayload } from "@/lib/friendStrengthFromRankings";
+import { buildFriendBestExerciseByLoadFromBundle, type FriendBestExerciseByLoad } from "@/lib/friendProfileBestExerciseByLoad";
 import { getWeekBoundsMondaySundayInTimeZone } from "@/lib/weekBoundsTz";
 import { format, parseISO, subDays } from "date-fns";
 import {
@@ -58,11 +65,22 @@ export type FriendProfilePageData = {
   totalVolumeKg: number;
   gender: "male" | "female";
   strengthRankingView: StrengthRankingWithExercises;
-  bestMuscle: { linePrimary: string; linePercentile: string } | null;
+  /** Friend detail: exercise with highest session load + heaviest kg in that category */
+  bestExerciseByLoad: FriendBestExerciseByLoad | null;
   workoutsThisWeek: number;
   workoutStreak: number;
   lastWorkoutDate: string | null;
   lastWorkoutDisplay: string | null;
+  /** Friend detail only: profile body weight (kg), null if unset */
+  bodyWeightKg: number | null;
+  /** Friend detail only: height in cm, null if unset */
+  heightCm: number | null;
+  bmi: number | null;
+  bmiCategory: { label: string; color: string } | null;
+  /** Friend's preferred units for formatting weight */
+  displayUnits: "metric" | "imperial";
+  /** Friend detail only: best lift per logged exercise category */
+  topLiftsByCategory: FriendCategoryTopLiftRow[];
 };
 
 export type SocialProfileRelationship = "friend" | "none" | "request_sent" | "request_received";
@@ -498,10 +516,10 @@ export async function getProfilePageDataForViewer(
   if (isFriend) {
     const weekBounds = getWeekBoundsMondaySundayInTimeZone("UTC");
 
-    const [profileRes, aggRes, rankingsRes, lastWorkoutRes, weekWorkoutsRes] = await Promise.all([
+    const [profileRes, aggRes, rankingsRes, lastWorkoutRes, weekWorkoutsRes, rankingBundle] = await Promise.all([
       supabase
         .from("profiles")
-        .select("username, overall_rank, overall_percentile, rank_badge, gender")
+        .select("username, overall_rank, overall_percentile, rank_badge, gender, body_weight, height, units")
         .eq("id", fid)
         .maybeSingle(),
       getUserLifetimeWorkoutAggregatesForUserId(fid),
@@ -513,6 +531,7 @@ export async function getProfilePageDataForViewer(
         .eq("user_id", fid)
         .gte("date", weekBounds.start)
         .lte("date", weekBounds.end),
+      computeStrengthRankingBundleForUser(supabase, fid),
     ]);
 
     const { data: profile, error: pErr } = profileRes;
@@ -528,14 +547,6 @@ export async function getProfilePageDataForViewer(
       rkRow?.muscle_ranks,
       rkRow?.muscle_scores
     );
-    const parsedMuscles = strongestMuscleSummaryFromPayload(
-      strengthRankingView.muscleRanks,
-      strengthRankingView.muscleScores
-    );
-    const bestMuscle = parsedMuscles
-      ? { linePrimary: parsedMuscles.linePrimary, linePercentile: parsedMuscles.linePercentile }
-      : null;
-
     const lastWorkoutDate = lastWorkoutRes.data?.date ? String(lastWorkoutRes.data.date) : null;
     const lastWorkoutDisplay = formatFriendLastWorkout(lastWorkoutDate);
 
@@ -562,6 +573,25 @@ export async function getProfilePageDataForViewer(
     const friendUsername =
       String((profile as { username?: string | null }).username ?? "").trim() || "Member";
 
+    const bwRaw = Number((profile as { body_weight?: unknown }).body_weight);
+    const bodyWeightKg =
+      Number.isFinite(bwRaw) && bwRaw > 0 ? bwRaw : null;
+    const hRaw = Number((profile as { height?: unknown }).height);
+    const heightCm = Number.isFinite(hRaw) && hRaw > 0 ? hRaw : null;
+    const unitsRaw = String((profile as { units?: string | null }).units ?? "").toLowerCase();
+    const displayUnits: "metric" | "imperial" = unitsRaw === "imperial" ? "imperial" : "metric";
+
+    const bmi =
+      bodyWeightKg != null && heightCm != null ? calculateBMI(bodyWeightKg, heightCm) : null;
+    const bmiCategory = bmi != null ? getBMICategory(bmi) : null;
+
+    const topLiftsByCategory = rankingBundle.ok
+      ? buildFriendTopLiftsByCategoryFromBundle(rankingBundle.bundle)
+      : [];
+    const bestExerciseByLoad = rankingBundle.ok
+      ? buildFriendBestExerciseByLoadFromBundle(rankingBundle.bundle)
+      : null;
+
     return {
       data: {
         username: friendUsername,
@@ -574,11 +604,17 @@ export async function getProfilePageDataForViewer(
         totalVolumeKg: agg?.totalVolumeKg ?? 0,
         gender,
         strengthRankingView,
-        bestMuscle,
+        bestExerciseByLoad,
         workoutsThisWeek,
         workoutStreak,
         lastWorkoutDate,
         lastWorkoutDisplay,
+        bodyWeightKg,
+        heightCm,
+        bmi,
+        bmiCategory,
+        displayUnits,
+        topLiftsByCategory,
         subjectUserId: fid,
         relationship,
         hasFriendDetailStats: true,
@@ -624,11 +660,17 @@ export async function getProfilePageDataForViewer(
       totalVolumeKg,
       gender,
       strengthRankingView,
-      bestMuscle: null,
+      bestExerciseByLoad: null,
       workoutsThisWeek: 0,
       workoutStreak: 0,
       lastWorkoutDate: null,
       lastWorkoutDisplay: null,
+      bodyWeightKg: null,
+      heightCm: null,
+      bmi: null,
+      bmiCategory: null,
+      displayUnits: "metric",
+      topLiftsByCategory: [],
       subjectUserId: fid,
       relationship,
       hasFriendDetailStats: false,

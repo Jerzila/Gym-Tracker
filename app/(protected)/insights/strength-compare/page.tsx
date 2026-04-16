@@ -1,9 +1,8 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
 import { StaticStrengthDiagram } from "@/app/components/StaticStrengthDiagram";
 import { getStrengthCompareWithFriendPageData } from "@/app/actions/social";
-import { RANK_COLORS, RANK_LEGEND_ENTRIES } from "@/lib/rankBadges";
+import { MuscleStrengthRankLegend } from "@/app/components/MuscleStrengthRankLegend";
 
 const COMPARE_DIAGRAM_SCALE = 0.78;
 
@@ -34,7 +33,9 @@ export default async function StrengthCompareFriendPage({ searchParams }: Props)
           leftGender={data.myGender}
           rightGender={data.friendGender}
         />
-        <MuscleStrengthRankKey />
+        <aside className="mx-auto w-full max-w-md px-0.5">
+          <MuscleStrengthRankLegend />
+        </aside>
         <CompareRow
           title="Back"
           side="back"
@@ -50,15 +51,6 @@ export default async function StrengthCompareFriendPage({ searchParams }: Props)
       <p className="mt-8 text-center text-[11px] text-zinc-600">
         Friend ranks use their last saved strength snapshot. Yours are live from your training data.
       </p>
-
-      <div className="mt-6 flex justify-center">
-        <Link
-          href={`/friend/${friendId}`}
-          className="tap-feedback rounded-lg border border-zinc-600 px-4 py-2.5 text-sm text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
-        >
-          Back to profile
-        </Link>
-      </div>
     </main>
   );
 }
@@ -118,21 +110,3 @@ function CompareRow({
   );
 }
 
-function MuscleStrengthRankKey() {
-  return (
-    <aside className="mx-auto w-full max-w-md px-0.5" aria-label="Rank color key">
-      <div className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-zinc-500">
-        {RANK_LEGEND_ENTRIES.map(({ rank, label }) => (
-          <span key={rank} className="flex items-center gap-1">
-            <span
-              className="h-2 w-2 shrink-0 rounded"
-              style={{ backgroundColor: RANK_COLORS[rank] }}
-              aria-hidden
-            />
-            {label}
-          </span>
-        ))}
-      </div>
-    </aside>
-  );
-}

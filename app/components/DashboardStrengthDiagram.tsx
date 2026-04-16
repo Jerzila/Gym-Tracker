@@ -3,7 +3,8 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import Body, { type ExtendedBodyPart } from "react-muscle-highlighter";
 import { RankBadge } from "@/app/components/RankBadge";
-import { getRankColor, RANK_COLORS, RANK_LEGEND_ENTRIES } from "@/lib/rankBadges";
+import { getRankColor, RANK_COLORS } from "@/lib/rankBadges";
+import { MuscleStrengthRankLegend } from "@/app/components/MuscleStrengthRankLegend";
 import type { RankSlug } from "@/lib/rankBadges";
 import type { StrengthRankMuscle } from "@/lib/strengthRanking";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
@@ -288,18 +289,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
         </div>
       )}
       {/* Section 7: Rank color legend — compact */}
-      <div className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-zinc-500">
-        {RANK_LEGEND_ENTRIES.map(({ rank, label }) => (
-          <span key={rank} className="flex items-center gap-1">
-            <span
-              className="h-2 w-2 shrink-0 rounded"
-              style={{ backgroundColor: RANK_COLORS[rank] }}
-              aria-hidden
-            />
-            {label}
-          </span>
-        ))}
-      </div>
+      <MuscleStrengthRankLegend className="mt-1" />
     </div>
   );
 }

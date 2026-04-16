@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChartIcon, HomeIcon, StrengthIcon, TrophyIcon, UserIcon } from "@/components/icons";
+import { PendingFriendRequestBadge, useFriendIncomingRequests } from "@/app/components/FriendIncomingRequestsContext";
 
 type NavItem = {
   href: string;
@@ -25,6 +26,7 @@ function isActive(pathname: string, href: string) {
 
 export function BottomNav() {
   const pathname = usePathname();
+  const { pendingCount } = useFriendIncomingRequests();
 
   return (
     <nav
@@ -36,11 +38,15 @@ export function BottomNav() {
       >
         {NAV.map(({ href, label, Icon }) => {
           const active = isActive(pathname, href);
+          const isSocial = href === "/social";
+          const navLabel =
+            isSocial && pendingCount > 0 ? `${label}, ${pendingCount} friend requests` : label;
+
           return (
             <Link
               key={href}
               href={href}
-              aria-label={label}
+              aria-label={navLabel}
               aria-current={active ? "page" : undefined}
               className="tap-feedback relative flex min-h-[2.75rem] min-w-0 flex-1 items-center justify-center rounded-full py-1 transition-transform active:scale-[0.96]"
             >
@@ -55,6 +61,7 @@ export function BottomNav() {
                   aria-hidden
                   className={active ? "text-zinc-950" : "text-zinc-500"}
                 />
+                {isSocial ? <PendingFriendRequestBadge count={pendingCount} /> : null}
               </span>
             </Link>
           );

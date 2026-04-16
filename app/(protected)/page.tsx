@@ -5,6 +5,9 @@ import { getLastWorkoutSummary } from "@/app/actions/workouts";
 import { getStrengthRanking } from "@/app/actions/strengthRanking";
 import { DashboardPageContent } from "@/app/components/DashboardPageContent";
 
+/** Always fresh stats (strength, last workout, radar) after mutations elsewhere in the app. */
+export const dynamic = "force-dynamic";
+
 export default async function DashboardPage() {
   const [
     weeklyRes,

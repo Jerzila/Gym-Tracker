@@ -443,28 +443,30 @@ function CalendarDayPanel({
   return (
     <>
       <header
-        className="sticky top-0 z-50 border-b border-zinc-800 bg-[var(--background)]"
+        className="sticky top-0 z-50 border-b border-zinc-800 bg-[var(--background)] pt-[env(safe-area-inset-top,0px)]"
         role="banner"
       >
-        <div className="relative flex h-14 items-center px-4">
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Back to calendar"
-            className="tap-feedback inline-flex h-11 w-11 items-center justify-center rounded-md text-xl text-zinc-300 transition hover:bg-zinc-800 hover:text-zinc-100"
+        <div className="grid h-14 w-full grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 px-4">
+          <span className="min-w-0" />
+          <h2
+            id="calendar-day-title"
+            className="max-w-[min(18rem,72vw)] truncate text-center text-base font-semibold tracking-tight text-zinc-100"
           >
-            <span aria-hidden>←</span>
-          </button>
-          <h2 className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base font-semibold tracking-tight text-zinc-100">
-            Calendar
+            {dateHeader}
           </h2>
+          <div className="flex min-w-0 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="tap-feedback rounded-lg px-2 py-2 text-sm font-medium text-amber-400 transition hover:bg-zinc-800 hover:text-amber-300"
+            >
+              Done
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
-        <h3 id="calendar-day-title" className="mb-4 text-lg font-semibold text-zinc-100">
-          {dateHeader}
-        </h3>
         {workouts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-sm font-medium text-zinc-400">

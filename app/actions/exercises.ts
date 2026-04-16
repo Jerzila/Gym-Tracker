@@ -8,6 +8,12 @@ import { recalculateUserRankings } from "@/lib/recalculateUserRankings";
 import { refreshUserRankingsSafe } from "@/lib/refreshUserRankingsSafe";
 import { revalidatePath } from "next/cache";
 
+/** Purges client Router Cache for home + insights so muscle strength stays in sync after mutations. */
+function revalidateStrengthDashboardSurfaces() {
+  revalidatePath("/", "layout");
+  revalidatePath("/insights", "layout");
+}
+
 function isConnectionError(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
   return msg.includes("fetch failed") || msg.includes("ECONNREFUSED") || msg.includes("ENOTFOUND") || msg.includes("network");
@@ -180,7 +186,7 @@ export async function createExercise(formData: FormData): Promise<{ error?: stri
 
     await refreshUserRankingsSafe(user.id);
 
-    revalidatePath("/");
+    revalidateStrengthDashboardSurfaces();
     return {};
   } catch (e) {
     if (isConnectionError(e)) {
@@ -245,11 +251,10 @@ export async function updateExercise(
       await recalculateUserRankings(user.id);
     }
 
-    revalidatePath("/");
+    revalidateStrengthDashboardSurfaces();
     revalidatePath(`/exercise/${id}`);
     // Derived dashboards/insights depend on 1RM/PR computations.
     revalidatePath("/account");
-    revalidatePath("/insights");
     revalidatePath("/calendar");
     return {};
   } catch (e) {
@@ -278,7 +283,7 @@ export async function deleteExercise(id: string): Promise<{ error?: string }> {
       .is("deleted_at", null);
     if (exError) return { error: exError.message };
 
-    revalidatePath("/");
+    revalidateStrengthDashboardSurfaces();
     revalidatePath("/exercises");
     revalidatePath(`/exercise/${id}`);
     return {};
@@ -307,7 +312,7 @@ export async function restoreExercise(id: string): Promise<{ error?: string }> {
 
     if (error) return { error: error.message };
 
-    revalidatePath("/");
+    revalidateStrengthDashboardSurfaces();
     revalidatePath("/exercises");
     revalidatePath(`/exercise/${id}`);
     return {};
@@ -332,7 +337,6 @@ export async function updateExerciseNotes(
       .eq("id", id)
       .is("deleted_at", null);
     if (error) return { error: error.message };
-    revalidatePath("/");
     revalidatePath(`/exercise/${id}`);
     return {};
   } catch (e) {

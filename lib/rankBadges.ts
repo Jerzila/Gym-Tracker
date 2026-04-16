@@ -109,15 +109,15 @@ const RANK_DISPLAY: Record<RankSlug, string> = {
  * Exact "Top X%" label per base rank for ladder rows (Tier I of each band; fixed table, not ranges).
  */
 export const RANK_TOP_PCT_LABELS: Record<RankSlug, string> = {
-  newbie: "Top 96.6%",
-  starter: "Top 87.3%",
+  newbie: "Top 97%",
+  starter: "Top 87%",
   apprentice: "Top 78%",
-  lifter: "Top 63.3%",
+  lifter: "Top 63%",
   "semi-pro": "Top 45%",
-  pro: "Top 31.6%",
-  elite: "Top 21.6%",
-  master: "Top 12.3%",
-  grandmaster: "Top 6.3%",
+  pro: "Top 32%",
+  elite: "Top 22%",
+  master: "Top 12%",
+  grandmaster: "Top 6%",
   titan: "Top 4%",
   goat: "Top 1%",
 };

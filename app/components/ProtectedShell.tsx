@@ -8,6 +8,11 @@ import { BottomNav } from "@/app/components/BottomNav";
 import { CalendarIcon, SearchIcon, SettingsIcon, UserPlusIcon } from "@/components/icons";
 import { BackArrowButton } from "@/app/components/BackArrowButton";
 import { SocialInviteHeaderButton } from "@/app/components/SocialInviteHeaderButton";
+import {
+  FriendIncomingRequestsProvider,
+  PendingFriendRequestBadge,
+  useFriendIncomingRequests,
+} from "@/app/components/FriendIncomingRequestsContext";
 
 function getPageTitle(pathname: string): string {
   if (pathname === "/profile-setup") return "Complete Your Profile";
@@ -60,6 +65,12 @@ function DashboardCalendarLink() {
 }
 
 function SocialHeaderActions() {
+  const { pendingCount } = useFriendIncomingRequests();
+  const requestsLabel =
+    pendingCount > 0
+      ? `Friend requests, ${pendingCount} pending`
+      : "Friend requests";
+
   return (
     <>
       <Link
@@ -71,10 +82,11 @@ function SocialHeaderActions() {
       </Link>
       <Link
         href="/social/requests"
-        className="rounded-lg p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-100 tap-feedback"
-        aria-label="Friend requests"
+        className="relative rounded-lg p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-100 tap-feedback"
+        aria-label={requestsLabel}
       >
         <UserPlusIcon size={20} aria-hidden />
+        <PendingFriendRequestBadge count={pendingCount} />
       </Link>
     </>
   );
@@ -98,7 +110,8 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
     pathname === "/insights" ||
     pathname === "/social" ||
     pathname === "/bodyweight" ||
-    pathname === "/account";
+    pathname === "/account" ||
+    pathname === "/calendar";
 
   if (!isMainTab && showFixedHeader) {
     leftSlot = <BackArrowButton />;
@@ -115,22 +128,24 @@ export function ProtectedShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div
-      className={`flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100 ${
-        hideBottomNav ? "pb-0" : "pb-[env(safe-area-inset-bottom)]"
-      }`}
-    >
-      {showFixedHeader ? (
-        <div className="fixed inset-x-0 top-0 z-[210] bg-zinc-950 pt-[env(safe-area-inset-top,0px)]">
-          <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
-        </div>
-      ) : null}
-      <main
-        className={`min-h-0 flex-1 ${hideBottomNav ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-[calc(5rem+env(safe-area-inset-bottom))]"} ${showFixedHeader ? "pt-[calc(3.5rem+env(safe-area-inset-top,0px))]" : "pt-0"}`}
+    <FriendIncomingRequestsProvider>
+      <div
+        className={`flex min-h-[100dvh] flex-col bg-zinc-950 text-zinc-100 ${
+          hideBottomNav ? "pb-0" : "pb-[env(safe-area-inset-bottom)]"
+        }`}
       >
-        {children}
-      </main>
-      {hideBottomNav ? null : <BottomNav />}
-    </div>
+        {showFixedHeader ? (
+          <div className="fixed inset-x-0 top-0 z-[210] bg-zinc-950 pt-[env(safe-area-inset-top,0px)]">
+            <AppHeader title={title} leftSlot={leftSlot} rightSlot={rightSlot} />
+          </div>
+        ) : null}
+        <main
+          className={`min-h-0 flex-1 ${hideBottomNav ? "pb-0" : "pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-[calc(5rem+env(safe-area-inset-bottom))]"} ${showFixedHeader ? "pt-[calc(3.5rem+env(safe-area-inset-top,0px))]" : "pt-0"}`}
+        >
+          {children}
+        </main>
+        {hideBottomNav ? null : <BottomNav />}
+      </div>
+    </FriendIncomingRequestsProvider>
   );
 }

@@ -6,7 +6,11 @@
 import { bodyweightLoadFractionFromCategoryNames } from "@/lib/bodyweightCategoryFraction";
 import { loadBodyweightSeriesForUser, resolveBodyweightKgFromLogs } from "@/lib/bodyweightAsOf";
 import { getEffectiveWeight, normalizeLoadType, type LoadType } from "@/lib/loadType";
-import { sessionEstimated1RMFromSets, type SessionSetRow } from "@/lib/sessionStrength";
+import {
+  sessionEstimated1RMFromSets,
+  sessionMaxResolvedLoadKg,
+  type SessionSetRow,
+} from "@/lib/sessionStrength";
 import {
   computeStrengthRanking,
   categoryToStrengthMuscles,
@@ -244,6 +248,11 @@ export type StrengthRankingComputeBundle = {
   allExercises: { id: string; name: string; category_id: string; load_type?: unknown }[];
   coreImprovementSuggestions: CoreImprovementSuggestion[];
   coreTopExercisesForDisplay: CoreTopExerciseForDisplay[];
+  /**
+   * Max resolved load (kg) in any single session per exercise — bar + plates, or BW+extra, etc.
+   * Timed exercises omitted. Used for friend profile “heaviest weight” summaries.
+   */
+  maxSessionResolvedKgByExercise: Record<string, number>;
 };
 
 export type StrengthRankingComputeResult =
@@ -379,6 +388,34 @@ export async function computeStrengthRankingBundleForUser(
   const bwSeries = await loadBodyweightSeriesForUser(supabase, userId, {
     logsEndDateInclusive: endDate,
   });
+
+  const maxSessionResolvedKgByExercise = new Map<string, number>();
+  for (const w of workouts ?? []) {
+    const loadType = loadTypeByExercise[w.exercise_id] ?? "weight";
+    if (normalizeLoadType(loadType) === "timed") continue;
+
+    const categoryNamesForEx = categoryNamesByExercise[w.exercise_id] ?? [];
+    const workoutSets = setsByWorkout.get(w.id) ?? [];
+    const bwAt =
+      loadType === "bodyweight"
+        ? resolveBodyweightKgFromLogs(String(w.date), bwSeries.logsAsc, bwSeries.profileKg)
+        : 0;
+    const sessionKg = sessionMaxResolvedLoadKg(
+      workoutSets as SessionSetRow[],
+      Number(w.weight) || 0,
+      loadType,
+      loadType === "bodyweight"
+        ? {
+            userBodyweightKg: bwAt,
+            bodyweightLoadFraction: bodyweightLoadFractionFromCategoryNames(categoryNamesForEx),
+          }
+        : undefined
+    );
+    if (!Number.isFinite(sessionKg) || sessionKg <= 0) continue;
+    const exId = w.exercise_id;
+    const prev = maxSessionResolvedKgByExercise.get(exId) ?? 0;
+    if (sessionKg > prev) maxSessionResolvedKgByExercise.set(exId, sessionKg);
+  }
 
   const exerciseDataPoints: ExerciseDataPoint[] = [];
   const bwForRatio = bodyweightKgRaw > 0 ? bodyweightKgRaw : 0;
@@ -704,6 +741,7 @@ export async function computeStrengthRankingBundleForUser(
       allExercises: allExercises ?? [],
       coreImprovementSuggestions,
       coreTopExercisesForDisplay,
+      maxSessionResolvedKgByExercise: Object.fromEntries(maxSessionResolvedKgByExercise),
     },
   };
 }

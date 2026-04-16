@@ -409,32 +409,32 @@ const OVERALL_STEPS: (RankStep & { topPercentLabel: string })[] = [
   { ...step(2.01, "Titan", "II"), topPercentLabel: "Top 3%" },
   { ...step(1.94, "Titan", "I"), topPercentLabel: "Top 4%" },
   { ...step(1.88, "Grandmaster", "III"), topPercentLabel: "Top 5%" },
-  { ...step(1.82, "Grandmaster", "II"), topPercentLabel: "Top 5.6%" },
-  { ...step(1.76, "Grandmaster", "I"), topPercentLabel: "Top 6.3%" },
+  { ...step(1.82, "Grandmaster", "II"), topPercentLabel: "Top 6%" },
+  { ...step(1.76, "Grandmaster", "I"), topPercentLabel: "Top 6%" },
   { ...step(1.7, "Master", "III"), topPercentLabel: "Top 7%" },
-  { ...step(1.6, "Master", "II"), topPercentLabel: "Top 9.6%" },
-  { ...step(1.51, "Master", "I"), topPercentLabel: "Top 12.3%" },
+  { ...step(1.6, "Master", "II"), topPercentLabel: "Top 10%" },
+  { ...step(1.51, "Master", "I"), topPercentLabel: "Top 12%" },
   { ...step(1.4, "Elite", "III"), topPercentLabel: "Top 15%" },
-  { ...step(1.32, "Elite", "II"), topPercentLabel: "Top 18.3%" },
-  { ...step(1.24, "Elite", "I"), topPercentLabel: "Top 21.6%" },
+  { ...step(1.32, "Elite", "II"), topPercentLabel: "Top 18%" },
+  { ...step(1.24, "Elite", "I"), topPercentLabel: "Top 22%" },
   { ...step(1.15, "Pro", "III"), topPercentLabel: "Top 25%" },
-  { ...step(1.08, "Pro", "II"), topPercentLabel: "Top 28.3%" },
-  { ...step(1.01, "Pro", "I"), topPercentLabel: "Top 31.6%" },
+  { ...step(1.08, "Pro", "II"), topPercentLabel: "Top 28%" },
+  { ...step(1.01, "Pro", "I"), topPercentLabel: "Top 32%" },
   { ...step(0.94, "Semi-Pro", "III"), topPercentLabel: "Top 35%" },
   { ...step(0.88, "Semi-Pro", "II"), topPercentLabel: "Top 40%" },
   { ...step(0.82, "Semi-Pro", "I"), topPercentLabel: "Top 45%" },
   { ...step(0.77, "Lifter", "III"), topPercentLabel: "Top 50%" },
-  { ...step(0.71, "Lifter", "II"), topPercentLabel: "Top 56.6%" },
-  { ...step(0.65, "Lifter", "I"), topPercentLabel: "Top 63.3%" },
+  { ...step(0.71, "Lifter", "II"), topPercentLabel: "Top 57%" },
+  { ...step(0.65, "Lifter", "I"), topPercentLabel: "Top 63%" },
   { ...step(0.58, "Apprentice", "III"), topPercentLabel: "Top 70%" },
   { ...step(0.53, "Apprentice", "II"), topPercentLabel: "Top 74%" },
   { ...step(0.48, "Apprentice", "I"), topPercentLabel: "Top 78%" },
   { ...step(0.43, "Starter", "III"), topPercentLabel: "Top 82%" },
-  { ...step(0.39, "Starter", "II"), topPercentLabel: "Top 84.6%" },
-  { ...step(0.35, "Starter", "I"), topPercentLabel: "Top 87.3%" },
+  { ...step(0.39, "Starter", "II"), topPercentLabel: "Top 85%" },
+  { ...step(0.35, "Starter", "I"), topPercentLabel: "Top 87%" },
   { ...step(0.31, "Newbie", "III"), topPercentLabel: "Top 90%" },
-  { ...step(0.25, "Newbie", "II"), topPercentLabel: "Top 93.3%" },
-  { ...step(0.18, "Newbie", "I"), topPercentLabel: "Top 96.6%" },
+  { ...step(0.25, "Newbie", "II"), topPercentLabel: "Top 93%" },
+  { ...step(0.18, "Newbie", "I"), topPercentLabel: "Top 97%" },
 ];
 
 /** Fixed "Top X%" string per rank tier (muscles + overall display; not computed from ranges). */
@@ -446,7 +446,7 @@ export function exactTopPercentileLabelForRankTier(
   baseRank: (typeof RANK_ORDER)[number],
   tier: "I" | "II" | "III"
 ): string {
-  return EXACT_TOP_PERCENT_BY_RANK_TIER[`${baseRank} ${tier}`] ?? "Top 96.6%";
+  return EXACT_TOP_PERCENT_BY_RANK_TIER[`${baseRank} ${tier}`] ?? "Top 97%";
 }
 
 export function getStepsForMuscle(muscle: StrengthRankMuscle): RankStep[] {
@@ -675,7 +675,7 @@ export type StrengthRankingOutput = {
   overallNextRankLabel: string | null;
   overallNextRankSlug: RankSlug | null;
   overallNextRankTier: "I" | "II" | "III" | null;
-  /** Exact label e.g. "Top 18.3%" */
+  /** Exact label e.g. "Top 18%" */
   overallTopPercentileLabel: string;
   /** Next rank's Top X% label when applicable. */
   overallNextTopPercentileLabel: string | null;
