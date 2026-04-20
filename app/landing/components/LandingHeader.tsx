@@ -12,6 +12,7 @@ const nav = [
   { href: "#features", label: "Features" },
   { href: "#insights", label: "Insights" },
   { href: "#pro", label: "Pro" },
+  { href: "#support", label: "Support" },
 ];
 
 export function LandingHeader() {

@@ -83,10 +83,9 @@ Deno.serve(async (req) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL")?.trim() ?? "";
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY")?.trim() ?? "";
   const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim() ?? "";
 
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !serviceRoleKey) {
     return jsonResponse({ error: "Server configuration error" }, 500);
   }
 
@@ -94,26 +93,22 @@ Deno.serve(async (req) => {
   if (!authHeader?.startsWith("Bearer ")) {
     return jsonResponse({ error: "Missing or invalid authorization" }, 401);
   }
+  const accessToken = authHeader.slice("Bearer ".length).trim();
 
-  const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
+  // Validate the presented access token directly against Auth.
   const {
     data: { user },
     error: userErr,
-  } = await userClient.auth.getUser();
-
+  } = await admin.auth.getUser(accessToken);
   if (userErr || !user?.id) {
     return jsonResponse({ error: "Not authenticated" }, 401);
   }
 
   const userId = user.id;
-
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
 
   const purge = await purgePublicUserData(admin, userId);
   if (purge.error) {

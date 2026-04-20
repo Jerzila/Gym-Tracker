@@ -2,7 +2,6 @@
 
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
-import { createServiceRoleSupabase } from "@/lib/supabase/admin";
 import { APP_HOME, appHref, normalizeAuthRedirect } from "@/lib/appRoutes";
 import { redirect } from "next/navigation";
 
@@ -326,18 +325,11 @@ export async function deleteAccount(formData: FormData) {
       return { error: "Unable to verify your session for account deletion." };
     }
 
-    const admin = createServiceRoleSupabase();
-    if (admin) {
-      const { error: adminDelErr } = await admin.auth.admin.deleteUser(user.id);
-      if (adminDelErr) {
-        logServerError("deleteAccount admin.deleteUser failed", adminDelErr);
-        return { error: adminDelErr.message || "Unable to delete your account. Please try again." };
-      }
-    } else {
-      const fnResult = await invokeDeleteUserEdgeFunction(accessToken);
-      if (fnResult.error) {
-        return { error: fnResult.error };
-      }
+    // Always use the edge function deletion flow so data is purged in a safe order
+    // before auth user removal (prevents FK ordering failures on direct auth deletion).
+    const fnResult = await invokeDeleteUserEdgeFunction(accessToken);
+    if (fnResult.error) {
+      return { error: fnResult.error };
     }
 
     try {

@@ -1,8 +1,9 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Activity, Dumbbell, LineChart, Trophy } from "lucide-react";
+import { Activity, BookOpen, Dumbbell, LineChart, Mail, Settings2, Trophy } from "lucide-react";
 import { MuscleBalanceRadar, OneRMTrendChart, ProgressionLineChart } from "./ChartDecor";
 import { LandingHeader } from "./LandingHeader";
 import { PhoneMockup } from "./PhoneMockup";
@@ -59,6 +60,35 @@ const PRO_BENEFITS = [
   "Extended progress timelines and trends",
   "Advanced insights into weak points and balance",
   "Detailed rankings and comparative context",
+];
+
+const SUPPORT_ITEMS: { title: string; body: ReactNode; icon: typeof Settings2 }[] = [
+  {
+    title: "In the app",
+    body: "Open Liftly, go to your profile, then Settings—find account, notifications, and troubleshooting in one place.",
+    icon: Settings2,
+  },
+  {
+    title: "Help center",
+    body: "We are putting together guides for logging, PRs, and Pro features. Check back soon for articles and FAQs.",
+    icon: BookOpen,
+  },
+  {
+    title: "Email the team",
+    body: (
+      <>
+        Questions about billing, data, or the product? Reach us at{" "}
+        <a
+          href="mailto:support@liftlygym.com?subject=Liftly%20support"
+          className="whitespace-nowrap font-medium text-amber-300/95 underline decoration-amber-400/35 underline-offset-2 transition-colors hover:text-amber-200 hover:decoration-amber-400/60"
+        >
+          support@liftlygym.com
+        </a>{" "}
+        and we will get back to you.
+      </>
+    ),
+    icon: Mail,
+  },
 ];
 
 export function MarketingLanding() {
@@ -335,25 +365,43 @@ export function MarketingLanding() {
           </div>
         </section>
 
-        {/* Support — placeholder */}
+        {/* Support */}
         <section
           id="support"
-          className="scroll-mt-24 border-t border-white/[0.06] px-4 py-9 sm:px-5 sm:py-12 md:px-8 md:py-14 lg:py-24"
+          className="scroll-mt-24 border-t border-white/[0.06] bg-zinc-950/25 px-4 py-9 sm:px-5 sm:py-12 md:px-8 md:py-14 lg:py-24 xl:py-32"
           aria-labelledby="support-heading"
         >
-          <div className="mx-auto max-w-2xl min-w-0 px-0 text-center">
+          <div className="mx-auto min-w-0 max-w-[min(100%,390px)] sm:max-w-6xl">
             <Reveal>
+              <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-400/90">Help & support</p>
               <h2
                 id="support-heading"
-                className="font-[family-name:var(--font-landing-display)] text-2xl font-semibold tracking-tight text-white sm:text-3xl lg:text-4xl"
+                className="mt-3 font-[family-name:var(--font-landing-display)] text-balance text-2xl font-semibold tracking-tight text-white sm:text-3xl lg:text-4xl"
               >
-                Support
+                We have got your back.
               </h2>
-              <p className="mt-4 text-pretty text-base text-zinc-400 sm:text-lg">
-                We are preparing a help center and contact options. For now, use the in-app settings if you
-                need assistance.
+              <p className="mt-4 max-w-2xl text-base text-zinc-400 sm:text-lg">
+                Whether you are setting up your first workout or digging into analytics, here is how to get
+                answers fast.
               </p>
             </Reveal>
+
+            <div className="mt-10 grid gap-4 sm:mt-14 sm:grid-cols-2 sm:gap-5 lg:grid-cols-3">
+              {SUPPORT_ITEMS.map((item, i) => {
+                const Icon = item.icon;
+                return (
+                  <Reveal key={item.title} delayMs={i * 70}>
+                    <div className="group flex h-full flex-col rounded-2xl border border-white/[0.08] bg-white/[0.03] p-6 shadow-[0_4px_40px_-20px_rgba(0,0,0,0.5)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/[0.14] hover:bg-white/[0.05] hover:shadow-[0_28px_70px_-32px_rgba(245,158,11,0.1)] sm:p-8">
+                      <div className="mb-5 inline-flex w-fit rounded-xl border border-white/10 bg-zinc-900/80 p-3 text-amber-400/95 ring-1 ring-white/[0.04] transition-transform duration-300 group-hover:scale-105">
+                        <Icon className="h-6 w-6" strokeWidth={1.5} aria-hidden />
+                      </div>
+                      <h3 className="text-xl font-semibold text-white">{item.title}</h3>
+                      <p className="mt-3 flex-1 leading-relaxed text-zinc-400">{item.body}</p>
+                    </div>
+                  </Reveal>
+                );
+              })}
+            </div>
           </div>
         </section>
 

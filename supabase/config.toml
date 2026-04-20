@@ -1,4 +1,4 @@
 # Local Supabase / Edge Functions. Deploy: supabase functions deploy delete-user
 
 [functions.delete-user]
-verify_jwt = true
+verify_jwt = false
