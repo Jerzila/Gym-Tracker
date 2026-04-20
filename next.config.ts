@@ -10,7 +10,7 @@ export default withPWA({
   disable: process.env.NODE_ENV === "development",
   register: true,
   fallbacks: {
-    document: "/~offline",
+    document: "/app/~offline",
   },
   workboxOptions: {
     skipWaiting: true,

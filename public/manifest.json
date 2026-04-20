@@ -2,7 +2,7 @@
   "name": "Liftly",
   "short_name": "Liftly",
   "description": "Track workouts, build strength, and improve faster with AI-powered insights. Log workouts, measure progress, and stay consistent.",
-  "start_url": "/",
+  "start_url": "/app",
   "display": "standalone",
   "theme_color": "#000000",
   "background_color": "#000000",

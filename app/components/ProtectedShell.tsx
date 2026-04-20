@@ -8,42 +8,45 @@ import { BottomNav } from "@/app/components/BottomNav";
 import { CalendarIcon, SearchIcon, SettingsIcon, UserPlusIcon } from "@/components/icons";
 import { BackArrowButton } from "@/app/components/BackArrowButton";
 import { SocialInviteHeaderButton } from "@/app/components/SocialInviteHeaderButton";
+import { DashboardGetProButton } from "@/app/components/DashboardGetProButton";
 import {
   FriendIncomingRequestsProvider,
   PendingFriendRequestBadge,
   useFriendIncomingRequests,
 } from "@/app/components/FriendIncomingRequestsContext";
+import { APP_HOME, appHref, stripAppPathPrefix } from "@/lib/appRoutes";
 
 function getPageTitle(pathname: string): string {
-  if (pathname === "/profile-setup") return "Complete Your Profile";
-  if (pathname === "/") return "Dashboard";
-  if (pathname === "/exercises") return "Exercises";
-  if (pathname === "/calendar") return "Calendar";
-  if (pathname === "/insights") return "Insights";
-  if (pathname === "/insights/strength-progress") return "Insights";
-  if (pathname === "/insights/strength-compare") return "Compare strength";
-  if (pathname === "/social") return "Social";
-  if (pathname === "/bodyweight") return "Bodyweight";
-  if (pathname === "/account") return "Account";
-  if (pathname === "/account/settings") return "Settings";
-  if (pathname === "/account/edit-profile") return "Edit Profile";
-  if (pathname === "/account/settings/body-metrics") return "Body metrics";
-  if (pathname === "/account/settings/preferences") return "Preferences";
-  if (pathname === "/account/settings/about") return "About you";
-  if (pathname === "/account/settings/security") return "Security";
-  if (pathname === "/account/settings/other") return "Other";
-  if (pathname === "/categories") return "Categories";
-  if (pathname.startsWith("/exercise/")) return "Exercise";
-  if (pathname === "/social/search") return "Search Friends";
-  if (pathname === "/social/requests") return "Friend Requests";
-  if (pathname.startsWith("/friend/")) return "Profile";
+  const p = stripAppPathPrefix(pathname);
+  if (p === "/profile-setup") return "Complete Your Profile";
+  if (p === "/") return "Dashboard";
+  if (p === "/exercises") return "Exercises";
+  if (p === "/calendar") return "Calendar";
+  if (p === "/insights") return "Insights";
+  if (p === "/insights/strength-progress") return "Insights";
+  if (p === "/insights/strength-compare") return "Compare strength";
+  if (p === "/social") return "Social";
+  if (p === "/bodyweight") return "Bodyweight";
+  if (p === "/account") return "Account";
+  if (p === "/account/settings") return "Settings";
+  if (p === "/account/edit-profile") return "Edit Profile";
+  if (p === "/account/settings/body-metrics") return "Body metrics";
+  if (p === "/account/settings/preferences") return "Preferences";
+  if (p === "/account/settings/about") return "About you";
+  if (p === "/account/settings/security") return "Security";
+  if (p === "/account/settings/other") return "Other";
+  if (p === "/categories") return "Categories";
+  if (p.startsWith("/exercise/")) return "Exercise";
+  if (p === "/social/search") return "Search Friends";
+  if (p === "/social/requests") return "Friend Requests";
+  if (p.startsWith("/friend/")) return "Profile";
   return "Liftly";
 }
 
 function AccountSettingsLink() {
   return (
     <Link
-      href="/account/settings"
+      href={appHref("/account/settings")}
       className="tap-feedback rounded-lg p-2 text-zinc-400 transition-colors hover:bg-zinc-800 hover:text-zinc-200"
       aria-label="Settings"
     >
@@ -55,7 +58,7 @@ function AccountSettingsLink() {
 function DashboardCalendarLink() {
   return (
     <Link
-      href="/calendar"
+      href={appHref("/calendar")}
       className="tap-feedback flex h-11 w-11 items-center justify-center rounded-xl text-zinc-300 transition-colors hover:bg-zinc-800 hover:text-zinc-100 active:bg-zinc-800"
       aria-label="Open calendar"
     >
@@ -74,14 +77,14 @@ function SocialHeaderActions() {
   return (
     <>
       <Link
-        href="/social/search"
+        href={appHref("/social/search")}
         className="rounded-lg p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-100 tap-feedback"
         aria-label="Search friends"
       >
         <SearchIcon size={20} aria-hidden />
       </Link>
       <Link
-        href="/social/requests"
+        href={appHref("/social/requests")}
         className="relative rounded-lg p-2 text-zinc-300 transition hover:bg-zinc-900 hover:text-zinc-100 tap-feedback"
         aria-label={requestsLabel}
       >
@@ -95,35 +98,39 @@ function SocialHeaderActions() {
 export function ProtectedShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const title = getPageTitle(pathname);
+  const p = stripAppPathPrefix(pathname);
 
   /** Friend profile renders its own fixed header (username + back); skip shell header to avoid double bars. */
-  const isFriendProfileRoute = pathname.startsWith("/friend/");
-  const showFixedHeader = !isFriendProfileRoute && pathname !== "/profile-setup";
-  const hideBottomNav = pathname === "/profile-setup";
+  const isFriendProfileRoute = p.startsWith("/friend/");
+  const showFixedHeader = !isFriendProfileRoute && p !== "/profile-setup";
+  const hideBottomNav = p === "/profile-setup";
 
   let leftSlot: ReactNode = null;
   let rightSlot: ReactNode = null;
 
   const isMainTab =
-    pathname === "/" ||
-    pathname === "/exercises" ||
-    pathname === "/insights" ||
-    pathname === "/social" ||
-    pathname === "/bodyweight" ||
-    pathname === "/account" ||
-    pathname === "/calendar";
+    p === "/" ||
+    p === "/exercises" ||
+    p === "/insights" ||
+    p === "/social" ||
+    p === "/bodyweight" ||
+    p === "/account" ||
+    p === "/calendar" ||
+    pathname === APP_HOME;
 
   if (!isMainTab && showFixedHeader) {
     leftSlot = <BackArrowButton />;
-  } else if (pathname === "/social") {
+  } else if (p === "/social") {
     leftSlot = <SocialInviteHeaderButton />;
+  } else if (p === "/" || pathname === APP_HOME) {
+    leftSlot = <DashboardGetProButton />;
   }
 
-  if (pathname === "/") {
+  if (p === "/" || pathname === APP_HOME) {
     rightSlot = <DashboardCalendarLink />;
-  } else if (pathname === "/account") {
+  } else if (p === "/account") {
     rightSlot = <AccountSettingsLink />;
-  } else if (pathname === "/social") {
+  } else if (p === "/social") {
     rightSlot = <SocialHeaderActions />;
   }
 

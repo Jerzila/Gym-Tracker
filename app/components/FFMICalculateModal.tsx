@@ -9,6 +9,7 @@ import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { formatHeightDisplay } from "@/lib/units";
 import { useUnits } from "@/app/components/UnitsContext";
 import { getFFMICategory } from "@/lib/ffmi";
+import { useProAccess } from "@/app/components/ProAccessProvider";
 
 const RANGE_LEGEND_MALE = [
   { range: "< 18", label: "Very low" },
@@ -136,6 +137,7 @@ export function FFMICalculateModal({
 }) {
   const router = useRouter();
   const units = useUnits();
+  const { ready: proReady, requirePro } = useProAccess();
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ ffmi: number; label: string } | null>(null);
   const [resultOutdated, setResultOutdated] = useState(false);
@@ -212,6 +214,9 @@ export function FFMICalculateModal({
       setError("Body fat % must be between 1 and 60.");
       return;
     }
+
+    if (!proReady) return;
+    if (!requirePro("ffmi")) return;
 
     startTransition(async () => {
       const res = await saveCalculatedFFMI(pct);
@@ -297,7 +302,7 @@ export function FFMICalculateModal({
             {!result || resultOutdated ? (
               <button
                 type="button"
-                disabled={pending}
+                disabled={pending || !proReady}
                 onClick={handleCalculate}
                 className="w-full rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 transition hover:bg-amber-400 disabled:opacity-50"
               >

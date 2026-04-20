@@ -10,11 +10,13 @@
     "generate-icons": "node scripts/generate-pwa-icons.mjs"
   },
   "dependencies": {
+    "@capacitor-community/admob": "^8.0.0",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
     "@capacitor/ios": "^8.2.0",
     "@date-fns/tz": "^1.4.1",
     "@ducanh2912/next-pwa": "^10.2.9",
+    "@revenuecat/purchases-capacitor": "^13.0.0",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.96.0",
     "@vercel/analytics": "^1.6.1",

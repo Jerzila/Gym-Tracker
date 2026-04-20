@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { FriendListRowWithMenu } from "@/app/components/FriendListRowWithMenu";
 import { getFriendsList, type FriendListItem } from "@/app/actions/social";
+import { showCrownForLiftlyPro } from "@/lib/showRankCrown";
 
 export function SocialFriendsList() {
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,7 @@ export function SocialFriendsList() {
               <FriendListRowWithMenu
                 friendId={f.friend_id}
                 username={f.username}
+                showCrown={showCrownForLiftlyPro(f.liftly_pro)}
                 onRemoved={(id) => setFriends((prev) => prev.filter((x) => x.friend_id !== id))}
               />
             </li>

@@ -14,6 +14,7 @@ import { RankBadge } from "@/app/components/RankBadge";
 import type { RankSlug } from "@/lib/rankBadges";
 import { FemaleIcon, MaleIcon, PreferNotToSayIcon } from "@/components/icons";
 import { FlagIcon } from "@/app/components/FlagIcon";
+import { appHref } from "@/lib/appRoutes";
 
 const TOTAL_STEPS = 5; // name+DOB+gender, units, height&weight, country, strength-rank (welcome is step 0)
 const STEP_TITLES = [
@@ -530,7 +531,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
       }
       haptic();
       router.refresh();
-      router.replace("/");
+      router.replace(appHref("/dev/paywall"));
     } catch {
       setSubmitting(false);
     }
@@ -573,7 +574,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
       }
       haptic();
       router.refresh();
-      router.replace("/");
+      router.replace(appHref("/dev/paywall"));
     } catch {
       setError("Something went wrong.");
       setSubmitting(false);

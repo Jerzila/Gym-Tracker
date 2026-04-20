@@ -10,6 +10,7 @@ import { SkeletonPanel } from "@/app/components/Skeleton";
 import type { WeeklyComparison } from "@/app/actions/insights";
 import type { StrengthRankingWithExercises } from "@/app/actions/strengthRanking";
 import { overallRankDisplayFromOutput } from "@/lib/strengthRanking";
+import { appHref } from "@/lib/appRoutes";
 
 const MuscleRadarChart = dynamic(
   () =>
@@ -113,7 +114,7 @@ export function DashboardPageContent({
       {/* Log Workout — primary CTA */}
       <section className="animate-fade-in">
         <Link
-          href="/exercises?log=1"
+          href={`${appHref("/exercises")}?log=1`}
           prefetch={true}
           className="tap-feedback flex w-full items-center justify-center rounded-xl bg-amber-500 px-6 py-4 text-base font-semibold text-zinc-950 shadow-lg shadow-amber-500/20 transition hover:bg-amber-400 hover:shadow-amber-500/25 active:scale-[0.99]"
         >
@@ -188,7 +189,7 @@ export function DashboardPageContent({
               ) : null}
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <Link
-                  href="/bodyweight"
+                  href={appHref("/bodyweight")}
                   prefetch={true}
                   className="inline-flex items-center rounded-lg border border-zinc-600 bg-transparent px-2.5 py-1.5 text-xs text-zinc-400 transition hover:border-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
                 >
@@ -219,7 +220,7 @@ export function DashboardPageContent({
             <>
               <p className="text-zinc-500">No weight logged yet</p>
               <Link
-                href="/bodyweight"
+                href={appHref("/bodyweight")}
                 prefetch={true}
                 className="mt-2 inline-flex items-center rounded-lg bg-amber-500/20 px-2.5 py-1.5 text-xs font-medium text-amber-400 transition hover:bg-amber-500/30"
               >
@@ -235,16 +236,14 @@ export function DashboardPageContent({
         <DashboardMusclePreview data={strengthRanking} gender={gender} />
       </section>
 
-      {/* Training Balance (Radar) Preview */}
+      {/* Training Balance — This week only (free); other ranges are Pro on Insights */}
       <section className="animate-fade-in" style={{ animationDelay: "125ms" }}>
         <div className="relative">
-          {/* Background tap area → Insights */}
           <div
-            className="absolute inset-0 rounded-xl cursor-pointer tap-feedback"
-            onClick={() => router.push("/insights")}
+            className="absolute inset-0 z-[5] cursor-pointer rounded-xl tap-feedback"
+            onClick={() => router.push(appHref("/insights"))}
           />
 
-          {/* Card content sits above the navigation layer */}
           <div className="relative z-10 rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 transition hover:border-zinc-700 hover:bg-zinc-900/70">
             <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-zinc-500">
               Training Balance
@@ -262,10 +261,10 @@ export function DashboardPageContent({
               </div>
             )}
             <p
-              className="mt-1.5 text-center text-[11px] text-zinc-500 cursor-pointer"
-              onClick={() => router.push("/insights")}
+              className="mt-1.5 cursor-pointer text-center text-[11px] text-zinc-500"
+              onClick={() => router.push(appHref("/insights"))}
             >
-              Tap for full Insights
+              Tap for full Insights (more ranges are Pro)
             </p>
           </div>
         </div>

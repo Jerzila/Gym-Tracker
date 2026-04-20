@@ -3,15 +3,19 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { removeFriend } from "@/app/actions/social";
+import { appHref } from "@/lib/appRoutes";
 import { EllipsisIcon } from "@/components/icons";
+import { RankCrownIcon } from "@/app/components/RankCrownIcon";
 
 type Props = {
   friendId: string;
   username: string;
+  /** Liftly Pro subscriber — golden crown next to name */
+  showCrown?: boolean;
   onRemoved?: (friendId: string) => void;
 };
 
-export function FriendListRowWithMenu({ friendId, username, onRemoved }: Props) {
+export function FriendListRowWithMenu({ friendId, username, showCrown = false, onRemoved }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -39,10 +43,11 @@ export function FriendListRowWithMenu({ friendId, username, onRemoved }: Props) 
       className="flex items-center justify-between gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2"
     >
       <Link
-        href={`/friend/${friendId}`}
-        className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-100 transition-colors hover:text-white tap-feedback"
+        href={appHref(`/friend/${friendId}`)}
+        className="flex min-w-0 flex-1 items-center gap-1 text-sm font-medium text-zinc-100 transition-colors hover:text-white tap-feedback"
       >
-        {username}
+        <span className="truncate">{username}</span>
+        {showCrown ? <RankCrownIcon size={15} title="Liftly Pro" /> : null}
       </Link>
       <div className="relative shrink-0">
         <button

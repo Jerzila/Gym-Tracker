@@ -10,6 +10,7 @@ import type { Exercise } from "@/lib/types";
 import { normalizeLoadType } from "@/lib/loadType";
 import { EditExerciseModal } from "@/app/components/EditExerciseModal";
 import { buttonClass } from "@/app/components/Button";
+import { appHref } from "@/lib/appRoutes";
 
 const EXERCISES_SCROLL_KEY = "gym-exercises-scroll";
 
@@ -52,7 +53,7 @@ function ExerciseCardInner({ exercise }: { exercise: Exercise }) {
         className="card-tap group flex min-h-[52px] flex-wrap items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/50 transition-[background-color,border-color] duration-100 ease-out hover:border-zinc-700 hover:bg-zinc-800/50 sm:flex-nowrap"
       >
         <Link
-          href={`/exercise/${exercise.id}`}
+          href={appHref(`/exercise/${exercise.id}`)}
           prefetch={true}
           onClick={saveScrollAndNavigate}
           className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-4 py-3 sm:flex-none"

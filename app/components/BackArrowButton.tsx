@@ -1,18 +1,20 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { APP_HOME, appHref, stripAppPathPrefix } from "@/lib/appRoutes";
 
 export function BackArrowButton() {
   const router = useRouter();
   const pathname = usePathname();
+  const p = stripAppPathPrefix(pathname);
 
   function handleBack() {
-    if (pathname === "/calendar") {
-      router.push("/");
+    if (p === "/calendar") {
+      router.push(APP_HOME);
       return;
     }
-    if (pathname.startsWith("/exercise/")) {
-      router.push("/exercises");
+    if (p.startsWith("/exercise/")) {
+      router.push(appHref("/exercises"));
       return;
     }
     router.back();

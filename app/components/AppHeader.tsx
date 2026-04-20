@@ -7,7 +7,7 @@ export function AppHeader({
   leftSlot,
   rightSlot,
 }: {
-  title: string;
+  title: ReactNode;
   leftSlot?: ReactNode;
   rightSlot?: ReactNode;
 }) {
@@ -18,7 +18,7 @@ export function AppHeader({
     >
       <div className="z-10 flex min-w-0 items-center justify-start gap-2">{leftSlot}</div>
 
-      <h1 className="z-0 max-w-[min(20rem,72vw)] truncate text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
+      <h1 className="z-0 flex min-w-0 max-w-[min(20rem,72vw)] items-center justify-center gap-1.5 text-center text-[18px] font-bold leading-none tracking-tight text-zinc-100 sm:text-[22px]">
         {title}
       </h1>
 

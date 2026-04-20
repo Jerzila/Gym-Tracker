@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { appHref } from "@/lib/appRoutes";
 import type { Profile } from "@/lib/types";
 import { UserAvatar } from "@/app/components/UserAvatar";
 import { useUsernameDisplay } from "@/app/components/UsernameDisplayContext";
@@ -27,7 +28,7 @@ export function AccountHeroSection({ profile }: { profile: Profile | null }) {
       <p className="mt-2 text-center text-xs text-zinc-500">
         Social features are coming soon. Stay tuned.
       </p>
-      <Link href="/account/edit-profile" className={editProfileButtonClass}>
+      <Link href={appHref("/account/edit-profile")} className={editProfileButtonClass}>
         Edit Profile
       </Link>
     </section>

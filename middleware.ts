@@ -1,106 +1,56 @@
-import { type NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const authPaths = ["/login", "/signup", "/forgot-password", "/reset-password"];
-const verificationPath = "/verify-email";
+import { APP_PATH_PREFIX } from "@/lib/appRoutes";
 
-function isProtectedPath(pathname: string): boolean {
-  if (pathname === "/" || pathname === "/bodyweight" || pathname === "/categories") return true;
-  if (pathname === "/profile-setup" || pathname.startsWith("/account")) return true;
-  if (pathname === "/exercises" || pathname === "/calendar" || pathname === "/insights") return true;
-  if (pathname.startsWith("/exercise/")) return true;
-  return false;
+/** First segments that used to live at site root before the `/app` shell. */
+const LEGACY_APP_SEGMENTS = new Set([
+  "login",
+  "signup",
+  "forgot-password",
+  "reset-password",
+  "verify-email",
+  "calendar",
+  "insights",
+  "exercises",
+  "account",
+  "social",
+  "bodyweight",
+  "categories",
+  "profile-setup",
+  "dev",
+  "friend",
+  "exercise",
+  "~offline",
+]);
+
+function shouldRedirectLegacyToApp(pathname: string): boolean {
+  if (pathname === APP_PATH_PREFIX || pathname.startsWith(`${APP_PATH_PREFIX}/`)) {
+    return false;
+  }
+  const seg = pathname.split("/")[1];
+  if (!seg) return false;
+  return LEGACY_APP_SEGMENTS.has(seg);
 }
 
-function isAuthPath(pathname: string): boolean {
-  return authPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
+export function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-function isVerificationPath(pathname: string): boolean {
-  return pathname === verificationPath || pathname.startsWith(`${verificationPath}/`);
-}
-
-function buildVerifyEmailUrl(request: NextRequest, email: string | null, next: string): URL {
-  const url = new URL(verificationPath, request.url);
-  if (email) url.searchParams.set("email", email);
-  url.searchParams.set("next", next);
-  return url;
-}
-
-function isLandingPath(pathname: string): boolean {
-  return pathname === "/landing" || pathname.startsWith("/landing/");
-}
-
-/** Draft landing: open in dev, on Vercel previews, or when LANDING_PAGE_PUBLIC=true in production. */
-function isLandingAccessible(): boolean {
-  if (process.env.NODE_ENV !== "production") return true;
-  if (process.env.VERCEL_ENV === "preview") return true;
-  if (process.env.LANDING_PAGE_PUBLIC === "true") return true;
-  return false;
-}
-
-export async function middleware(request: NextRequest) {
-  if (isLandingPath(request.nextUrl.pathname) && !isLandingAccessible()) {
-    return new NextResponse(null, { status: 404 });
+  if (pathname === "/landing") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/";
+    return NextResponse.redirect(url, 308);
   }
 
-  const response = NextResponse.next({ request });
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
-  const anonKey = (
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-  )?.trim();
-  if (!url || !anonKey) {
-    return response;
+  if (shouldRedirectLegacyToApp(pathname)) {
+    const url = request.nextUrl.clone();
+    url.pathname = `${APP_PATH_PREFIX}${pathname}`;
+    return NextResponse.redirect(url, 308);
   }
 
-  const supabase = createServerClient(url, anonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user && !user.email_confirmed_at && !isVerificationPath(request.nextUrl.pathname)) {
-    const next = request.nextUrl.pathname;
-    if (isProtectedPath(request.nextUrl.pathname)) {
-      return NextResponse.redirect(buildVerifyEmailUrl(request, user.email ?? null, next));
-    }
-    if (isAuthPath(request.nextUrl.pathname)) {
-      const redirectTo = request.nextUrl.searchParams.get("redirect") || "/";
-      return NextResponse.redirect(buildVerifyEmailUrl(request, user.email ?? null, redirectTo));
-    }
-  }
-
-  if (isProtectedPath(request.nextUrl.pathname)) {
-    if (!user) {
-      const loginUrl = new URL("/login", request.url);
-      loginUrl.searchParams.set("redirect", request.nextUrl.pathname);
-      return NextResponse.redirect(loginUrl);
-    }
-  }
-
-  if (isAuthPath(request.nextUrl.pathname) && user) {
-    const redirectTo = request.nextUrl.searchParams.get("redirect") || "/";
-    return NextResponse.redirect(new URL(redirectTo, request.url));
-  }
-
-  return response;
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|icons|manifest.json|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };

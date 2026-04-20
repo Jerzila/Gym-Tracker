@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { runRestorePurchasesCheck } from "@/app/lib/purchases/restorePurchases";
 import { useNetworkStatus } from "@/app/components/NetworkStatusProvider";
+import { useProAccess } from "@/app/components/ProAccessProvider";
 
 export function RestorePurchasesRow() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -10,6 +11,7 @@ export function RestorePurchasesRow() {
   const [isChecking, setIsChecking] = useState(false);
   const [hadError, setHadError] = useState(false);
   const { isOnline, requireOnline } = useNetworkStatus();
+  const { refreshAccess } = useProAccess();
 
   async function handleRestorePurchases() {
     if (isChecking) return;
@@ -18,6 +20,7 @@ export function RestorePurchasesRow() {
     setIsChecking(true);
     try {
       const result = await runRestorePurchasesCheck();
+      await refreshAccess();
       setHadError(false);
       setModalMessage(result.message);
       setIsModalOpen(true);

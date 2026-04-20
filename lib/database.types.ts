@@ -50,6 +50,52 @@ export type Database = {
           updated_at?: string;
         };
       };
+      affiliate_user_claims: {
+        Row: {
+          user_id: string;
+          affiliate_id: string;
+          affiliate_code: string;
+          created_at: string;
+          updated_at?: string;
+        };
+        Insert: {
+          user_id: string;
+          affiliate_id: string;
+          affiliate_code: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          user_id?: string;
+          affiliate_id?: string;
+          affiliate_code?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
+      affiliates: {
+        Row: {
+          id: string;
+          code: string;
+          label: string | null;
+          active: boolean;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          label?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          label?: string | null;
+          active?: boolean;
+          created_at?: string;
+        };
+      };
       categories: {
         Row: { id: string; user_id: string; name: string; created_at: string };
         Insert: { id?: string; user_id: string; name: string; created_at?: string };
@@ -145,6 +191,12 @@ export type Database = {
         Row: { id: string; user_id: string; weight: number; date: string; created_at: string };
         Insert: { id?: string; user_id: string; weight: number; date: string; created_at?: string };
         Update: { id?: string; user_id?: string; weight?: number; date?: string; created_at?: string };
+      };
+    };
+    Functions: {
+      claim_affiliate_code: {
+        Args: { p_raw: string };
+        Returns: Json;
       };
     };
   };

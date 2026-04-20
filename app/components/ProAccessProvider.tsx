@@ -1,0 +1,198 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import { getAffiliateSavedCode } from "@/app/actions/affiliate";
+import { getSubscriptionSeed } from "@/app/actions/subscription";
+import { ProUpgradePaywall, type ProPlan } from "@/components/paywall/ProUpgradePaywall";
+import {
+  purchaseRevenueCatPackage,
+  refreshRevenueCatAccess,
+  restoreRevenueCatPurchases,
+  type RevenueCatAccessState,
+} from "@/app/lib/purchases/revenueCat";
+
+type ProGateReason =
+  | "ffmi"
+  | "muscle_rankings"
+  | "compare_progress"
+  | "improve_rank"
+  | "muscle_balance_history"
+  | "top_improvements"
+  | "advanced_analytics"
+  | "monthly_analytics"
+  | "calendar"
+  | "full_leaderboard"
+  | "friend_profile"
+  | "muscle_rank_up"
+  | "get_pro";
+
+type ProAccessContextValue = {
+  ready: boolean;
+  hasPro: boolean;
+  hasNoAds: boolean;
+  monthlyAnalyticsUnlocked: boolean;
+  requirePro: (reason: ProGateReason) => boolean;
+  refreshAccess: () => Promise<void>;
+};
+
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+const ProAccessContext = createContext<ProAccessContextValue | null>(null);
+
+function defaultPaywallPlanForReason(reason: ProGateReason): ProPlan {
+  if (reason === "full_leaderboard" || reason === "friend_profile" || reason === "muscle_rankings") {
+    return "yearly";
+  }
+  return "monthly";
+}
+
+function computeMonthlyUnlock(profileCreatedAt: string | null, hasPro: boolean): boolean {
+  if (hasPro) return true;
+  if (!profileCreatedAt) return false;
+  const createdAtMs = Date.parse(profileCreatedAt);
+  if (!Number.isFinite(createdAtMs)) return false;
+  return Date.now() - createdAtMs <= THIRTY_DAYS_MS;
+}
+
+function mapPlanToPackage(plan: ProPlan): "$rc_monthly" | "$rc_annual" | "no_ads_monthly" {
+  if (plan === "yearly") return "$rc_annual";
+  if (plan === "noAds") return "no_ads_monthly";
+  return "$rc_monthly";
+}
+
+export function ProAccessProvider({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [profileCreatedAt, setProfileCreatedAt] = useState<string | null>(null);
+  const [accessState, setAccessState] = useState<RevenueCatAccessState>({ hasPro: false, hasNoAds: false });
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallPlan, setPaywallPlan] = useState<ProPlan>("monthly");
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [affiliateCode, setAffiliateCode] = useState<string | null>(null);
+
+  const refreshAccess = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const next = await refreshRevenueCatAccess(userId);
+      setAccessState(next);
+    } catch (error) {
+      console.error("[pro] Failed to refresh RevenueCat access", error);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const seed = await getSubscriptionSeed();
+      if (cancelled) return;
+      setUserId(seed.userId);
+      setProfileCreatedAt(seed.profileCreatedAt);
+      setAffiliateCode(seed.affiliateCode);
+      if (seed.userId) {
+        try {
+          const next = await refreshRevenueCatAccess(seed.userId);
+          if (!cancelled) setAccessState(next);
+        } catch (error) {
+          console.error("[pro] Initial RevenueCat sync failed", error);
+        }
+      }
+      if (!cancelled) setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const requirePro = useCallback(
+    (reason: ProGateReason) => {
+      if (accessState.hasPro) return true;
+      setPaywallPlan(defaultPaywallPlanForReason(reason));
+      setPaywallOpen(true);
+      return false;
+    },
+    [accessState.hasPro]
+  );
+
+  const handlePaywallPurchase = useCallback(
+    async (plan: ProPlan) => {
+      if (!userId) return;
+      setPurchaseLoading(true);
+      try {
+        const packageId = mapPlanToPackage(plan);
+        const next = await purchaseRevenueCatPackage(userId, packageId);
+        setAccessState(next);
+        setPaywallOpen(false);
+      } catch (error) {
+        console.error("[pro] purchase failed", error);
+      } finally {
+        setPurchaseLoading(false);
+      }
+    },
+    [userId]
+  );
+
+  const monthlyAnalyticsUnlocked = useMemo(
+    () => computeMonthlyUnlock(profileCreatedAt, accessState.hasPro),
+    [accessState.hasPro, profileCreatedAt]
+  );
+
+  const value = useMemo<ProAccessContextValue>(
+    () => ({
+      ready,
+      hasPro: accessState.hasPro,
+      hasNoAds: accessState.hasNoAds,
+      monthlyAnalyticsUnlocked,
+      requirePro,
+      refreshAccess,
+    }),
+    [ready, accessState.hasPro, accessState.hasNoAds, monthlyAnalyticsUnlocked, requirePro, refreshAccess]
+  );
+
+  return (
+    <ProAccessContext.Provider value={value}>
+      {children}
+      {paywallOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[320]">
+              <ProUpgradePaywall
+                initialPlan={paywallPlan}
+                loading={purchaseLoading}
+                savedAffiliateCode={affiliateCode}
+                onAffiliateClaimed={async () => {
+                  const next = await getAffiliateSavedCode();
+                  setAffiliateCode(next);
+                }}
+                onClose={() => {
+                  setPaywallOpen(false);
+                  void refreshAccess();
+                }}
+                onPurchase={handlePaywallPurchase}
+              />
+            </div>,
+            document.body
+          )
+        : null}
+    </ProAccessContext.Provider>
+  );
+}
+
+export function useProAccess(): ProAccessContextValue {
+  const ctx = useContext(ProAccessContext);
+  if (!ctx) {
+    throw new Error("useProAccess must be used within ProAccessProvider");
+  }
+  return ctx;
+}
+
+export async function restorePurchasesForCurrentUser(userId: string): Promise<RevenueCatAccessState> {
+  return restoreRevenueCatPurchases(userId);
+}

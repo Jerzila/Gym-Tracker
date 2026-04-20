@@ -104,21 +104,23 @@ export type AdvancedStrengthAnalyticsPayload = {
 const UNCATEGORIZED_CATEGORY_ID = "__uncategorized__";
 const UNCATEGORIZED_CATEGORY_NAME = "Uncategorized";
 
-/** Last workout date per exercise_id for the user (any workout row). */
-async function loadLastWorkoutDateByExercise(
+/** Last workout date and workout-log count per exercise_id (single query). */
+async function loadWorkoutLastDateAndCountsByExercise(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   userId: string
-): Promise<Map<string, string>> {
+): Promise<{ lastByEx: Map<string, string>; countByEx: Map<string, number> }> {
+  const lastByEx = new Map<string, string>();
+  const countByEx = new Map<string, number>();
   const { data, error } = await supabase.from("workouts").select("exercise_id, date").eq("user_id", userId);
-  if (error || !data?.length) return new Map();
-  const m = new Map<string, string>();
+  if (error || !data?.length) return { lastByEx, countByEx };
   for (const w of data) {
     const id = w.exercise_id as string;
     const d = String(w.date);
-    const prev = m.get(id);
-    if (!prev || d > prev) m.set(id, d);
+    const prev = lastByEx.get(id);
+    if (!prev || d > prev) lastByEx.set(id, d);
+    countByEx.set(id, (countByEx.get(id) ?? 0) + 1);
   }
-  return m;
+  return { lastByEx, countByEx };
 }
 
 type CategoryExerciseBuild = {
@@ -135,7 +137,7 @@ async function buildCategoryExerciseOptions(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   userId: string
 ): Promise<CategoryExerciseBuild | null> {
-  const lastByEx = await loadLastWorkoutDateByExercise(supabase, userId);
+  const { lastByEx, countByEx } = await loadWorkoutLastDateAndCountsByExercise(supabase, userId);
   if (lastByEx.size === 0) return null;
 
   const ids = [...lastByEx.keys()];
@@ -211,6 +213,9 @@ async function buildCategoryExerciseOptions(
 
   for (const c of byCategory.values()) {
     c.exercises.sort((a, b) => {
+      const ca = countByEx.get(a.id) ?? 0;
+      const cb = countByEx.get(b.id) ?? 0;
+      if (cb !== ca) return cb - ca;
       const da = lastByEx.get(a.id) ?? "";
       const db = lastByEx.get(b.id) ?? "";
       const cmp = db.localeCompare(da);
@@ -224,10 +229,14 @@ async function buildCategoryExerciseOptions(
     return a.name.localeCompare(b.name);
   });
 
-  let defaultEx = eligible[0];
-  for (const ex of eligible) {
-    if (ex.lastDate > defaultEx.lastDate) defaultEx = ex;
-  }
+  /** Default exercise = most workout logs; tie-break by most recent session, then name. */
+  const defaultEx = eligible.reduce((best, ex) => {
+    const cb = countByEx.get(ex.id) ?? 0;
+    const bb = countByEx.get(best.id) ?? 0;
+    if (cb !== bb) return cb > bb ? ex : best;
+    if (ex.lastDate !== best.lastDate) return ex.lastDate > best.lastDate ? ex : best;
+    return ex.name.localeCompare(best.name) < 0 ? ex : best;
+  });
   const defaultExerciseId = defaultEx.id;
   const defaultCategoryId = exercisePrimaryCategory.get(defaultExerciseId)!;
 
@@ -563,7 +572,7 @@ function resolveSelection(
 
 /**
  * Advanced strength analytics for one exercise, with category + exercise filtering.
- * Omit request to use the category of the most recently logged exercise and that exercise.
+ * Omit request to use the category of the **most-logged** exercise (by workout row count) and that exercise.
  */
 export async function getAdvancedStrengthAnalytics(
   request?: AdvancedStrengthAnalyticsRequest | null

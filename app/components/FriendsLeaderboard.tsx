@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Button } from "@/app/components/Button";
+import { Button, buttonClass } from "@/app/components/Button";
 import { RankBadge } from "@/app/components/RankBadge";
 import { getFriendsLeaderboard, type FriendLeaderboardEntry } from "@/app/actions/social";
 import {
@@ -12,6 +12,10 @@ import {
   type FriendLeaderboardMuscleTab,
 } from "@/lib/friendsLeaderboard";
 import { tierFromStoredOverallRank } from "@/lib/tierFromStoredOverallRank";
+import { useProAccess } from "@/app/components/ProAccessProvider";
+import { appHref } from "@/lib/appRoutes";
+import { RankCrownIcon } from "@/app/components/RankCrownIcon";
+import { showCrownForLiftlyPro } from "@/lib/showRankCrown";
 
 function RankMedal({ position }: { position: number }) {
   const base =
@@ -86,16 +90,18 @@ const tabActive = "border border-amber-500/40 bg-amber-950/30 text-amber-100";
 const PREVIEW_LIMIT = 5;
 
 export function FriendsLeaderboard() {
+  const { hasPro, requirePro } = useProAccess();
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<FriendLeaderboardEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [category, setCategory] = useState<FriendLeaderboardCategory>("overall");
   const [muscle, setMuscle] = useState<FriendLeaderboardMuscleTab>("chest");
   const [showFullLeaderboard, setShowFullLeaderboard] = useState(false);
+  const [hasFriends, setHasFriends] = useState(true);
 
   useEffect(() => {
     setShowFullLeaderboard(false);
-  }, [category, muscle]);
+  }, [category, muscle, hasPro]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,10 +109,14 @@ export function FriendsLeaderboard() {
       setLoading(true);
       setError(null);
       try {
-        const { entries: rows, error: err } = await getFriendsLeaderboard({ category, muscle });
+        const { entries: rows, error: err, hasFriends: hf } = await getFriendsLeaderboard({
+          category,
+          muscle,
+        });
         if (cancelled) return;
         if (err) setError(err);
         setEntries(rows ?? []);
+        setHasFriends(hf);
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Could not load leaderboard.");
@@ -139,7 +149,13 @@ export function FriendsLeaderboard() {
             type="button"
             role="tab"
             aria-selected={category === c}
-            onClick={() => setCategory(c)}
+            onClick={() => {
+              if (!hasPro && c !== "overall") {
+                requirePro("full_leaderboard");
+                return;
+              }
+              setCategory(c);
+            }}
             className={`${tabBase} ${category === c ? tabActive : tabIdle}`}
           >
             {CATEGORY_LABEL[c]}
@@ -172,13 +188,24 @@ export function FriendsLeaderboard() {
         <p className="mt-3 text-sm text-zinc-500">Loading…</p>
       ) : error ? (
         <p className="mt-3 text-sm text-red-400/90">{error}</p>
+      ) : !hasFriends ? (
+        <div className="mt-3 rounded-lg border border-dashed border-zinc-700/90 bg-zinc-950/35 px-4 py-5 text-center">
+          <p className="text-sm text-zinc-300">Add friends to compare ranks on the leaderboard.</p>
+          <Link
+            href={appHref("/social/search")}
+            className={`${buttonClass.primary} mt-4 inline-flex w-full max-w-[240px] justify-center sm:w-auto`}
+          >
+            Find friends
+          </Link>
+        </div>
       ) : entries.length === 0 ? (
         <p className="mt-3 text-sm text-zinc-500">No leaderboard data yet.</p>
       ) : (
         <>
           <ul className="mt-3 space-y-2">
-            {(showFullLeaderboard ? entries : entries.slice(0, PREVIEW_LIMIT)).map((e, index) => {
+            {(showFullLeaderboard && hasPro ? entries : entries.slice(0, PREVIEW_LIMIT)).map((e, index) => {
               const position = index + 1;
+              const crown = showCrownForLiftlyPro(e.liftly_pro);
               const rowClass = `flex items-center gap-3 rounded-lg border px-3 py-3 tap-feedback ${
                 e.is_current_user
                   ? "border-amber-500/35 bg-amber-950/20"
@@ -190,10 +217,11 @@ export function FriendsLeaderboard() {
                     <span className="sr-only">{`Rank ${position}`}</span>
                     <RankMedal position={position} />
                     <span
-                      className="truncate text-sm font-medium leading-snug text-zinc-100"
+                      className="flex min-w-0 items-center gap-1 truncate text-sm font-medium leading-snug text-zinc-100"
                       title={e.is_current_user ? e.username : undefined}
                     >
-                      {e.is_current_user ? "You" : e.username}
+                      <span className="truncate">{e.is_current_user ? "You" : e.username}</span>
+                      {crown ? <RankCrownIcon size={15} title="Liftly Pro" /> : null}
                     </span>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
@@ -210,7 +238,7 @@ export function FriendsLeaderboard() {
                   {e.is_current_user ? (
                     <div className={rowClass}>{inner}</div>
                   ) : (
-                    <Link href={`/friend/${e.user_id}`} className={`block ${rowClass}`}>
+                    <Link href={appHref(`/friend/${e.user_id}`)} className={`block ${rowClass}`}>
                       {inner}
                     </Link>
                   )}
@@ -224,10 +252,16 @@ export function FriendsLeaderboard() {
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => setShowFullLeaderboard((v) => !v)}
-                aria-expanded={showFullLeaderboard}
+                onClick={() => {
+                  if (!hasPro) {
+                    requirePro("full_leaderboard");
+                    return;
+                  }
+                  setShowFullLeaderboard((v) => !v);
+                }}
+                aria-expanded={showFullLeaderboard && hasPro}
               >
-                {showFullLeaderboard ? "Show less" : "See full leaderboard"}
+                {hasPro ? (showFullLeaderboard ? "Show less" : "See full leaderboard") : "Unlock full leaderboard"}
               </Button>
             </div>
           ) : null}

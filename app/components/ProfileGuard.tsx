@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import type { Profile } from "@/lib/types";
+import { APP_HOME, appHref } from "@/lib/appRoutes";
 
 type ProfileGuardProps = {
   profile: Profile | null;
@@ -15,14 +16,14 @@ export function ProfileGuard({ profile, children }: ProfileGuardProps) {
 
   useEffect(() => {
     const completed = profile?.profile_completed ?? false;
-    const onProfileSetup = pathname === "/profile-setup";
+    const onProfileSetup = pathname === appHref("/profile-setup");
 
     if (onProfileSetup && completed) {
-      router.replace("/");
+      router.replace(APP_HOME);
       return;
     }
     if (!onProfileSetup && !completed) {
-      router.replace("/profile-setup");
+      router.replace(appHref("/profile-setup"));
     }
   }, [profile, pathname, router]);
 

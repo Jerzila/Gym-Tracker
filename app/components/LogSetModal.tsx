@@ -15,6 +15,7 @@ import { normalizeLoadType } from "@/lib/loadType";
 import type { MuscleRankUpClientPayload } from "@/lib/buildMuscleRankUpClientPayload";
 import { MuscleRankUpModal } from "@/app/components/MuscleRankUpModal";
 import { useMuscleRankUpFromWorkoutSave } from "@/app/hooks/useMuscleRankUpFromWorkoutSave";
+import { useProAccess } from "@/app/components/ProAccessProvider";
 
 type State =
   | {
@@ -56,6 +57,7 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
   const [advancedValues, setAdvancedValues] = useState(initialAdvancedValues);
   const toast = useToast();
   const cache = useWorkoutDataCache();
+  const { hasPro } = useProAccess();
   const lastShownRef = useRef<string | null>(null);
   const onCloseRef = useRef(onClose);
   const onSuccessRef = useRef(onSuccess);
@@ -77,11 +79,11 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
         toast.show(state.message);
       }
       onSuccessRef.current?.();
-      if (!state.rankUp) {
+      if (!state.rankUp || !hasPro) {
         onCloseRef.current();
       }
     }
-  }, [state, toast, cache, router]);
+  }, [state, toast, cache, router, hasPro]);
 
   function handleSubmit() {
     lastShownRef.current = null;
@@ -102,7 +104,7 @@ export function LogSetModal({ exercise, onClose, onSuccess }: Props) {
     });
   }, [advancedLogging, setValues.weight]);
 
-  const rankUpModal = useMuscleRankUpFromWorkoutSave(state ?? null);
+  const rankUpModal = useMuscleRankUpFromWorkoutSave(hasPro ? state ?? null : null);
 
   return (
     <>

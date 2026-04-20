@@ -12,6 +12,7 @@ import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { formatDurationClock } from "@/lib/formatDuration";
 import { useUnits } from "@/app/components/UnitsContext";
 import type { BestExerciseByMuscle } from "@/app/actions/strengthRanking";
+import { useProAccess } from "@/app/components/ProAccessProvider";
 
 const MOBILE_BREAKPOINT = 768;
 
@@ -86,6 +87,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
   const isMobile = useIsMobile();
+  const { hasPro, requirePro } = useProAccess();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [view, setView] = useState<"front" | "back">("front");
 
@@ -230,7 +232,7 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
     scale: 1.28,
     defaultFill: DEFAULT_FILL,
     border: "none" as const,
-    onBodyPartPress: handleBodyPartPress,
+    onBodyPartPress: hasPro ? handleBodyPartPress : undefined,
   };
 
   return (
@@ -242,9 +244,25 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
         .muscle-panel-content { animation: muscle-panel-fade 0.2s ease-out; }
       `}</style>
 
+      {!hasPro ? (
+        <div className="absolute inset-0 z-20 flex items-center justify-center">
+          <div className="rounded-xl border border-amber-500/40 bg-zinc-950/70 px-4 py-3 text-center shadow-lg backdrop-blur-md">
+            <p className="text-sm font-semibold text-zinc-100">Detailed muscle strength is Pro</p>
+            <p className="mt-1 text-xs text-zinc-400">Preview the feature, then unlock full colors and per-muscle details.</p>
+            <button
+              type="button"
+              onClick={() => requirePro("muscle_rankings")}
+              className="mt-3 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 transition hover:bg-amber-400"
+            >
+              Unlock Liftly Pro
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Mobile: toggle + body and widget side-by-side (max-width 768px) */}
       {isMobile && (
-        <div className="flex flex-col gap-2">
+        <div className={`flex flex-col gap-2 transition ${hasPro ? "" : "pointer-events-none select-none blur-md saturate-50 opacity-80"}`}>
           <div className="flex rounded-lg bg-zinc-900 p-1">
             <button
               type="button"
@@ -280,7 +298,11 @@ export function DashboardStrengthDiagram({ data, gender = "male" }: Props) {
 
       {/* Desktop: bodies left, panel right (unchanged) */}
       {!isMobile && (
-        <div className="grid grid-cols-[2.2fr_1fr] items-center gap-3 md:gap-4">
+        <div
+          className={`grid grid-cols-[2.2fr_1fr] items-center gap-3 md:gap-4 transition ${
+            hasPro ? "" : "pointer-events-none select-none blur-md saturate-50 opacity-80"
+          }`}
+        >
           <div className="flex min-w-0 w-full flex-row justify-center gap-2 overflow-visible md:gap-3">
             <Body {...bodyPropsBase} data={bodyDataFront} side="front" />
             <Body {...bodyPropsBase} data={bodyDataBack} side="back" />

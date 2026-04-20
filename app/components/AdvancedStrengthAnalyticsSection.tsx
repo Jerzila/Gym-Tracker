@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/advancedStrengthAnalytics";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
+import { useProAccess } from "@/app/components/ProAccessProvider";
 
 /** Card padding ~10–12px */
 const CARD_PAD = "px-3 py-2 sm:px-3 sm:py-2.5";
@@ -177,21 +178,28 @@ function AnalyticsMetricCard({
   weightLabel,
   units,
   gridSpanClass,
+  maskSensitiveValues,
 }: {
   card: AdvancedStrengthMetricCard;
   weightLabel: string;
   units: "metric" | "imperial";
   gridSpanClass?: string;
+  /** Pro preview: keep card titles readable; blur the headline metric only. */
+  maskSensitiveValues?: boolean;
 }) {
   const { primary, trendClass } = compactMetricPrimary(card, units, weightLabel);
 
   return (
     <article
       className={`flex min-h-[4rem] flex-col justify-center rounded-lg border border-zinc-800/90 bg-zinc-950/60 ${CARD_PAD} shadow-sm shadow-black/20 ${gridSpanClass ?? ""}`}
+      aria-label={maskSensitiveValues ? `${card.title}, value hidden in preview` : undefined}
     >
       <h4 className={`${SECTION_LABEL} leading-none ${TITLE_TO_METRIC}`}>{card.title}</h4>
       <p
-        className={`text-base font-bold leading-tight tabular-nums tracking-tight sm:text-[1.0625rem] ${trendClass}`}
+        className={`text-base font-bold leading-tight tabular-nums tracking-tight sm:text-[1.0625rem] ${trendClass} ${
+          maskSensitiveValues ? "pointer-events-none select-none blur-lg saturate-[0.55] opacity-[0.78]" : ""
+        }`}
+        aria-hidden={maskSensitiveValues ? true : undefined}
       >
         {primary}
       </p>
@@ -211,11 +219,13 @@ function ExerciseAnalyticsBody({
   cards,
   weightLabel,
   units,
+  maskSensitiveValues,
 }: {
   insufficient: boolean;
   cards: AdvancedStrengthMetricCard[];
   weightLabel: string;
   units: "metric" | "imperial";
+  maskSensitiveValues?: boolean;
 }) {
   if (insufficient) {
     return (
@@ -242,6 +252,7 @@ function ExerciseAnalyticsBody({
             weightLabel={weightLabel}
             units={units}
             gridSpanClass={c.kind === "best_period" ? "col-span-2" : undefined}
+            maskSensitiveValues={maskSensitiveValues}
           />
         ))}
       </div>
@@ -253,6 +264,7 @@ function ExerciseAnalyticsBody({
               card={c}
               weightLabel={weightLabel}
               units={units}
+              maskSensitiveValues={maskSensitiveValues}
             />
           ))}
         </div>
@@ -264,13 +276,29 @@ function ExerciseAnalyticsBody({
 const combinedSelectClass =
   "w-full min-w-0 appearance-none rounded-md border border-zinc-700 bg-zinc-800/90 py-1.5 pl-2.5 pr-8 text-sm text-zinc-100 shadow-inner shadow-black/20 focus:border-amber-500/50 focus:outline-none focus:ring-2 focus:ring-amber-500/30 disabled:opacity-60";
 
-export function AdvancedStrengthAnalyticsSection() {
+export function AdvancedStrengthAnalyticsSection({
+  maskSensitiveValues = false,
+  initialData,
+}: {
+  /** Non‑Pro: show card layout and metric titles; blur headline numbers only. */
+  maskSensitiveValues?: boolean;
+  /** From Insights RSC — same server action as client refresh; avoids mount spinner. */
+  initialData?: AdvancedStrengthAnalyticsPayload | null;
+}) {
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
-  const [payload, setPayload] = useState<AdvancedStrengthAnalyticsPayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const { requirePro } = useProAccess();
+  const seededFromServer = initialData !== undefined;
+  const [payload, setPayload] = useState<AdvancedStrengthAnalyticsPayload | null>(() =>
+    seededFromServer ? (initialData as AdvancedStrengthAnalyticsPayload) : null
+  );
+  const [loading, setLoading] = useState(() => !seededFromServer);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(() =>
+    seededFromServer ? (initialData as AdvancedStrengthAnalyticsPayload).selectedCategoryId : null
+  );
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(() =>
+    seededFromServer ? (initialData as AdvancedStrengthAnalyticsPayload).selectedExerciseId : null
+  );
   const fetchTokenRef = useRef(0);
 
   const load = useCallback(async (req?: AdvancedStrengthAnalyticsRequest) => {
@@ -288,8 +316,9 @@ export function AdvancedStrengthAnalyticsSection() {
   }, []);
 
   useEffect(() => {
+    if (seededFromServer) return;
     void load(undefined);
-  }, [load]);
+  }, [load, seededFromServer]);
 
   const categories = payload?.categories ?? [];
   const row = payload?.row ?? null;
@@ -301,7 +330,16 @@ export function AdvancedStrengthAnalyticsSection() {
       ? `${selectedCategoryId}::${selectedExerciseId}`
       : "";
 
+  const lockedCategoryName =
+    selectedCategoryId != null ? categories.find((c) => c.id === selectedCategoryId)?.name ?? "" : "";
+  const lockedExerciseName =
+    selectedCategoryId != null && selectedExerciseId != null
+      ? categories.find((c) => c.id === selectedCategoryId)?.exercises.find((e) => e.id === selectedExerciseId)
+          ?.name ?? ""
+      : "";
+
   const onCombinedSelect = (value: string) => {
+    if (maskSensitiveValues) return;
     if (loading || !value) return;
     const sep = value.indexOf("::");
     if (sep < 0) return;
@@ -328,30 +366,58 @@ export function AdvancedStrengthAnalyticsSection() {
           <>
             {showFilters && selectedCategoryId && selectedExerciseId && (
               <div className="border-b border-zinc-800/70 bg-zinc-950/20 px-3 py-1.5 sm:px-3 sm:py-2">
-                <div className="relative min-w-0 max-w-xl">
-                  <select
-                    id="advanced-strength-category-exercise"
-                    value={combinedSelectValue}
-                    onChange={(e) => onCombinedSelect(e.target.value)}
-                    disabled={loading}
-                    className={combinedSelectClass}
-                    aria-label="Category and exercise"
-                  >
-                    {categories.flatMap((cat) =>
-                      cat.exercises.map((ex) => (
-                        <option key={`${cat.id}::${ex.id}`} value={`${cat.id}::${ex.id}`}>
-                          {cat.name} • {ex.name}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <span
-                    className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] leading-none text-zinc-500"
-                    aria-hidden
-                  >
-                    ▼
-                  </span>
-                </div>
+                {maskSensitiveValues ? (
+                  <div className="flex max-w-xl flex-col items-stretch gap-2">
+                    <div
+                      className="rounded-md border border-zinc-700 bg-zinc-800/90 px-2.5 py-1.5 text-sm leading-snug text-zinc-200 shadow-inner shadow-black/20"
+                      title={`${lockedCategoryName} · ${lockedExerciseName}`}
+                    >
+                      <span className="text-zinc-500">Showing </span>
+                      <span className="break-words">
+                        {lockedCategoryName}
+                        <span className="text-zinc-600"> · </span>
+                        {lockedExerciseName}
+                      </span>
+                    </div>
+                    <p className="px-0.5 text-center text-[11px] leading-snug text-zinc-500">
+                      see every exercise with pro
+                    </p>
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => requirePro("advanced_analytics")}
+                        className="tap-feedback rounded-lg bg-amber-500 px-4 py-2 text-xs font-semibold text-zinc-950 transition hover:bg-amber-400"
+                      >
+                        Unlock Liftly Pro
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="relative min-w-0 max-w-xl">
+                    <select
+                      id="advanced-strength-category-exercise"
+                      value={combinedSelectValue}
+                      onChange={(e) => onCombinedSelect(e.target.value)}
+                      disabled={loading}
+                      className={combinedSelectClass}
+                      aria-label="Category and exercise"
+                    >
+                      {categories.flatMap((cat) =>
+                        cat.exercises.map((ex) => (
+                          <option key={`${cat.id}::${ex.id}`} value={`${cat.id}::${ex.id}`}>
+                            {cat.name} • {ex.name}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                    <span
+                      className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] leading-none text-zinc-500"
+                      aria-hidden
+                    >
+                      ▼
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -365,12 +431,22 @@ export function AdvancedStrengthAnalyticsSection() {
                   Updating analytics…
                 </p>
               ) : row ? (
-                <ExerciseAnalyticsBody
-                  insufficient={row.insufficient}
-                  cards={row.cards}
-                  weightLabel={weightLabel}
-                  units={units}
-                />
+                <>
+                  <ExerciseAnalyticsBody
+                    insufficient={row.insufficient}
+                    cards={row.cards}
+                    weightLabel={weightLabel}
+                    units={units}
+                    maskSensitiveValues={maskSensitiveValues}
+                  />
+                  {maskSensitiveValues && row && !row.insufficient ? (
+                    <div className="border-t border-zinc-800/80 bg-zinc-950/40 px-3 py-2.5 text-center sm:px-4">
+                      <p className="text-[11px] leading-relaxed text-zinc-500">
+                        Card titles stay visible; exact figures unlock with Liftly Pro.
+                      </p>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
           </>

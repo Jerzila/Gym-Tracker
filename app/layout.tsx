@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { InstallPromptProvider } from "@/app/components/InstallPromptProvider";
 import { NetworkStatusProvider } from "@/app/components/NetworkStatusProvider";
+import { AdMobBootstrap } from "@/app/components/AdMobBootstrap";
+import { ProAccessProvider } from "@/app/components/ProAccessProvider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -83,10 +85,13 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <NetworkStatusProvider>
-          <InstallPromptProvider>
-            {children}
-            <Analytics />
-          </InstallPromptProvider>
+          <ProAccessProvider>
+            <AdMobBootstrap />
+            <InstallPromptProvider>
+              {children}
+              <Analytics />
+            </InstallPromptProvider>
+          </ProAccessProvider>
         </NetworkStatusProvider>
       </body>
     </html>

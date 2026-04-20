@@ -2,8 +2,12 @@
 
 import type { ReactElement, SVGProps } from "react";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { BoltIcon, CalendarIcon, ChartIcon, TrophyIcon } from "@/components/icons";
+import { AffiliateCodeSection } from "@/components/paywall/AffiliateCodeSection";
+import { PaywallLegalFooter } from "@/components/paywall/PaywallLegalFooter";
 import { haptic } from "@/lib/haptic";
+import { APP_HOME } from "@/lib/appRoutes";
 
 type Plan = "noAds" | "monthly" | "yearly";
 
@@ -62,8 +66,14 @@ const featureListItems: { title: string; description: string; Icon: FeatureIcon 
   },
 ];
 
-export function Paywall() {
+export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: string | null }) {
+  const router = useRouter();
   const [plan, setPlan] = useState<Plan>(DEFAULT_PLAN);
+
+  const goToDashboard = () => {
+    haptic();
+    router.replace(APP_HOME);
+  };
 
   const trialSubline =
     plan === "noAds"
@@ -73,6 +83,11 @@ export function Paywall() {
         : "Then €49.99/year • Cancel anytime";
 
   const ctaLabel = plan === "noAds" ? "Remove Ads" : "Start 7-Day Free Trial";
+
+  const visibleFeatures =
+    plan === "noAds"
+      ? featureListItems.filter((item) => item.title === "No ads")
+      : featureListItems;
 
   return (
     <section className="flex h-screen max-h-screen min-h-0 flex-col overflow-hidden bg-[#0f0f10] text-zinc-100">
@@ -93,8 +108,11 @@ export function Paywall() {
 
         {/* SECTION 2 — features (flexible; shrinks, no page scroll) */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden pt-0.5">
-          <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden" aria-label="Pro features">
-            {featureListItems.map((item) => {
+          <ul
+            className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-hidden"
+            aria-label={plan === "noAds" ? "No ads" : "Pro features"}
+          >
+            {visibleFeatures.map((item) => {
               const Icon = item.Icon;
               return (
                 <li key={item.title} className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -116,7 +134,11 @@ export function Paywall() {
           </ul>
         </div>
 
-        {/* SECTION 3 — pricing + CTA (fixed band at bottom) */}
+        <div className="shrink-0 px-0.5">
+          <AffiliateCodeSection savedAffiliateCode={savedAffiliateCode} compact />
+        </div>
+
+        {/* SECTION 4 — pricing + CTA (fixed band at bottom) */}
         <div className="shrink-0 space-y-1.5">
           <div role="radiogroup" aria-label="Subscription plan">
             <div className="grid min-w-0 grid-cols-3 items-stretch gap-1.5 overflow-visible pt-0.5 sm:gap-2">
@@ -195,8 +217,8 @@ export function Paywall() {
             <button
               type="button"
               onClick={() => {
-                haptic();
-                console.log("Paywall CTA", { plan });
+                // Dev paywall: trial purchase not wired yet — send user into the app.
+                goToDashboard();
               }}
               className="w-full rounded-[14px] bg-gradient-to-r from-[#f59e0b] to-[#ffb020] px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-[0_6px_20px_rgba(245,158,11,0.45)] transition-opacity hover:opacity-95 tap-feedback"
             >
@@ -205,11 +227,14 @@ export function Paywall() {
             <p className="text-center text-[10px] leading-tight text-zinc-400">{trialSubline}</p>
             <button
               type="button"
-              onClick={() => console.log("Continue free")}
+              onClick={goToDashboard}
               className="w-full py-1.5 text-center text-sm font-semibold text-zinc-400 transition-colors hover:text-zinc-300 tap-feedback"
             >
               Continue with limited version
             </button>
+            <div className="mt-3">
+              <PaywallLegalFooter compact />
+            </div>
           </div>
         </div>
       </div>

@@ -19,6 +19,7 @@ import {
 import { normalizeLoadType } from "@/lib/loadType";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
+import { useProAccess } from "@/app/components/ProAccessProvider";
 import { SkeletonCalendarGrid } from "@/app/components/Skeleton";
 
 /** Week starts on Monday (index 0 = Monday) */
@@ -63,6 +64,9 @@ export function CalendarView() {
   const searchParams = useSearchParams();
   const units = useUnits();
   const weightLabel = weightUnitLabel(units);
+  const { hasPro, monthlyAnalyticsUnlocked, requirePro, ready: proReady } = useProAccess();
+  /** Until subscription seed + RC sync finish, avoid false "locked" for trial users. */
+  const fullCalendarAccess = !proReady || hasPro || monthlyAnalyticsUnlocked;
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth() + 1);
@@ -90,6 +94,17 @@ export function CalendarView() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!proReady || fullCalendarAccess) return;
+    const n = new Date();
+    const cy = n.getFullYear();
+    const cm = n.getMonth() + 1;
+    Promise.resolve().then(() => {
+      setYear(cy);
+      setMonth(cm);
+    });
+  }, [proReady, fullCalendarAccess]);
 
   useEffect(() => {
     let cancelled = false;
@@ -128,6 +143,10 @@ export function CalendarView() {
   );
 
   const handleDayClick = (dateKey: string) => {
+    if (!fullCalendarAccess) {
+      requirePro("calendar");
+      return;
+    }
     setSelectedDate(dateKey);
     setPanelOpen(true);
     router.replace(`${pathname}?date=${dateKey}`, { scroll: false });
@@ -184,6 +203,21 @@ export function CalendarView() {
     // Avoid setting state synchronously inside the effect body.
     Promise.resolve().then(() => {
       if (dateFromQuery) {
+        if (!fullCalendarAccess) {
+          const parts = dateFromQuery.split("-").map(Number);
+          const y = parts[0];
+          const m = parts[1];
+          const n = new Date();
+          if (
+            !Number.isFinite(y) ||
+            !Number.isFinite(m) ||
+            y !== n.getFullYear() ||
+            m !== n.getMonth() + 1
+          ) {
+            router.replace(pathname, { scroll: false });
+            return;
+          }
+        }
         setSelectedDate(dateFromQuery);
         setPanelOpen(true);
       } else {
@@ -191,7 +225,7 @@ export function CalendarView() {
         setSelectedDate(null);
       }
     });
-  }, [searchParams]);
+  }, [searchParams, fullCalendarAccess, pathname, router]);
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -203,6 +237,10 @@ export function CalendarView() {
   }, [panelOpen]);
 
   const prevMonth = () => {
+    if (!fullCalendarAccess) {
+      requirePro("calendar");
+      return;
+    }
     setMonthTransitioning(true);
     setTimeout(() => setMonthTransitioning(false), 180);
     if (month === 1) {
@@ -214,6 +252,10 @@ export function CalendarView() {
   };
 
   const nextMonth = () => {
+    if (!fullCalendarAccess) {
+      requirePro("calendar");
+      return;
+    }
     setMonthTransitioning(true);
     setTimeout(() => setMonthTransitioning(false), 180);
     if (month === 12) {
@@ -262,7 +304,11 @@ export function CalendarView() {
               type="button"
               onClick={prevMonth}
               aria-label="Previous month"
-              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+              className={`tap-feedback shrink-0 rounded-lg px-2 py-1.5 transition hover:bg-zinc-800 ${
+                fullCalendarAccess
+                  ? "text-zinc-400 hover:text-zinc-200"
+                  : "text-zinc-600 hover:text-zinc-500"
+              }`}
             >
               ←
             </button>
@@ -273,11 +319,23 @@ export function CalendarView() {
               type="button"
               onClick={nextMonth}
               aria-label="Next month"
-              className="tap-feedback shrink-0 rounded-lg px-2 py-1.5 text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200"
+              className={`tap-feedback shrink-0 rounded-lg px-2 py-1.5 transition hover:bg-zinc-800 ${
+                fullCalendarAccess
+                  ? "text-zinc-400 hover:text-zinc-200"
+                  : "text-zinc-600 hover:text-zinc-500"
+              }`}
             >
               →
             </button>
           </div>
+
+          {!fullCalendarAccess ? (
+            <p className="border-b border-zinc-800/60 px-4 pb-3 text-center text-xs text-zinc-500">
+              After your first free month, opening a day or browsing other months is{" "}
+              <span className="font-medium text-amber-400/90">Liftly Pro</span>. This month stays visible
+              as a preview.
+            </p>
+          ) : null}
 
           {error && (
             <p className="px-4 py-3 text-sm text-red-400/90">{error}</p>

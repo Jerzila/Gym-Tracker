@@ -30,6 +30,10 @@ import {
 } from "@/lib/strengthRanking";
 import { getUserLifetimeWorkoutAggregatesForUserId } from "@/app/actions/workouts";
 import {
+  revenueCatSubscriberHasActivePro,
+  revenueCatSubscriberHasActiveProMany,
+} from "@/app/lib/purchases/revenueCatServer";
+import {
   FRIEND_LEADERBOARD_CATEGORIES,
   FRIEND_LEADERBOARD_MUSCLE_TABS,
   type FriendLeaderboardCategory,
@@ -39,6 +43,9 @@ import {
 export type SocialUserSearchResult = {
   id: string;
   username: string;
+  rank_badge: RankSlug;
+  /** RevenueCat active `pro` entitlement (requires REVENUECAT_SECRET_API_KEY on server). */
+  liftly_pro: boolean;
   relationship: "none" | "friend" | "request_sent";
 };
 
@@ -46,12 +53,16 @@ export type IncomingFriendRequest = {
   id: string;
   sender_id: string;
   username: string;
+  rank_badge: RankSlug;
+  liftly_pro: boolean;
   created_at: string;
 };
 
 export type FriendListItem = {
   friend_id: string;
   username: string;
+  rank_badge: RankSlug;
+  liftly_pro: boolean;
 };
 
 export type FriendProfilePageData = {
@@ -59,6 +70,8 @@ export type FriendProfilePageData = {
   overall_rank: string;
   overall_percentile: number;
   rank_badge: RankSlug;
+  /** Active Liftly Pro subscription (RevenueCat). */
+  liftly_pro: boolean;
   top_percentile_display: string;
   workoutCount: number;
   prCount: number;
@@ -104,6 +117,8 @@ export type FriendLeaderboardEntry = {
   rank_badge: RankSlug;
   /** Friends: formatted from stored percentile. Self: exact `overallTopPercentileLabel` from Insights. */
   top_percentile_display: string;
+  /** Active Liftly Pro (RevenueCat `pro` entitlement). */
+  liftly_pro: boolean;
 };
 
 function parseRankBadgeSlug(raw: string | null | undefined): RankSlug {
@@ -235,7 +250,7 @@ export async function searchUsersByUsername(
 
   const { data: rows, error } = await supabase
     .from("profiles")
-    .select("id, username")
+    .select("id, username, rank_badge")
     .ilike("username", `%${query}%`)
     .neq("id", user.id)
     .limit(10);
@@ -246,6 +261,7 @@ export async function searchUsersByUsername(
     .map((r) => ({
       id: String((r as any).id),
       username: String((r as any).username ?? ""),
+      rank_badge: parseRankBadgeSlug((r as any).rank_badge),
     }))
     .filter((r) => r.id && r.username);
 
@@ -265,8 +281,11 @@ export async function searchUsersByUsername(
   const friendSet = new Set((friendRows ?? []).map((r) => String((r as any).friend_id)));
   const sentSet = new Set((reqRows ?? []).map((r) => String((r as any).receiver_id)));
 
+  const proMap = await revenueCatSubscriberHasActiveProMany(ids);
+
   const results: SocialUserSearchResult[] = baseResults.map((r) => ({
     ...r,
+    liftly_pro: proMap.get(r.id) ?? false,
     relationship: friendSet.has(r.id) ? "friend" : sentSet.has(r.id) ? "request_sent" : "none",
   }));
 
@@ -427,23 +446,42 @@ export async function getIncomingFriendRequests(): Promise<{
   if (rows.length === 0) return { requests: [] };
 
   const senderIds = [...new Set(rows.map((r) => String((r as { sender_id: string }).sender_id)))];
-  const { data: profileRows } = await supabase.from("profiles").select("id, username").in("id", senderIds);
+  const { data: profileRows } = await supabase
+    .from("profiles")
+    .select("id, username, rank_badge")
+    .in("id", senderIds);
 
-  const usernameById = new Map(
-    (profileRows ?? []).map((p) => [String((p as { id: string }).id), String((p as { username?: string | null }).username ?? "")])
+  const profileBySenderId = new Map(
+    (profileRows ?? []).map((p) => {
+      const row = p as { id: string; username?: string | null; rank_badge?: string | null };
+      return [
+        String(row.id),
+        {
+          username: String(row.username ?? ""),
+          rank_badge: parseRankBadgeSlug(row.rank_badge),
+        },
+      ] as const;
+    })
   );
 
   const requests: IncomingFriendRequest[] = rows.map((r) => {
     const row = r as { id: string; sender_id: string; created_at: string };
+    const senderId = String(row.sender_id);
+    const prof = profileBySenderId.get(senderId);
     return {
       id: String(row.id),
-      sender_id: String(row.sender_id),
+      sender_id: senderId,
       created_at: String(row.created_at),
-      username: usernameById.get(String(row.sender_id)) ?? "",
+      username: prof?.username ?? "",
+      rank_badge: prof?.rank_badge ?? "newbie",
+      liftly_pro: false,
     };
   });
 
-  return { requests };
+  const proMap = await revenueCatSubscriberHasActiveProMany(requests.map((q) => q.sender_id));
+  return {
+    requests: requests.map((q) => ({ ...q, liftly_pro: proMap.get(q.sender_id) ?? false })),
+  };
 }
 
 export async function getFriendsList(): Promise<{ friends: FriendListItem[]; error?: string }> {
@@ -455,7 +493,7 @@ export async function getFriendsList(): Promise<{ friends: FriendListItem[]; err
 
   const { data, error } = await supabase
     .from("friends")
-    .select("friend_id, friend:profiles!friends_friend_id_fkey(username)")
+    .select("friend_id, friend:profiles!friends_friend_id_fkey(username, rank_badge)")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
 
@@ -464,9 +502,15 @@ export async function getFriendsList(): Promise<{ friends: FriendListItem[]; err
   const friends: FriendListItem[] = (data ?? []).map((r: any) => ({
     friend_id: String(r.friend_id),
     username: String(r.friend?.username ?? ""),
+    rank_badge: parseRankBadgeSlug(r.friend?.rank_badge),
+    liftly_pro: false,
   }));
 
-  return { friends: friends.filter((f) => f.username) };
+  const listed = friends.filter((f) => f.username);
+  const proMap = await revenueCatSubscriberHasActiveProMany(listed.map((f) => f.friend_id));
+  return {
+    friends: listed.map((f) => ({ ...f, liftly_pro: proMap.get(f.friend_id) ?? false })),
+  };
 }
 
 /**
@@ -592,12 +636,15 @@ export async function getProfilePageDataForViewer(
       ? buildFriendBestExerciseByLoadFromBundle(rankingBundle.bundle)
       : null;
 
+    const liftly_pro = await revenueCatSubscriberHasActivePro(fid);
+
     return {
       data: {
         username: friendUsername,
         overall_rank: String((profile as { overall_rank?: string | null }).overall_rank ?? "Newbie I"),
         overall_percentile,
         rank_badge: parseRankBadgeSlug((profile as { rank_badge?: string | null }).rank_badge),
+        liftly_pro,
         top_percentile_display: formatTopPercentDisplay(overall_percentile),
         workoutCount: agg?.workoutCount ?? 0,
         prCount: agg?.prCount ?? 0,
@@ -648,12 +695,15 @@ export async function getProfilePageDataForViewer(
 
   const strengthRankingView = await rankingWithExercisesFromStoredRankingsJson(null, null);
 
+  const liftly_pro = await revenueCatSubscriberHasActivePro(fid);
+
   return {
     data: {
       username,
       overall_rank: String((profile as { overall_rank?: string | null }).overall_rank ?? "Newbie I"),
       overall_percentile,
       rank_badge: parseRankBadgeSlug((profile as { rank_badge?: string | null }).rank_badge),
+      liftly_pro,
       top_percentile_display: formatTopPercentDisplay(overall_percentile),
       workoutCount: 0,
       prCount,
@@ -754,6 +804,7 @@ export async function getFriendsLeaderboard(options?: {
   muscle?: string;
 }): Promise<{
   entries: FriendLeaderboardEntry[];
+  hasFriends: boolean;
   error?: string;
 }> {
   try {
@@ -761,6 +812,7 @@ export async function getFriendsLeaderboard(options?: {
   } catch (e) {
     return {
       entries: [],
+      hasFriends: false,
       error: e instanceof Error ? e.message : "Could not load leaderboard.",
     };
   }
@@ -771,6 +823,7 @@ async function getFriendsLeaderboardInner(options?: {
   muscle?: string;
 }): Promise<{
   entries: FriendLeaderboardEntry[];
+  hasFriends: boolean;
   error?: string;
 }> {
   const category = normalizeLeaderboardCategory(options?.category);
@@ -780,16 +833,17 @@ async function getFriendsLeaderboardInner(options?: {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return { entries: [], error: "Not authenticated" };
+  if (!user) return { entries: [], hasFriends: false, error: "Not authenticated" };
 
   const { data: friendRows, error: friendsErr } = await supabase
     .from("friends")
     .select("friend_id")
     .eq("user_id", user.id);
 
-  if (friendsErr) return { entries: [], error: friendsErr.message };
+  if (friendsErr) return { entries: [], hasFriends: false, error: friendsErr.message };
 
   const friendIds = [...new Set((friendRows ?? []).map((r: { friend_id: string }) => String(r.friend_id)))];
+  const hasFriends = friendIds.length > 0;
   const leaderboardIds = [...new Set([user.id, ...friendIds])];
 
   const since30 = isoDateDaysAgoUTC(30);
@@ -804,7 +858,7 @@ async function getFriendsLeaderboardInner(options?: {
   const fullRes = await supabase.from("profiles").select(profileSelectFull).in("id", leaderboardIds);
   if (fullRes.error) {
     const baseRes = await supabase.from("profiles").select(profileSelectBase).in("id", leaderboardIds);
-    if (baseRes.error) return { entries: [], error: baseRes.error.message };
+    if (baseRes.error) return { entries: [], hasFriends, error: baseRes.error.message };
     profileRows = (baseRes.data ?? []) as Record<string, unknown>[];
   } else {
     profileRows = (fullRes.data ?? []) as Record<string, unknown>[];
@@ -820,7 +874,7 @@ async function getFriendsLeaderboardInner(options?: {
     computeStrengthRankingBundleForUser(supabase, user.id),
   ]);
 
-  if (rankingRes.error) return { entries: [], error: rankingRes.error.message };
+  if (rankingRes.error) return { entries: [], hasFriends, error: rankingRes.error.message };
 
   const rankingRows = (rankingRes.data ?? []) as {
     user_id: string;
@@ -937,7 +991,11 @@ async function getFriendsLeaderboardInner(options?: {
     return p.rank_badge;
   }
 
-  type SortWork = { entry: FriendLeaderboardEntry; sortPrimary: number; sortSecondary: string };
+  type SortWork = {
+    entry: Omit<FriendLeaderboardEntry, "liftly_pro">;
+    sortPrimary: number;
+    sortSecondary: string;
+  };
   const work: SortWork[] = [];
 
   for (const uid of leaderboardIds) {
@@ -1058,6 +1116,13 @@ async function getFriendsLeaderboardInner(options?: {
     return a.sortSecondary.localeCompare(b.sortSecondary);
   });
 
-  return { entries: work.map((w) => w.entry) };
+  const proMap = await revenueCatSubscriberHasActiveProMany(work.map((w) => w.entry.user_id));
+  return {
+    hasFriends,
+    entries: work.map((w) => ({
+      ...w.entry,
+      liftly_pro: proMap.get(w.entry.user_id) ?? false,
+    })),
+  };
 }
 

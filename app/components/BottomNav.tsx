@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChartIcon, HomeIcon, StrengthIcon, TrophyIcon, UserIcon } from "@/components/icons";
 import { PendingFriendRequestBadge, useFriendIncomingRequests } from "@/app/components/FriendIncomingRequestsContext";
+import { APP_HOME, appHref, stripAppPathPrefix } from "@/lib/appRoutes";
 
 type NavItem = {
   href: string;
@@ -12,16 +13,18 @@ type NavItem = {
 };
 
 const NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", Icon: HomeIcon },
-  { href: "/exercises", label: "Exercises", Icon: StrengthIcon },
-  { href: "/insights", label: "Insights", Icon: ChartIcon },
-  { href: "/social", label: "Social", Icon: TrophyIcon },
-  { href: "/account", label: "Account", Icon: UserIcon },
+  { href: APP_HOME, label: "Dashboard", Icon: HomeIcon },
+  { href: appHref("/exercises"), label: "Exercises", Icon: StrengthIcon },
+  { href: appHref("/insights"), label: "Insights", Icon: ChartIcon },
+  { href: appHref("/social"), label: "Social", Icon: TrophyIcon },
+  { href: appHref("/account"), label: "Account", Icon: UserIcon },
 ];
 
 function isActive(pathname: string, href: string) {
-  if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+  const p = stripAppPathPrefix(pathname);
+  if (href === APP_HOME) return p === "/" || pathname === APP_HOME;
+  const inner = stripAppPathPrefix(href);
+  return p === inner || p.startsWith(`${inner}/`);
 }
 
 export function BottomNav() {
@@ -38,7 +41,7 @@ export function BottomNav() {
       >
         {NAV.map(({ href, label, Icon }) => {
           const active = isActive(pathname, href);
-          const isSocial = href === "/social";
+          const isSocial = href === appHref("/social");
           const navLabel =
             isSocial && pendingCount > 0 ? `${label}, ${pendingCount} friend requests` : label;
 

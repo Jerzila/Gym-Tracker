@@ -15,6 +15,8 @@ import {
   type IncomingFriendRequest,
   type SocialUserSearchResult,
 } from "@/app/actions/social";
+import { RankCrownIcon } from "@/app/components/RankCrownIcon";
+import { showCrownForLiftlyPro } from "@/lib/showRankCrown";
 
 const inputClass =
   "w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-[rgba(255,170,0,0.6)] focus:outline-none focus:ring-0";
@@ -158,8 +160,9 @@ export function SocialFriendsClient() {
                           key={u.id}
                           className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/40 px-3 py-2"
                         >
-                          <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
-                            {u.username}
+                          <span className="flex min-w-0 items-center gap-1 truncate text-sm font-medium text-zinc-100">
+                            <span className="truncate">{u.username}</span>
+                            {showCrownForLiftlyPro(u.liftly_pro) ? <RankCrownIcon size={15} title="Liftly Pro" /> : null}
                           </span>
                           {isFriend ? (
                             <span className="text-xs text-zinc-400">Friends</span>
@@ -200,8 +203,9 @@ export function SocialFriendsClient() {
                 key={r.id}
                 className="flex items-center justify-between gap-3 rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-2"
               >
-                <span className="min-w-0 truncate text-sm font-medium text-zinc-100">
-                  {r.username || "Unknown user"}
+                <span className="flex min-w-0 items-center gap-1 truncate text-sm font-medium text-zinc-100">
+                  <span className="truncate">{r.username || "Unknown user"}</span>
+                  {showCrownForLiftlyPro(r.liftly_pro) ? <RankCrownIcon size={15} title="Liftly Pro" /> : null}
                 </span>
                 <div className="flex shrink-0 gap-2">
                   <Button variant="primary" size="sm" onClick={() => onAccept(r.id)}>
@@ -234,6 +238,7 @@ export function SocialFriendsClient() {
                 <FriendListRowWithMenu
                   friendId={f.friend_id}
                   username={f.username}
+                  showCrown={showCrownForLiftlyPro(f.liftly_pro)}
                   onRemoved={(id) => setFriends((prev) => prev.filter((x) => x.friend_id !== id))}
                 />
               </li>

@@ -2,6 +2,8 @@
 
 import { headers } from "next/headers";
 import { createServerClient } from "@/lib/supabase/server";
+import { createServiceRoleSupabase } from "@/lib/supabase/admin";
+import { APP_HOME, appHref, normalizeAuthRedirect } from "@/lib/appRoutes";
 import { redirect } from "next/navigation";
 
 function logServerError(context: string, err: unknown) {
@@ -65,20 +67,22 @@ export async function signUp(formData: FormData) {
         console.error("[auth] signUp OTP send threw", otpErr);
       }
 
-      redirect(`/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent("/profile-setup")}`);
+      redirect(
+        `${appHref("/verify-email")}?email=${encodeURIComponent(email)}&next=${encodeURIComponent(appHref("/profile-setup"))}`
+      );
     }
   } catch (err) {
     logServerError("signUp failed", err);
     return { error: "Unable to create account. Please try again." };
   }
 
-  redirect("/profile-setup");
+  redirect(appHref("/profile-setup"));
 }
 
 export async function signIn(formData: FormData) {
   const email = (formData.get("email") as string)?.trim();
   const password = formData.get("password") as string;
-  const redirectTo = (formData.get("redirect") as string)?.trim() || "/";
+  const redirectTo = (formData.get("redirect") as string)?.trim() || APP_HOME;
 
   if (!email || !password) {
     return { error: "Email and password are required." };
@@ -109,8 +113,8 @@ export async function signIn(formData: FormData) {
       }
 
       redirect(
-        `/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(
-          redirectTo.startsWith("/") ? redirectTo : "/"
+        `${appHref("/verify-email")}?email=${encodeURIComponent(email)}&next=${encodeURIComponent(
+          normalizeAuthRedirect(redirectTo.startsWith("/") ? redirectTo : APP_HOME)
         )}`
       );
     }
@@ -129,8 +133,8 @@ export async function signIn(formData: FormData) {
       }
 
       redirect(
-        `/verify-email?email=${encodeURIComponent(email)}&next=${encodeURIComponent(
-          redirectTo.startsWith("/") ? redirectTo : "/"
+        `${appHref("/verify-email")}?email=${encodeURIComponent(email)}&next=${encodeURIComponent(
+          normalizeAuthRedirect(redirectTo.startsWith("/") ? redirectTo : APP_HOME)
         )}`
       );
     }
@@ -139,7 +143,7 @@ export async function signIn(formData: FormData) {
     return { error: "Unable to sign in. Please check your email and password." };
   }
 
-  redirect(redirectTo.startsWith("/") ? redirectTo : "/");
+  redirect(normalizeAuthRedirect(redirectTo.startsWith("/") ? redirectTo : APP_HOME));
 }
 
 export async function signOut() {
@@ -150,7 +154,7 @@ export async function signOut() {
   } catch (err) {
     logServerError("signOut failed", err);
   }
-  redirect("/login");
+  redirect(appHref("/login"));
 }
 
 export async function getUser() {
@@ -190,7 +194,7 @@ export async function sendPasswordResetForSessionUser(): Promise<{
     const origin = host ? `${protocol}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
 
     const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-      redirectTo: origin ? `${origin}/reset-password` : undefined,
+      redirectTo: origin ? `${origin}/app/reset-password` : undefined,
     });
     if (error) throw error;
 
@@ -214,7 +218,7 @@ export async function requestPasswordReset(formData: FormData) {
     const protocol = headersList.get("x-forwarded-proto") ?? "https";
     const origin = host ? `${protocol}://${host}` : (process.env.NEXT_PUBLIC_APP_URL ?? "");
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: origin ? `${origin}/reset-password` : undefined,
+      redirectTo: origin ? `${origin}/app/reset-password` : undefined,
     });
     if (error) throw error;
     return { success: true };
@@ -257,7 +261,7 @@ function getSupabaseAnonKey(): string {
 }
 
 /**
- * Account data + auth user removal runs in the `delete-user` Edge Function (service role).
+ * Fallback when `SUPABASE_SERVICE_ROLE_KEY` is not set: account removal via `delete-user` Edge Function.
  * Requires deploy: `supabase functions deploy delete-user`
  */
 async function invokeDeleteUserEdgeFunction(accessToken: string): Promise<{ error?: string }> {
@@ -322,9 +326,18 @@ export async function deleteAccount(formData: FormData) {
       return { error: "Unable to verify your session for account deletion." };
     }
 
-    const fnResult = await invokeDeleteUserEdgeFunction(accessToken);
-    if (fnResult.error) {
-      return { error: fnResult.error };
+    const admin = createServiceRoleSupabase();
+    if (admin) {
+      const { error: adminDelErr } = await admin.auth.admin.deleteUser(user.id);
+      if (adminDelErr) {
+        logServerError("deleteAccount admin.deleteUser failed", adminDelErr);
+        return { error: adminDelErr.message || "Unable to delete your account. Please try again." };
+      }
+    } else {
+      const fnResult = await invokeDeleteUserEdgeFunction(accessToken);
+      if (fnResult.error) {
+        return { error: fnResult.error };
+      }
     }
 
     try {
