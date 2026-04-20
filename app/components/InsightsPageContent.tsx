@@ -50,7 +50,6 @@ import {
 } from "recharts";
 import { formatWeight, weightUnitLabel } from "@/lib/formatWeight";
 import { useUnits } from "@/app/components/UnitsContext";
-import { InstallPromptOnNewRank } from "@/app/components/InstallPromptOnNewRank";
 import { MuscleProgressCompareModal } from "@/app/components/MuscleProgressCompareModal";
 import {
   ExerciseProgressRankingsModal,
@@ -101,6 +100,46 @@ const RankImprovementCard = dynamic(
     })),
   { ssr: false }
 );
+
+function TrainingBalanceStatusIcon({ balanced }: { balanced: boolean }) {
+  if (balanced) {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        className="h-4 w-4 shrink-0 text-emerald-400"
+        fill="none"
+      >
+        <circle cx="8" cy="8" r="6.25" stroke="currentColor" strokeWidth="1.5" />
+        <path
+          d="M5 8.2 7.1 10.2 11 6.2"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 16 16"
+      className="h-4 w-4 shrink-0 text-amber-400"
+      fill="none"
+    >
+      <path
+        d="M8 2.1 14 13.1a.75.75 0 0 1-.66 1.12H2.66A.75.75 0 0 1 2 13.1L8 2.1Z"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path d="M8 5.8v3.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="8" cy="11.6" r=".85" fill="currentColor" />
+    </svg>
+  );
+}
 
 function formatVolume(n: number): string {
   return Math.round(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
@@ -475,7 +514,6 @@ export function InsightsPageContent({
 
   return (
     <div className="space-y-4">
-      <InstallPromptOnNewRank overallRankSlug={strengthRanking?.overallRankSlug} />
       {/* Section 1: Top Rank Card */}
       {strengthRanking && (
         <section>
@@ -617,8 +655,10 @@ export function InsightsPageContent({
                 <p
                   className={`mt-1 text-sm ${currentRangeData.trainingBalance.isBalanced ? "text-emerald-400" : "text-amber-400"}`}
                 >
-                  {currentRangeData.trainingBalance.isBalanced ? "✔ " : "⚠ "}
-                  {currentRangeData.trainingBalance.message}
+                  <span className="inline-flex items-center gap-1.5">
+                    <TrainingBalanceStatusIcon balanced={currentRangeData.trainingBalance.isBalanced} />
+                    <span>{currentRangeData.trainingBalance.message}</span>
+                  </span>
                 </p>
               </div>
             )}
@@ -830,8 +870,10 @@ export function InsightsPageContent({
                         : "text-amber-400"
                     }`}
                   >
-                    {monthlyAnalytics.trainingBalance.isBalanced ? "✔ " : "⚠ "}
-                    {monthlyAnalytics.trainingBalance.message}
+                    <span className="inline-flex items-center gap-1.5">
+                      <TrainingBalanceStatusIcon balanced={monthlyAnalytics.trainingBalance.isBalanced} />
+                      <span>{monthlyAnalytics.trainingBalance.message}</span>
+                    </span>
                   </p>
                 </div>
 

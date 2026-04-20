@@ -530,7 +530,6 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         return;
       }
       haptic();
-      router.refresh();
       router.replace(appHref("/dev/paywall"));
     } catch {
       setSubmitting(false);
@@ -573,7 +572,6 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         return;
       }
       haptic();
-      router.refresh();
       router.replace(appHref("/dev/paywall"));
     } catch {
       setError("Something went wrong.");

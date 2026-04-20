@@ -123,6 +123,7 @@ function Timeline() {
 export function ProUpgradePaywall({
   initialPlan = DEFAULT_PLAN,
   loading = false,
+  purchaseNotice = null,
   savedAffiliateCode = null,
   onAffiliateClaimed,
   onClose,
@@ -130,6 +131,7 @@ export function ProUpgradePaywall({
 }: {
   initialPlan?: ProPlan;
   loading?: boolean;
+  purchaseNotice?: string | null;
   /** Current saved partner code for prefilling / invalid-apply UX. */
   savedAffiliateCode?: string | null;
   onAffiliateClaimed?: () => void;
@@ -336,6 +338,9 @@ export function ProUpgradePaywall({
             >
               {ctaLabel}
             </button>
+            {purchaseNotice ? (
+              <p className="text-center text-[11px] leading-snug text-amber-300">{purchaseNotice}</p>
+            ) : null}
             <p className="text-center text-[10px] leading-tight text-zinc-500 min-[390px]:text-[11px]">{trialFooter}</p>
             <div className="mt-2 px-0.5">
               <PaywallLegalFooter compact />

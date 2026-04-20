@@ -1,7 +1,9 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useState } from "react";
+import { appHref } from "@/lib/appRoutes";
 import { LandingMobileMenu } from "./LandingMobileMenu";
 
 const nav = [
@@ -57,12 +59,12 @@ export function LandingHeader() {
           ))}
         </nav>
         <div className="flex min-w-0 shrink-0 items-center gap-2 md:gap-3">
-          <a
-            href="#download"
+          <Link
+            href={appHref("/signup")}
             className="shrink-0 whitespace-nowrap rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-2 text-[11px] font-medium leading-none text-zinc-100 transition-all duration-200 hover:border-amber-400/30 hover:bg-white/[0.1] sm:px-3 sm:text-xs md:px-4 md:text-sm"
           >
             Get the app
-          </a>
+          </Link>
           <LandingMobileMenu />
         </div>
       </div>

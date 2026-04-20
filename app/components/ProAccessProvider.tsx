@@ -14,6 +14,7 @@ import { getAffiliateSavedCode } from "@/app/actions/affiliate";
 import { getSubscriptionSeed } from "@/app/actions/subscription";
 import { ProUpgradePaywall, type ProPlan } from "@/components/paywall/ProUpgradePaywall";
 import {
+  isNativeCapacitorApp,
   purchaseRevenueCatPackage,
   refreshRevenueCatAccess,
   restoreRevenueCatPurchases,
@@ -45,6 +46,7 @@ type ProAccessContextValue = {
 };
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+const PURCHASES_ENABLED = process.env.NEXT_PUBLIC_PURCHASES_ENABLED !== "false";
 
 const ProAccessContext = createContext<ProAccessContextValue | null>(null);
 
@@ -77,6 +79,7 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallPlan, setPaywallPlan] = useState<ProPlan>("monthly");
   const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
   const [affiliateCode, setAffiliateCode] = useState<string | null>(null);
 
   const refreshAccess = useCallback(async () => {
@@ -116,6 +119,7 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
     (reason: ProGateReason) => {
       if (accessState.hasPro) return true;
       setPaywallPlan(defaultPaywallPlanForReason(reason));
+      setPurchaseNotice(null);
       setPaywallOpen(true);
       return false;
     },
@@ -125,6 +129,11 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
   const handlePaywallPurchase = useCallback(
     async (plan: ProPlan) => {
       if (!userId) return;
+      if (!PURCHASES_ENABLED || !isNativeCapacitorApp()) {
+        setPurchaseNotice("Purchases will be available once the iOS app is live on the App Store.");
+        return;
+      }
+      setPurchaseNotice(null);
       setPurchaseLoading(true);
       try {
         const packageId = mapPlanToPackage(plan);
@@ -133,6 +142,7 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
         setPaywallOpen(false);
       } catch (error) {
         console.error("[pro] purchase failed", error);
+        setPurchaseNotice("Purchase is currently unavailable. Please try again shortly.");
       } finally {
         setPurchaseLoading(false);
       }
@@ -166,12 +176,14 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
               <ProUpgradePaywall
                 initialPlan={paywallPlan}
                 loading={purchaseLoading}
+                purchaseNotice={purchaseNotice}
                 savedAffiliateCode={affiliateCode}
                 onAffiliateClaimed={async () => {
                   const next = await getAffiliateSavedCode();
                   setAffiliateCode(next);
                 }}
                 onClose={() => {
+                  setPurchaseNotice(null);
                   setPaywallOpen(false);
                   void refreshAccess();
                 }}

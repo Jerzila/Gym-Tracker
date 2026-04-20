@@ -1,7 +1,9 @@
 "use client";
 
-const APP_STORE_HREF = "https://apps.apple.com/app";
-const PLAY_STORE_HREF = "https://play.google.com/store/apps";
+import Link from "next/link";
+import { appHref } from "@/lib/appRoutes";
+
+const PRELAUNCH_APP_HREF = appHref("/signup");
 
 function AppleGlyph({ className }: { className?: string }) {
   return (
@@ -34,20 +36,20 @@ export function StoreBadges({ layout = "wrap" }: { layout?: "wrap" | "stack" }) 
 
   return (
     <div className={flex}>
-      <a href={APP_STORE_HREF} target="_blank" rel="noopener noreferrer" className={badgeBase}>
+      <Link href={PRELAUNCH_APP_HREF} className={badgeBase}>
         <AppleGlyph className="h-8 w-8 shrink-0 text-white" />
         <span className="flex min-w-0 flex-col leading-tight">
           <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">Download on the</span>
           <span className="text-[15px] font-semibold tracking-tight text-white">App Store</span>
         </span>
-      </a>
-      <a href={PLAY_STORE_HREF} target="_blank" rel="noopener noreferrer" className={badgeBase}>
+      </Link>
+      <Link href={PRELAUNCH_APP_HREF} className={badgeBase}>
         <PlayGlyph className="h-7 w-7 shrink-0 text-emerald-400" />
         <span className="flex min-w-0 flex-col leading-tight">
           <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">Get it on</span>
           <span className="text-[15px] font-semibold tracking-tight text-white">Google Play</span>
         </span>
-      </a>
+      </Link>
     </div>
   );
 }
