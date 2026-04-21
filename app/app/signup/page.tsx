@@ -2,7 +2,6 @@ import Link from "next/link";
 import Image from "next/image";
 import { signUp } from "@/app/actions/auth";
 import { AuthForm } from "@/app/components/AuthForm";
-import { InstallBanner } from "@/app/components/InstallBanner";
 import { appHref } from "@/lib/appRoutes";
 
 const previewScreens = [
@@ -62,7 +61,6 @@ export default function SignupPage() {
           </p>
         </div>
       </div>
-      <InstallBanner />
     </div>
   );
 }
