@@ -14,10 +14,12 @@ import { getAffiliateSavedCode } from "@/app/actions/affiliate";
 import { getSubscriptionSeed } from "@/app/actions/subscription";
 import { ProUpgradePaywall, type ProPlan } from "@/components/paywall/ProUpgradePaywall";
 import {
+  getRevenueCatPlanPricing,
   isNativeCapacitorApp,
   purchaseRevenueCatPackage,
   refreshRevenueCatAccess,
   restoreRevenueCatPurchases,
+  type RevenueCatPlanPricing,
   type RevenueCatAccessState,
 } from "@/app/lib/purchases/revenueCat";
 
@@ -75,11 +77,18 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [profileCreatedAt, setProfileCreatedAt] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
   const [accessState, setAccessState] = useState<RevenueCatAccessState>({ hasPro: false, hasNoAds: false });
   const [paywallOpen, setPaywallOpen] = useState(false);
   const [paywallPlan, setPaywallPlan] = useState<ProPlan>("monthly");
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<RevenueCatPlanPricing>({
+    noAdsMonthly: null,
+    monthly: null,
+    yearly: null,
+  });
+  const [welcomeNotice, setWelcomeNotice] = useState<string | null>(null);
   const [affiliateCode, setAffiliateCode] = useState<string | null>(null);
 
   const refreshAccess = useCallback(async () => {
@@ -99,11 +108,16 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
       setUserId(seed.userId);
       setProfileCreatedAt(seed.profileCreatedAt);
+      setDisplayName(seed.displayName);
       setAffiliateCode(seed.affiliateCode);
       if (seed.userId) {
         try {
           const next = await refreshRevenueCatAccess(seed.userId);
           if (!cancelled) setAccessState(next);
+          if (!cancelled) {
+            const nextPricing = await getRevenueCatPlanPricing(seed.userId);
+            setPricing(nextPricing);
+          }
         } catch (error) {
           console.error("[pro] Initial RevenueCat sync failed", error);
         }
@@ -138,8 +152,17 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
       try {
         const packageId = mapPlanToPackage(plan);
         const next = await purchaseRevenueCatPackage(userId, packageId);
+        const hasUnlocked = plan === "noAds" ? next.hasNoAds : next.hasPro;
+        if (!hasUnlocked) {
+          setPurchaseNotice("Purchase completed but entitlement is still syncing. Please tap Restore Purchases.");
+          return;
+        }
         setAccessState(next);
         setPaywallOpen(false);
+        const label = displayName?.trim() || "Athlete";
+        setWelcomeNotice(
+          next.hasPro ? `Welcome to Pro, ${label}!` : `Welcome, ${label}! No-Ads is now active.`
+        );
       } catch (error) {
         console.error("[pro] purchase failed", error);
         setPurchaseNotice("Purchase is currently unavailable. Please try again shortly.");
@@ -147,8 +170,14 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
         setPurchaseLoading(false);
       }
     },
-    [userId]
+    [displayName, userId]
   );
+
+  useEffect(() => {
+    if (!welcomeNotice) return;
+    const timer = setTimeout(() => setWelcomeNotice(null), 2600);
+    return () => clearTimeout(timer);
+  }, [welcomeNotice]);
 
   const monthlyAnalyticsUnlocked = useMemo(
     () => computeMonthlyUnlock(profileCreatedAt, accessState.hasPro),
@@ -177,6 +206,7 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
                 initialPlan={paywallPlan}
                 loading={purchaseLoading}
                 purchaseNotice={purchaseNotice}
+                pricing={pricing}
                 savedAffiliateCode={affiliateCode}
                 onAffiliateClaimed={async () => {
                   const next = await getAffiliateSavedCode();
@@ -189,6 +219,16 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
                 }}
                 onPurchase={handlePaywallPurchase}
               />
+            </div>,
+            document.body
+          )
+        : null}
+      {welcomeNotice && typeof document !== "undefined"
+        ? createPortal(
+            <div className="pointer-events-none fixed left-1/2 top-[max(0.75rem,env(safe-area-inset-top))] z-[360] -translate-x-1/2">
+              <div className="rounded-xl border border-amber-400/30 bg-zinc-900/95 px-4 py-2.5 text-sm font-semibold text-amber-200 shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+                {welcomeNotice}
+              </div>
             </div>,
             document.body
           )

@@ -9,6 +9,12 @@ export type RevenueCatAccessState = {
   hasNoAds: boolean;
 };
 
+export type RevenueCatPlanPricing = {
+  noAdsMonthly: string | null;
+  monthly: string | null;
+  yearly: string | null;
+};
+
 let configuredForUserId: string | null = null;
 
 const PUBLIC_SDK_KEY =
@@ -23,9 +29,39 @@ export function isNativeCapacitorApp(): boolean {
 }
 
 function readEntitlementState(entitlements: Record<string, { isActive: boolean } | undefined>): RevenueCatAccessState {
-  const hasPro = !!entitlements.pro?.isActive;
-  const hasNoAds = hasPro || !!entitlements.no_ads?.isActive;
+  const activeKeys = Object.entries(entitlements)
+    .filter(([, value]) => !!value?.isActive)
+    .map(([key]) => key.toLowerCase());
+
+  const hasPro =
+    activeKeys.includes("pro") ||
+    activeKeys.includes("premium") ||
+    activeKeys.some((key) => key.includes("pro") && !key.includes("no_ads"));
+  const hasNoAds = hasPro || activeKeys.includes("no_ads") || activeKeys.some((key) => key.includes("no_ads"));
   return { hasPro, hasNoAds };
+}
+
+function pricingFromOfferings(offerings: unknown): RevenueCatPlanPricing {
+  const current = (offerings as { current?: { availablePackages?: unknown[] } } | null)?.current;
+  const availablePackages = current?.availablePackages ?? [];
+
+  const pricing: RevenueCatPlanPricing = {
+    noAdsMonthly: null,
+    monthly: null,
+    yearly: null,
+  };
+
+  for (const pkg of availablePackages) {
+    const cast = pkg as { identifier?: string; product?: { priceString?: string } };
+    const identifier = cast.identifier;
+    const priceString = cast.product?.priceString ?? null;
+    if (!identifier || !priceString) continue;
+    if (identifier === "no_ads_monthly") pricing.noAdsMonthly = priceString;
+    if (identifier === "$rc_monthly") pricing.monthly = priceString;
+    if (identifier === "$rc_annual") pricing.yearly = priceString;
+  }
+
+  return pricing;
 }
 
 export async function configureRevenueCat(appUserId: string): Promise<void> {
@@ -40,6 +76,17 @@ export async function configureRevenueCat(appUserId: string): Promise<void> {
     appUserID: appUserId,
   });
   configuredForUserId = appUserId;
+}
+
+export async function getRevenueCatPlanPricing(appUserId: string): Promise<RevenueCatPlanPricing> {
+  if (!isNativeCapacitorApp()) {
+    return { noAdsMonthly: null, monthly: null, yearly: null };
+  }
+
+  await configureRevenueCat(appUserId);
+  const { Purchases } = await getPurchasesModule();
+  const offerings = await Purchases.getOfferings();
+  return pricingFromOfferings(offerings);
 }
 
 export async function refreshRevenueCatAccess(appUserId: string): Promise<RevenueCatAccessState> {
@@ -84,9 +131,18 @@ export async function purchaseRevenueCatPackage(
   if (!target) throw new Error("Selected package is not available.");
 
   const result = await Purchases.purchasePackage({ aPackage: target });
-  const entitlements = result.customerInfo.entitlements.active as Record<
+  const initialEntitlements = result.customerInfo.entitlements.active as Record<
     string,
     { isActive: boolean } | undefined
   >;
-  return readEntitlementState(entitlements);
+  const initial = readEntitlementState(initialEntitlements);
+  if (initial.hasPro || initial.hasNoAds) return initial;
+
+  // Some devices can briefly return stale customer info right after purchase.
+  const refreshed = await Purchases.getCustomerInfo();
+  const refreshedEntitlements = refreshed.customerInfo.entitlements.active as Record<
+    string,
+    { isActive: boolean } | undefined
+  >;
+  return readEntitlementState(refreshedEntitlements);
 }

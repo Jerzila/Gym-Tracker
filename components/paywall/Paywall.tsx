@@ -7,7 +7,7 @@ import { getSubscriptionSeed } from "@/app/actions/subscription";
 import { BoltIcon, CalendarIcon, ChartIcon, TrophyIcon } from "@/components/icons";
 import { AffiliateCodeSection } from "@/components/paywall/AffiliateCodeSection";
 import { PaywallLegalFooter } from "@/components/paywall/PaywallLegalFooter";
-import { isNativeCapacitorApp, purchaseRevenueCatPackage } from "@/app/lib/purchases/revenueCat";
+import { getRevenueCatPlanPricing, isNativeCapacitorApp, purchaseRevenueCatPackage } from "@/app/lib/purchases/revenueCat";
 import { haptic } from "@/lib/haptic";
 import { APP_HOME } from "@/lib/appRoutes";
 
@@ -19,6 +19,24 @@ const PURCHASES_ENABLED = process.env.NEXT_PUBLIC_PURCHASES_ENABLED !== "false";
 
 const ICON_PX = 20;
 const iconClass = "shrink-0 text-[#f59e0b]";
+
+function parsePriceValue(raw: string | null): number | null {
+  if (!raw) return null;
+  const match = raw.match(/(\d+(?:[.,]\d+)?)/);
+  if (!match) return null;
+  const normalized = match[1].replace(",", ".");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function extractCurrencySymbol(raw: string): string {
+  const symbol = raw.replace(/[\d\s.,]/g, "").trim();
+  return symbol || "€";
+}
+
+function formatCurrencyAmount(amount: number, samplePrice: string): string {
+  return `${extractCurrencySymbol(samplePrice)}${amount.toFixed(2)}`;
+}
 
 type FeatureIcon = (props: SVGProps<SVGSVGElement> & { size?: number }) => ReactElement;
 
@@ -74,6 +92,12 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
   const router = useRouter();
   const [plan, setPlan] = useState<Plan>(DEFAULT_PLAN);
   const [userId, setUserId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
+  const [pricing, setPricing] = useState({
+    noAdsMonthly: null as string | null,
+    monthly: null as string | null,
+    yearly: null as string | null,
+  });
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
 
@@ -83,6 +107,15 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
       const seed = await getSubscriptionSeed();
       if (cancelled) return;
       setUserId(seed.userId);
+      setDisplayName(seed.displayName);
+      if (seed.userId) {
+        try {
+          const nextPricing = await getRevenueCatPlanPricing(seed.userId);
+          if (!cancelled) setPricing(nextPricing);
+        } catch (error) {
+          console.error("[paywall] failed to load pricing", error);
+        }
+      }
     })();
     return () => {
       cancelled = true;
@@ -94,12 +127,26 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
     router.replace(APP_HOME);
   };
 
+  const noAdsPrice = pricing.noAdsMonthly ?? "€4.99";
+  const monthlyPrice = pricing.monthly ?? "€5.99";
+  const yearlyPrice = pricing.yearly ?? "€59.99";
+  const monthlyValue = parsePriceValue(monthlyPrice);
+  const yearlyValue = parsePriceValue(yearlyPrice);
+  const yearlyPerMonthValue = yearlyValue ? yearlyValue / 12 : null;
+  const yearlySavePercent =
+    monthlyValue && yearlyPerMonthValue && monthlyValue > 0
+      ? Math.max(0, Math.round(((monthlyValue - yearlyPerMonthValue) / monthlyValue) * 100))
+      : null;
+  const yearlyPerMonthLabel = yearlyPerMonthValue
+    ? formatCurrencyAmount(yearlyPerMonthValue, yearlyPrice)
+    : extractCurrencySymbol(yearlyPrice);
+
   const trialSubline =
     plan === "noAds"
-      ? "€4.99/month • Removes ads only"
+      ? `${noAdsPrice}/month • Removes ads only`
       : plan === "monthly"
-        ? "Then €5.99/month • Cancel anytime"
-        : "Then €49.99/year • Cancel anytime";
+        ? `Then ${monthlyPrice}/month • Cancel anytime`
+        : `Then ${yearlyPrice}/year • Cancel anytime`;
 
   const ctaLabel = plan === "noAds" ? "Remove Ads" : "Start 7-Day Free Trial";
 
@@ -182,7 +229,7 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
                   No ads
                 </span>
                 <p className="mt-1 text-[11px] font-bold leading-tight text-zinc-50 sm:mt-1.5 sm:text-xs">
-                  €4.99 <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ month</span>
+                  {noAdsPrice} <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ month</span>
                 </p>
                 <p className="mt-1 text-[9px] leading-snug text-zinc-500 sm:text-[10px]">Removes ads only</p>
               </button>
@@ -205,7 +252,7 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
                   Pro
                 </p>
                 <p className="mt-0.5 text-[11px] font-bold leading-tight text-zinc-50 sm:text-xs">
-                  €5.99 <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ month</span>
+                  {monthlyPrice} <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ month</span>
                 </p>
                 <p className="mt-1 text-[9px] leading-snug text-zinc-500 sm:text-[10px]">Full Pro access</p>
               </button>
@@ -228,11 +275,13 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
                   Yearly Pro
                 </p>
                 <p className="mt-0.5 text-[11px] font-bold leading-tight text-zinc-50 sm:text-xs">
-                  €49.99 <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ year</span>
+                  {yearlyPrice} <span className="text-[9px] font-medium text-zinc-400 sm:text-[10px]">/ year</span>
                 </p>
-                <p className="mt-0.5 text-[9px] font-semibold text-[#f59e0b] sm:text-[10px]">Save 30%</p>
+                <p className="mt-0.5 text-[9px] font-semibold text-[#f59e0b] sm:text-[10px]">
+                  Save {yearlySavePercent ?? 0}%
+                </p>
                 <p className="text-[9px] text-zinc-400 sm:text-[10px]">
-                  €4.16 <span className="text-zinc-500">/ month</span>
+                  {yearlyPerMonthLabel} <span className="text-zinc-500">/ month</span>
                 </p>
               </button>
             </div>
@@ -254,8 +303,19 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
                 setPurchaseLoading(true);
                 try {
                   const packageId = mapPlanToPackage(plan);
-                  await purchaseRevenueCatPackage(userId, packageId);
-                  goToDashboard();
+                  const next = await purchaseRevenueCatPackage(userId, packageId);
+                  const hasUnlocked = plan === "noAds" ? next.hasNoAds : next.hasPro;
+                  if (!hasUnlocked) {
+                    setPurchaseNotice("Purchase completed but entitlement is still syncing. Please tap Restore Purchases.");
+                    return;
+                  }
+                  const label = displayName?.trim() || "Athlete";
+                  setPurchaseNotice(
+                    next.hasPro ? `Welcome to Pro, ${label}!` : `Welcome, ${label}! No-Ads is now active.`
+                  );
+                  setTimeout(() => {
+                    goToDashboard();
+                  }, 850);
                 } catch (error) {
                   console.error("[paywall] purchase failed", error);
                   setPurchaseNotice("Purchase is currently unavailable. Please try again shortly.");

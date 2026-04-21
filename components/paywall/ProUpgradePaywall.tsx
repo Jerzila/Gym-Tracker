@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { BoltIcon, CalendarIcon, ChartIcon, StarIcon, TrophyIcon } from "@/components/icons";
 import { AffiliateCodeSection } from "@/components/paywall/AffiliateCodeSection";
 import { PaywallLegalFooter } from "@/components/paywall/PaywallLegalFooter";
+import type { RevenueCatPlanPricing } from "@/app/lib/purchases/revenueCat";
 import { haptic } from "@/lib/haptic";
 
 export type ProPlan = "noAds" | "monthly" | "yearly";
@@ -13,6 +14,24 @@ const DEFAULT_PLAN: ProPlan = "monthly";
 
 const ICON_PX = 18;
 const iconClass = "shrink-0 text-[#f59e0b]";
+
+function parsePriceValue(raw: string | null): number | null {
+  if (!raw) return null;
+  const match = raw.match(/(\d+(?:[.,]\d+)?)/);
+  if (!match) return null;
+  const normalized = match[1].replace(",", ".");
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function extractCurrencySymbol(raw: string): string {
+  const symbol = raw.replace(/[\d\s.,]/g, "").trim();
+  return symbol || "€";
+}
+
+function formatCurrencyAmount(amount: number, samplePrice: string): string {
+  return `${extractCurrencySymbol(samplePrice)}${amount.toFixed(2)}`;
+}
 
 type FeatureIcon = (props: SVGProps<SVGSVGElement> & { size?: number }) => ReactElement;
 
@@ -128,6 +147,7 @@ export function ProUpgradePaywall({
   onAffiliateClaimed,
   onClose,
   onPurchase,
+  pricing,
 }: {
   initialPlan?: ProPlan;
   loading?: boolean;
@@ -137,6 +157,7 @@ export function ProUpgradePaywall({
   onAffiliateClaimed?: () => void;
   onClose?: () => void;
   onPurchase?: (plan: ProPlan) => void;
+  pricing?: RevenueCatPlanPricing;
 }) {
   const [plan, setPlan] = useState<ProPlan>(initialPlan);
 
@@ -147,12 +168,25 @@ export function ProUpgradePaywall({
 
   const closeButtonEnabled = typeof onClose === "function";
 
+  const noAdsPrice = pricing?.noAdsMonthly ?? "€4.99";
+  const monthlyPrice = pricing?.monthly ?? "€5.99";
+  const yearlyPrice = pricing?.yearly ?? "€59.99";
+  const monthlyValue = parsePriceValue(monthlyPrice);
+  const yearlyValue = parsePriceValue(yearlyPrice);
+  const yearlyPerMonthValue = yearlyValue ? yearlyValue / 12 : null;
+  const yearlySavePercent =
+    monthlyValue && yearlyPerMonthValue && monthlyValue > 0
+      ? Math.max(0, Math.round(((monthlyValue - yearlyPerMonthValue) / monthlyValue) * 100))
+      : null;
+  const yearlyPerMonthLabel = yearlyPerMonthValue
+    ? formatCurrencyAmount(yearlyPerMonthValue, yearlyPrice)
+    : extractCurrencySymbol(yearlyPrice);
   const trialFooter =
     plan === "noAds"
-      ? "€4.99/month • Removes ads only"
+      ? `${noAdsPrice}/month • Removes ads only`
       : plan === "monthly"
-        ? "Then €5.99/month • Cancel anytime during your trial"
-        : "Then €49.99/year • Cancel anytime during your trial";
+        ? `Then ${monthlyPrice}/month • Cancel anytime during your trial`
+        : `Then ${yearlyPrice}/year • Cancel anytime during your trial`;
 
   const ctaLabel = useMemo(() => {
     if (loading) return "Processing...";
@@ -271,7 +305,7 @@ export function ProUpgradePaywall({
                     No ads
                   </p>
                   <p className="mt-0.5 text-[10px] font-bold leading-tight text-zinc-50 min-[390px]:text-[11px]">
-                    €4.99 <span className="text-[8px] font-medium text-zinc-400">/ month</span>
+                    {noAdsPrice} <span className="text-[8px] font-medium text-zinc-400">/ month</span>
                   </p>
                   <p className="mt-1 text-[7px] leading-tight text-zinc-500 min-[390px]:text-[8px]">Removes ads</p>
                 </button>
@@ -294,7 +328,7 @@ export function ProUpgradePaywall({
                     Pro
                   </p>
                   <p className="mt-0.5 text-[10px] font-bold leading-tight text-zinc-50 min-[390px]:text-[11px]">
-                    €5.99 <span className="text-[8px] font-medium text-zinc-400">/ month</span>
+                    {monthlyPrice} <span className="text-[8px] font-medium text-zinc-400">/ month</span>
                   </p>
                   <p className="mt-0.5 text-[7px] leading-tight text-zinc-500 min-[390px]:text-[8px]">Full Pro</p>
                 </button>
@@ -317,11 +351,13 @@ export function ProUpgradePaywall({
                     Yearly
                   </p>
                   <p className="mt-0.5 text-[10px] font-bold leading-tight text-zinc-50 min-[390px]:text-[11px]">
-                    €49.99 <span className="text-[8px] font-medium text-zinc-400">/ year</span>
+                    {yearlyPrice} <span className="text-[8px] font-medium text-zinc-400">/ year</span>
                   </p>
-                  <p className="mt-0.5 text-[7px] font-semibold text-emerald-400/95 min-[390px]:text-[8px]">Save 30%</p>
+                  <p className="mt-0.5 text-[7px] font-semibold text-emerald-400/95 min-[390px]:text-[8px]">
+                    Save {yearlySavePercent ?? 0}%
+                  </p>
                   <p className="text-[7px] text-zinc-400 min-[390px]:text-[8px]">
-                    €4.16 <span className="text-zinc-500">/ mo</span>
+                    {yearlyPerMonthLabel} <span className="text-zinc-500">/ mo</span>
                   </p>
                 </button>
               </div>

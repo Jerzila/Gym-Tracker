@@ -5,6 +5,7 @@ import { createServerClient } from "@/lib/supabase/server";
 export type SubscriptionSeed = {
   userId: string | null;
   profileCreatedAt: string | null;
+  displayName: string | null;
   /** Saved partner code text, or null if none. */
   affiliateCode: string | null;
 };
@@ -28,12 +29,12 @@ export async function getSubscriptionSeed(): Promise<SubscriptionSeed> {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    return { userId: null, profileCreatedAt: null, affiliateCode: null };
+    return { userId: null, profileCreatedAt: null, displayName: null, affiliateCode: null };
   }
 
   const { data: profileRow } = await supabase
     .from("profiles")
-    .select("created_at")
+    .select("created_at, name, username")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -46,6 +47,11 @@ export async function getSubscriptionSeed(): Promise<SubscriptionSeed> {
   return {
     userId: user.id,
     profileCreatedAt: mergeAccountCreatedAt(profileRow?.created_at ?? null, user.created_at),
+    displayName:
+      profileRow?.name?.trim() ||
+      profileRow?.username?.trim() ||
+      user.email?.split("@")[0]?.trim() ||
+      null,
     affiliateCode: claimRow?.affiliate_code ?? null,
   };
 }
