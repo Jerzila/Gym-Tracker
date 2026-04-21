@@ -6,9 +6,9 @@ import { InstallBanner } from "@/app/components/InstallBanner";
 import { appHref } from "@/lib/appRoutes";
 
 const previewScreens = [
-  { src: "/IMG_2669.PNG", alt: "Liftly workout tracking preview", objectPosition: "50% 76%" },
-  { src: "/IMG_2670.PNG", alt: "Liftly progress view preview", objectPosition: "50% 31%" },
-  { src: "/dashboard-preview.PNG", alt: "Liftly dashboard preview", objectPosition: "50% 50%" },
+  { src: "/iphonemockup1.PNG", alt: "Liftly iPhone mockup 1" },
+  { src: "/iphonemockup2.PNG", alt: "Liftly iPhone mockup 2" },
+  { src: "/iphonemockup3.PNG", alt: "Liftly iPhone mockup 3" },
 ];
 
 type Props = { searchParams: Promise<{ redirect?: string; message?: string }> };
@@ -17,19 +17,18 @@ function SigninScreenshots() {
   return (
     <div className="relative w-full overflow-hidden">
       <div className="pointer-events-none absolute inset-x-8 top-1/2 h-14 -translate-y-1/2 rounded-full bg-amber-500/5 blur-2xl" />
-      <div className="relative grid grid-cols-3 gap-1">
+      <div className="relative grid grid-cols-3 place-items-center gap-1">
         {previewScreens.map((screen) => (
           <div
             key={screen.src}
-            className="relative h-[128px] overflow-hidden rounded-xl border border-white/10 bg-zinc-900 opacity-85 shadow-[0_14px_38px_rgba(255,170,0,0.1)]"
+            className="relative w-[74px] aspect-[9/19.5] overflow-hidden rounded-[18px] opacity-95 shadow-[0_16px_34px_rgba(0,0,0,0.55)] sm:w-[80px]"
           >
             <Image
               src={screen.src}
               alt={screen.alt}
               fill
-              className="object-cover"
-              style={{ objectPosition: screen.objectPosition }}
-              sizes="(max-width: 640px) 30vw, 108px"
+              className="object-contain"
+              sizes="80px"
             />
           </div>
         ))}
@@ -44,7 +43,7 @@ export default async function LoginPage({ searchParams }: Props) {
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-zinc-950 px-4 py-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-zinc-100">
       <div className="w-full max-w-sm flex flex-col items-center">
         <SigninScreenshots />
-        <div className="w-full space-y-3.5 mt-3">
+        <div className="mt-2.5 w-full space-y-3.5">
           {message === "password-updated" && (
             <p className="rounded-lg bg-emerald-950/50 px-3 py-2 text-sm text-emerald-300 text-center">
               Your password has been successfully updated.

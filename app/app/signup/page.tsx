@@ -6,33 +6,27 @@ import { InstallBanner } from "@/app/components/InstallBanner";
 import { appHref } from "@/lib/appRoutes";
 
 const previewScreens = [
-  { src: "/IMG_2669.PNG", alt: "Liftly workout tracking preview" },
-  { src: "/IMG_2670.PNG", alt: "Liftly progress view preview" },
-  { src: "/dashboard-preview.PNG", alt: "Liftly dashboard preview" },
+  { src: "/iphonemockup1.PNG", alt: "Liftly iPhone mockup 1" },
+  { src: "/iphonemockup2.PNG", alt: "Liftly iPhone mockup 2" },
+  { src: "/iphonemockup3.PNG", alt: "Liftly iPhone mockup 3" },
 ];
 
 function SignupScreenshots() {
   return (
     <div className="relative w-full overflow-hidden">
       <div className="pointer-events-none absolute inset-x-6 top-1/2 h-16 -translate-y-1/2 rounded-full bg-amber-500/10 blur-2xl" />
-      <div className="relative grid grid-cols-3 gap-1">
-        {previewScreens.map((screen, index) => (
+      <div className="relative grid grid-cols-3 place-items-center gap-1">
+        {previewScreens.map((screen) => (
           <div
             key={screen.src}
-            className="relative h-[148px] overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-[0_20px_60px_rgba(255,170,0,0.15)]"
+            className="relative w-[74px] aspect-[9/19.5] overflow-hidden rounded-[18px] shadow-[0_18px_42px_rgba(0,0,0,0.55)] sm:w-[80px]"
           >
             <Image
               src={screen.src}
               alt={screen.alt}
               fill
-              className={
-                index === 0
-                  ? "object-cover object-[50%_76%]"
-                  : index === 1
-                    ? "object-cover object-[50%_31%]"
-                    : "object-cover"
-              }
-              sizes="(max-width: 640px) 30vw, 110px"
+              className="object-contain"
+              sizes="80px"
             />
           </div>
         ))}
@@ -46,7 +40,7 @@ export default function SignupPage() {
     <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-zinc-950 px-4 py-4 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] text-zinc-100">
       <div className="w-full max-w-sm flex flex-col items-center">
         <SignupScreenshots />
-        <div className="w-full space-y-4 mt-4">
+        <div className="mt-2.5 w-full space-y-4">
           <div className="text-center">
             <p className="text-sm font-semibold tracking-wide text-amber-500/90 uppercase">Liftly</p>
             <p className="mt-1 text-zinc-100 text-base font-semibold tracking-tight">Track every lift.</p>
