@@ -1,17 +1,21 @@
 "use client";
 
 import type { ReactElement, SVGProps } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getSubscriptionSeed } from "@/app/actions/subscription";
 import { BoltIcon, CalendarIcon, ChartIcon, TrophyIcon } from "@/components/icons";
 import { AffiliateCodeSection } from "@/components/paywall/AffiliateCodeSection";
 import { PaywallLegalFooter } from "@/components/paywall/PaywallLegalFooter";
+import { isNativeCapacitorApp, purchaseRevenueCatPackage } from "@/app/lib/purchases/revenueCat";
 import { haptic } from "@/lib/haptic";
 import { APP_HOME } from "@/lib/appRoutes";
 
 type Plan = "noAds" | "monthly" | "yearly";
+type RevenueCatPackageId = "$rc_monthly" | "$rc_annual" | "no_ads_monthly";
 
 const DEFAULT_PLAN: Plan = "monthly";
+const PURCHASES_ENABLED = process.env.NEXT_PUBLIC_PURCHASES_ENABLED !== "false";
 
 const ICON_PX = 20;
 const iconClass = "shrink-0 text-[#f59e0b]";
@@ -69,6 +73,21 @@ const featureListItems: { title: string; description: string; Icon: FeatureIcon 
 export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: string | null }) {
   const router = useRouter();
   const [plan, setPlan] = useState<Plan>(DEFAULT_PLAN);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
+  const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const seed = await getSubscriptionSeed();
+      if (cancelled) return;
+      setUserId(seed.userId);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const goToDashboard = () => {
     haptic();
@@ -88,6 +107,12 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
     plan === "noAds"
       ? featureListItems.filter((item) => item.title === "No ads")
       : featureListItems;
+
+  const mapPlanToPackage = (nextPlan: Plan): RevenueCatPackageId => {
+    if (nextPlan === "yearly") return "$rc_annual";
+    if (nextPlan === "noAds") return "no_ads_monthly";
+    return "$rc_monthly";
+  };
 
   return (
     <section className="flex h-screen max-h-screen min-h-0 flex-col overflow-hidden bg-[#0f0f10] text-zinc-100">
@@ -216,15 +241,35 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
           <div className="space-y-1.5">
             <button
               type="button"
-              onClick={() => {
-                // Dev paywall: trial purchase not wired yet — send user into the app.
-                goToDashboard();
+              onClick={async () => {
+                if (!userId) {
+                  setPurchaseNotice("Unable to verify your account. Please try again.");
+                  return;
+                }
+                if (!PURCHASES_ENABLED || !isNativeCapacitorApp()) {
+                  setPurchaseNotice("Purchases are available in the native iOS app.");
+                  return;
+                }
+                setPurchaseNotice(null);
+                setPurchaseLoading(true);
+                try {
+                  const packageId = mapPlanToPackage(plan);
+                  await purchaseRevenueCatPackage(userId, packageId);
+                  goToDashboard();
+                } catch (error) {
+                  console.error("[paywall] purchase failed", error);
+                  setPurchaseNotice("Purchase is currently unavailable. Please try again shortly.");
+                } finally {
+                  setPurchaseLoading(false);
+                }
               }}
+              disabled={purchaseLoading}
               className="w-full rounded-[14px] bg-gradient-to-r from-[#f59e0b] to-[#ffb020] px-4 py-2.5 text-sm font-semibold text-zinc-950 shadow-[0_6px_20px_rgba(245,158,11,0.45)] transition-opacity hover:opacity-95 tap-feedback"
             >
-              {ctaLabel}
+              {purchaseLoading ? "Processing..." : ctaLabel}
             </button>
             <p className="text-center text-[10px] leading-tight text-zinc-400">{trialSubline}</p>
+            {purchaseNotice ? <p className="text-center text-[10px] leading-tight text-amber-300">{purchaseNotice}</p> : null}
             <button
               type="button"
               onClick={goToDashboard}
