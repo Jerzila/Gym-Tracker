@@ -14,7 +14,7 @@ import { getAffiliateSavedCode } from "@/app/actions/affiliate";
 import { getSubscriptionSeed } from "@/app/actions/subscription";
 import { ProUpgradePaywall, type ProPlan } from "@/components/paywall/ProUpgradePaywall";
 import {
-  getRevenueCatPlanPricing,
+  getPurchaseErrorMessage,
   isNativeCapacitorApp,
   purchaseRevenueCatPackage,
   refreshRevenueCatAccess,
@@ -49,6 +49,11 @@ type ProAccessContextValue = {
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const PURCHASES_ENABLED = process.env.NEXT_PUBLIC_PURCHASES_ENABLED !== "false";
+const FIXED_PRICING: RevenueCatPlanPricing = {
+  noAdsMonthly: "€4.99",
+  monthly: "€5.99",
+  yearly: "€59.99",
+};
 
 const ProAccessContext = createContext<ProAccessContextValue | null>(null);
 
@@ -83,11 +88,7 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
   const [paywallPlan, setPaywallPlan] = useState<ProPlan>("monthly");
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
-  const [pricing, setPricing] = useState<RevenueCatPlanPricing>({
-    noAdsMonthly: null,
-    monthly: null,
-    yearly: null,
-  });
+  const [pricing] = useState<RevenueCatPlanPricing>(FIXED_PRICING);
   const [welcomeNotice, setWelcomeNotice] = useState<string | null>(null);
   const [affiliateCode, setAffiliateCode] = useState<string | null>(null);
 
@@ -114,10 +115,6 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
         try {
           const next = await refreshRevenueCatAccess(seed.userId);
           if (!cancelled) setAccessState(next);
-          if (!cancelled) {
-            const nextPricing = await getRevenueCatPlanPricing(seed.userId);
-            setPricing(nextPricing);
-          }
         } catch (error) {
           console.error("[pro] Initial RevenueCat sync failed", error);
         }
@@ -152,7 +149,7 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
       try {
         const packageId = mapPlanToPackage(plan);
         const next = await purchaseRevenueCatPackage(userId, packageId);
-        const hasUnlocked = plan === "noAds" ? next.hasNoAds : next.hasPro;
+        const hasUnlocked = next.hasPro;
         if (!hasUnlocked) {
           setPurchaseNotice("Purchase completed but entitlement is still syncing. Please tap Restore Purchases.");
           return;
@@ -160,12 +157,10 @@ export function ProAccessProvider({ children }: { children: ReactNode }) {
         setAccessState(next);
         setPaywallOpen(false);
         const label = displayName?.trim() || "Athlete";
-        setWelcomeNotice(
-          next.hasPro ? `Welcome to Pro, ${label}!` : `Welcome, ${label}! No-Ads is now active.`
-        );
+        setWelcomeNotice(`Welcome to Pro, ${label}!`);
       } catch (error) {
         console.error("[pro] purchase failed", error);
-        setPurchaseNotice("Purchase is currently unavailable. Please try again shortly.");
+        setPurchaseNotice(getPurchaseErrorMessage(error));
       } finally {
         setPurchaseLoading(false);
       }

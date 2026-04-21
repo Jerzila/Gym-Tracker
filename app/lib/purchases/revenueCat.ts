@@ -33,11 +33,13 @@ function readEntitlementState(entitlements: Record<string, { isActive: boolean }
     .filter(([, value]) => !!value?.isActive)
     .map(([key]) => key.toLowerCase());
 
-  const hasPro =
+  const hasCorePro =
     activeKeys.includes("pro") ||
     activeKeys.includes("premium") ||
     activeKeys.some((key) => key.includes("pro") && !key.includes("no_ads"));
-  const hasNoAds = hasPro || activeKeys.includes("no_ads") || activeKeys.some((key) => key.includes("no_ads"));
+  const hasNoAds = hasCorePro || activeKeys.includes("no_ads") || activeKeys.some((key) => key.includes("no_ads"));
+  // Product decision: any paid plan in this paywall should grant Pro access.
+  const hasPro = hasCorePro || hasNoAds;
   return { hasPro, hasNoAds };
 }
 
@@ -144,5 +146,34 @@ export async function purchaseRevenueCatPackage(
     string,
     { isActive: boolean } | undefined
   >;
-  return readEntitlementState(refreshedEntitlements);
+  const refreshedState = readEntitlementState(refreshedEntitlements);
+  if (refreshedState.hasPro || refreshedState.hasNoAds) return refreshedState;
+
+  // Last attempt: restore reconciles receipts in some sandbox/TestFlight edge cases.
+  const restored = await Purchases.restorePurchases();
+  const restoredEntitlements = restored.customerInfo.entitlements.active as Record<
+    string,
+    { isActive: boolean } | undefined
+  >;
+  const restoredState = readEntitlementState(restoredEntitlements);
+  if (restoredState.hasPro || restoredState.hasNoAds) return restoredState;
+
+  throw new Error("Purchase completed but entitlement is not active yet. Please tap Restore purchases.");
+}
+
+export function getPurchaseErrorMessage(error: unknown): string {
+  if (typeof error === "object" && error) {
+    const candidate = error as {
+      userCancelled?: boolean;
+      message?: unknown;
+      code?: unknown;
+      readableErrorCode?: unknown;
+    };
+    if (candidate.userCancelled) return "Purchase cancelled.";
+    const message = typeof candidate.message === "string" ? candidate.message : "";
+    const combined = `${String(candidate.code ?? "")} ${String(candidate.readableErrorCode ?? "")} ${message}`.toLowerCase();
+    if (combined.includes("cancel")) return "Purchase cancelled.";
+    if (message.trim()) return message;
+  }
+  return "Purchase is currently unavailable. Please try again shortly.";
 }

@@ -7,7 +7,7 @@ import { getSubscriptionSeed } from "@/app/actions/subscription";
 import { BoltIcon, CalendarIcon, ChartIcon, TrophyIcon } from "@/components/icons";
 import { AffiliateCodeSection } from "@/components/paywall/AffiliateCodeSection";
 import { PaywallLegalFooter } from "@/components/paywall/PaywallLegalFooter";
-import { getRevenueCatPlanPricing, isNativeCapacitorApp, purchaseRevenueCatPackage } from "@/app/lib/purchases/revenueCat";
+import { getPurchaseErrorMessage, isNativeCapacitorApp, purchaseRevenueCatPackage } from "@/app/lib/purchases/revenueCat";
 import { haptic } from "@/lib/haptic";
 import { APP_HOME } from "@/lib/appRoutes";
 
@@ -16,26 +16,17 @@ type RevenueCatPackageId = "$rc_monthly" | "$rc_annual" | "no_ads_monthly";
 
 const DEFAULT_PLAN: Plan = "monthly";
 const PURCHASES_ENABLED = process.env.NEXT_PUBLIC_PURCHASES_ENABLED !== "false";
+const FIXED_PRICING = {
+  noAdsMonthly: 4.99,
+  monthly: 5.99,
+  yearly: 59.99,
+};
 
 const ICON_PX = 20;
 const iconClass = "shrink-0 text-[#f59e0b]";
 
-function parsePriceValue(raw: string | null): number | null {
-  if (!raw) return null;
-  const match = raw.match(/(\d+(?:[.,]\d+)?)/);
-  if (!match) return null;
-  const normalized = match[1].replace(",", ".");
-  const parsed = Number.parseFloat(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function extractCurrencySymbol(raw: string): string {
-  const symbol = raw.replace(/[\d\s.,]/g, "").trim();
-  return symbol || "€";
-}
-
-function formatCurrencyAmount(amount: number, samplePrice: string): string {
-  return `${extractCurrencySymbol(samplePrice)}${amount.toFixed(2)}`;
+function euroPrice(value: number): string {
+  return `€${value.toFixed(2)}`;
 }
 
 type FeatureIcon = (props: SVGProps<SVGSVGElement> & { size?: number }) => ReactElement;
@@ -93,11 +84,6 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
   const [plan, setPlan] = useState<Plan>(DEFAULT_PLAN);
   const [userId, setUserId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
-  const [pricing, setPricing] = useState({
-    noAdsMonthly: null as string | null,
-    monthly: null as string | null,
-    yearly: null as string | null,
-  });
   const [purchaseLoading, setPurchaseLoading] = useState(false);
   const [purchaseNotice, setPurchaseNotice] = useState<string | null>(null);
 
@@ -108,14 +94,6 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
       if (cancelled) return;
       setUserId(seed.userId);
       setDisplayName(seed.displayName);
-      if (seed.userId) {
-        try {
-          const nextPricing = await getRevenueCatPlanPricing(seed.userId);
-          if (!cancelled) setPricing(nextPricing);
-        } catch (error) {
-          console.error("[paywall] failed to load pricing", error);
-        }
-      }
     })();
     return () => {
       cancelled = true;
@@ -127,19 +105,15 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
     router.replace(APP_HOME);
   };
 
-  const noAdsPrice = pricing.noAdsMonthly ?? "€4.99";
-  const monthlyPrice = pricing.monthly ?? "€5.99";
-  const yearlyPrice = pricing.yearly ?? "€59.99";
-  const monthlyValue = parsePriceValue(monthlyPrice);
-  const yearlyValue = parsePriceValue(yearlyPrice);
-  const yearlyPerMonthValue = yearlyValue ? yearlyValue / 12 : null;
-  const yearlySavePercent =
-    monthlyValue && yearlyPerMonthValue && monthlyValue > 0
-      ? Math.max(0, Math.round(((monthlyValue - yearlyPerMonthValue) / monthlyValue) * 100))
-      : null;
-  const yearlyPerMonthLabel = yearlyPerMonthValue
-    ? formatCurrencyAmount(yearlyPerMonthValue, yearlyPrice)
-    : extractCurrencySymbol(yearlyPrice);
+  const noAdsPrice = euroPrice(FIXED_PRICING.noAdsMonthly);
+  const monthlyPrice = euroPrice(FIXED_PRICING.monthly);
+  const yearlyPrice = euroPrice(FIXED_PRICING.yearly);
+  const yearlyPerMonthValue = FIXED_PRICING.yearly / 12;
+  const yearlySavePercent = Math.max(
+    0,
+    Math.round(((FIXED_PRICING.monthly - yearlyPerMonthValue) / FIXED_PRICING.monthly) * 100)
+  );
+  const yearlyPerMonthLabel = euroPrice(yearlyPerMonthValue);
 
   const trialSubline =
     plan === "noAds"
@@ -304,21 +278,19 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
                 try {
                   const packageId = mapPlanToPackage(plan);
                   const next = await purchaseRevenueCatPackage(userId, packageId);
-                  const hasUnlocked = plan === "noAds" ? next.hasNoAds : next.hasPro;
+                  const hasUnlocked = next.hasPro;
                   if (!hasUnlocked) {
                     setPurchaseNotice("Purchase completed but entitlement is still syncing. Please tap Restore Purchases.");
                     return;
                   }
                   const label = displayName?.trim() || "Athlete";
-                  setPurchaseNotice(
-                    next.hasPro ? `Welcome to Pro, ${label}!` : `Welcome, ${label}! No-Ads is now active.`
-                  );
+                  setPurchaseNotice(`Welcome to Pro, ${label}!`);
                   setTimeout(() => {
                     goToDashboard();
                   }, 850);
                 } catch (error) {
                   console.error("[paywall] purchase failed", error);
-                  setPurchaseNotice("Purchase is currently unavailable. Please try again shortly.");
+                  setPurchaseNotice(getPurchaseErrorMessage(error));
                 } finally {
                   setPurchaseLoading(false);
                 }
