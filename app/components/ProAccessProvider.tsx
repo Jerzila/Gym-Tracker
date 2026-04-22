@@ -52,7 +52,7 @@ const PURCHASES_ENABLED = process.env.NEXT_PUBLIC_PURCHASES_ENABLED !== "false";
 const FIXED_PRICING: RevenueCatPlanPricing = {
   noAdsMonthly: "€4.99",
   monthly: "€5.99",
-  yearly: "€59.99",
+  yearly: "€49.99",
 };
 
 const ProAccessContext = createContext<ProAccessContextValue | null>(null);

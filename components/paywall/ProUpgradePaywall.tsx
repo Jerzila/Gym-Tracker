@@ -170,7 +170,7 @@ export function ProUpgradePaywall({
 
   const noAdsPrice = pricing?.noAdsMonthly ?? "€4.99";
   const monthlyPrice = pricing?.monthly ?? "€5.99";
-  const yearlyPrice = pricing?.yearly ?? "€59.99";
+  const yearlyPrice = pricing?.yearly ?? "€49.99";
   const monthlyValue = parsePriceValue(monthlyPrice);
   const yearlyValue = parsePriceValue(yearlyPrice);
   const yearlyPerMonthValue = yearlyValue ? yearlyValue / 12 : null;
