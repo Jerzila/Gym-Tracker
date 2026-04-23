@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { appHref } from "@/lib/appRoutes";
 
-const PRELAUNCH_APP_HREF = appHref("/signup");
+const APP_STORE_HREF = "https://apps.apple.com/cy/app/liftly-ai-gym-tracker/id6762517196";
+const PLAY_STORE_HREF = appHref("/signup");
 
 function AppleGlyph({ className }: { className?: string }) {
   return (
@@ -36,14 +37,20 @@ export function StoreBadges({ layout = "wrap" }: { layout?: "wrap" | "stack" }) 
 
   return (
     <div className={flex}>
-      <Link href={PRELAUNCH_APP_HREF} className={badgeBase}>
+      <a
+        href={APP_STORE_HREF}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={badgeBase}
+        aria-label="Download Liftly on the App Store"
+      >
         <AppleGlyph className="h-8 w-8 shrink-0 text-white" />
         <span className="flex min-w-0 flex-col leading-tight">
           <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">Download on the</span>
           <span className="text-[15px] font-semibold tracking-tight text-white">App Store</span>
         </span>
-      </Link>
-      <Link href={PRELAUNCH_APP_HREF} className={badgeBase}>
+      </a>
+      <Link href={PLAY_STORE_HREF} className={badgeBase}>
         <PlayGlyph className="h-7 w-7 shrink-0 text-emerald-400" />
         <span className="flex min-w-0 flex-col leading-tight">
           <span className="text-[10px] font-medium uppercase tracking-wider text-zinc-400">Get it on</span>

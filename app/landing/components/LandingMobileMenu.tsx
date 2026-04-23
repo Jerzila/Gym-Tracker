@@ -11,7 +11,7 @@ const MOBILE_NAV = [
   { href: "#support", label: "Support" },
 ] as const;
 
-const APP_STORE_HREF = "https://apps.apple.com/app";
+const APP_STORE_HREF = "https://apps.apple.com/cy/app/liftly-ai-gym-tracker/id6762517196";
 const PLAY_STORE_HREF = "https://play.google.com/store/apps";
 
 function AppleGlyph({ className }: { className?: string }) {
