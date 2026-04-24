@@ -52,6 +52,9 @@ export default function SignupPage() {
           </div>
 
           <AuthForm action={signUp} submitLabel="Create free account" requireLegalAgreement />
+          <p className="text-center text-xs text-zinc-500">
+            Your training data stays private and secure.
+          </p>
 
           <p className="text-center text-sm text-zinc-500">
             Already have an account?{" "}

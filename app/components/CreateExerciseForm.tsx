@@ -13,7 +13,7 @@ function formAction(_: { error?: string } | undefined, formData: FormData) {
 }
 
 /** Brief “Added” label on the main control; navigation and toast run immediately. */
-const ADDED_LABEL_MS = 400;
+const ADDED_LABEL_MS = 250;
 
 export function CreateExerciseForm({
   categories,
@@ -62,16 +62,19 @@ export function CreateExerciseForm({
       toast.show("Exercise added");
       if (categoryId) router.push(`/exercises?expand=${categoryId}`);
     });
-    const t = window.setTimeout(() => {
-      setShowAdded(false);
-    }, ADDED_LABEL_MS);
-
-    return () => clearTimeout(t);
   }, [isPending, state, router, toast]);
 
   useEffect(() => {
     if (isOpen) queueMicrotask(() => setShowAdded(false));
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!showAdded) return;
+    const t = window.setTimeout(() => {
+      setShowAdded(false);
+    }, ADDED_LABEL_MS);
+    return () => window.clearTimeout(t);
+  }, [showAdded]);
 
   function handleCancel() {
     setIsOpen(false);
@@ -81,6 +84,15 @@ export function CreateExerciseForm({
   const submitLocked = isPending;
   const submitLabel = isPending ? "Adding…" : "Add";
   const headerLabel = showAdded ? "Added" : buttonLabel;
+  const headerButtonClass = showAdded
+    ? `${buttonClass.primary} !bg-emerald-500 hover:!bg-emerald-400 focus-visible:!ring-emerald-500`
+    : buttonClass.primary;
+  const loadTypeHelperText: Record<LoadType, string> = {
+    weight: "Use when the number is total weight lifted.",
+    unilateral: "Use for one-side-at-a-time movements (per arm or leg).",
+    bodyweight: "Use when your bodyweight is the primary resistance.",
+    timed: "Use for holds or planks measured by time.",
+  };
 
   return (
     <div className="space-y-3">
@@ -91,9 +103,25 @@ export function CreateExerciseForm({
         aria-expanded={isOpen}
         aria-controls="add-exercise-form"
         id="add-exercise-btn"
-        className={buttonClass.primary}
+        className={headerButtonClass}
       >
-        {headerLabel}
+        {showAdded ? (
+          <span className="inline-flex items-center gap-1.5">
+            <svg
+              className="h-4 w-4"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              aria-hidden
+            >
+              <path d="M4.5 10.5l3.5 3.5L15.5 6.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span>{headerLabel}</span>
+          </span>
+        ) : (
+          headerLabel
+        )}
       </button>
 
       <div
@@ -131,6 +159,9 @@ export function CreateExerciseForm({
                       </option>
                     ))}
                   </select>
+                  <p className="text-[11px] leading-4 text-zinc-500">
+                    Groups this exercise with similar movements.
+                  </p>
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
                   <label htmlFor="name" className="block text-xs text-zinc-500">
@@ -145,6 +176,9 @@ export function CreateExerciseForm({
                     placeholder="e.g. Bench Press"
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 placeholder-zinc-600 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
+                  <p className="text-[11px] leading-4 text-zinc-500">
+                    Name of your exercise - we allow personalization.
+                  </p>
                 </div>
                 <div className="w-full shrink-0 space-y-1 sm:w-44">
                   <label htmlFor="load_type" className="block text-xs text-zinc-500">
@@ -162,36 +196,46 @@ export function CreateExerciseForm({
                     <option value="bodyweight">Bodyweight</option>
                     <option value="timed">Timed hold</option>
                   </select>
+                  <p className="text-[11px] leading-4 text-zinc-500">
+                    {loadTypeHelperText[loadType]}
+                  </p>
                 </div>
                 {loadType !== "bodyweight" && loadType !== "timed" && (
                   <>
-                    <div className="w-20 space-y-1">
-                      <label htmlFor="rep_min" className="block text-xs text-zinc-500">
-                        Rep min
-                      </label>
-                      <input
-                        id="rep_min"
-                        name="rep_min"
-                        type="number"
-                        min={1}
-                        defaultValue={6}
-                        required
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                      />
-                    </div>
-                    <div className="w-20 space-y-1">
-                      <label htmlFor="rep_max" className="block text-xs text-zinc-500">
-                        Rep max
-                      </label>
-                      <input
-                        id="rep_max"
-                        name="rep_max"
-                        type="number"
-                        min={1}
-                        defaultValue={12}
-                        required
-                        className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
-                      />
+                    <div className="w-full">
+                      <div className="flex items-end gap-3">
+                        <div className="w-20 space-y-1">
+                          <label htmlFor="rep_min" className="block text-xs text-zinc-500">
+                            Rep min
+                          </label>
+                          <input
+                            id="rep_min"
+                            name="rep_min"
+                            type="number"
+                            min={1}
+                            defaultValue={6}
+                            required
+                            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+                        <div className="w-20 space-y-1">
+                          <label htmlFor="rep_max" className="block text-xs text-zinc-500">
+                            Rep max
+                          </label>
+                          <input
+                            id="rep_max"
+                            name="rep_max"
+                            type="number"
+                            min={1}
+                            defaultValue={12}
+                            required
+                            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-zinc-100 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+                        <p className="pb-2 text-[11px] leading-4 text-zinc-500">
+                          Target rep range from min to max.
+                        </p>
+                      </div>
                     </div>
                   </>
                 )}

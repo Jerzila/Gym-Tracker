@@ -56,6 +56,9 @@ export default async function LoginPage({ searchParams }: Props) {
           </div>
 
           <AuthForm action={signIn} submitLabel="Sign in" redirectTo={redirectTo} />
+          <p className="text-center text-xs text-zinc-500">
+            Pick up where you left off in seconds.
+          </p>
 
           <p className="text-center">
             <Link

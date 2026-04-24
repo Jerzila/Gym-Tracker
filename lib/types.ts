@@ -17,6 +17,11 @@ export type Profile = {
   /** Body fat % from last FFMI calculation */
   body_fat_percent?: number | null;
   units: "metric" | "imperial" | null;
+  onboarding_main_goal?: "build_muscle" | "lose_fat" | "get_stronger" | "stay_consistent" | null;
+  onboarding_gym_experience?: "just_starting" | "under_6_months" | "6_24_months" | "2_plus_years" | null;
+  onboarding_weekly_frequency?: "1_2_days" | "3_days" | "4_days" | "5_plus_days" | null;
+  onboarding_workout_length?: "20_30" | "30_45" | "45_60" | "60_plus" | null;
+  onboarding_app_experience?: "recommendations" | "analytics" | "rankings" | "history" | null;
   profile_completed: boolean;
   /** Full rank label for leaderboard (synced from rankings). */
   overall_rank?: string | null;

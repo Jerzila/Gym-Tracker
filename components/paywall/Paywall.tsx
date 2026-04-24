@@ -2,7 +2,6 @@
 
 import type { ReactElement, SVGProps } from "react";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { getSubscriptionSeed } from "@/app/actions/subscription";
 import { BoltIcon, CalendarIcon, ChartIcon, TrophyIcon } from "@/components/icons";
 import { AffiliateCodeSection } from "@/components/paywall/AffiliateCodeSection";
@@ -80,7 +79,6 @@ const featureListItems: { title: string; description: string; Icon: FeatureIcon 
 ];
 
 export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: string | null }) {
-  const router = useRouter();
   const [plan, setPlan] = useState<Plan>(DEFAULT_PLAN);
   const [userId, setUserId] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -102,7 +100,7 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
 
   const goToDashboard = () => {
     haptic();
-    router.replace(APP_HOME);
+    window.location.assign(APP_HOME);
   };
 
   const noAdsPrice = euroPrice(FIXED_PRICING.noAdsMonthly);
@@ -139,16 +137,16 @@ export function Paywall({ savedAffiliateCode = null }: { savedAffiliateCode?: st
     <section className="flex h-screen max-h-screen min-h-0 flex-col overflow-hidden bg-[#0f0f10] text-zinc-100">
       <div className="mx-auto flex h-full min-h-0 w-full max-w-xl flex-col justify-between px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-[max(0.5rem,env(safe-area-inset-top))]">
         {/* SECTION 1 — hero header + gold radial glow (fixed height band) */}
-        <div className="-mx-3 shrink-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,170,0,0.18),rgba(255,170,0,0.06)_40%,transparent_70%)] px-3 pb-0 pt-0.5 text-center">
+        <div className="-mx-3 shrink-0 bg-[radial-gradient(circle_at_50%_-20%,rgba(255,170,0,0.2),rgba(255,170,0,0.08)_40%,transparent_72%)] px-3 pb-1 pt-1 text-center">
           <header>
-            <h1 className="mb-2 text-[30px] font-bold leading-[1.15] tracking-[-0.5px] text-zinc-50">
+            <p className="mx-auto mb-2 inline-flex items-center rounded-full border border-[#f59e0b]/45 bg-[#f59e0b]/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-amber-200 shadow-[0_0_18px_rgba(245,158,11,0.2)]">
+              Liftly Pro
+            </p>
+            <h1 className="mb-2 text-[32px] font-bold leading-[1.1] tracking-[-0.7px] text-zinc-50">
               Train Smarter.
               <br />
               Get Stronger.
             </h1>
-            <p className="mx-auto max-w-md px-1 text-sm leading-snug text-zinc-400">
-              AI-powered strength insights and progress analytics.
-            </p>
           </header>
         </div>
 

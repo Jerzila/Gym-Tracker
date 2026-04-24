@@ -25,6 +25,11 @@ const HEIGHT_MIN = 120;
 const HEIGHT_MAX = 230;
 const BODY_FAT_PCT_MIN = 3;
 const BODY_FAT_PCT_MAX = 50;
+const ONBOARDING_MAIN_GOALS = ["build_muscle", "lose_fat", "get_stronger", "stay_consistent"] as const;
+const ONBOARDING_GYM_EXPERIENCE = ["just_starting", "under_6_months", "6_24_months", "2_plus_years"] as const;
+const ONBOARDING_WEEKLY_FREQUENCY = ["1_2_days", "3_days", "4_days", "5_plus_days"] as const;
+const ONBOARDING_WORKOUT_LENGTHS = ["20_30", "30_45", "45_60", "60_plus"] as const;
+const ONBOARDING_APP_EXPERIENCE = ["recommendations", "analytics", "rankings", "history"] as const;
 
 export type ProfileFormState = {
   error?: string;
@@ -471,6 +476,11 @@ export type CompleteOnboardingInput = {
   units: "metric" | "imperial";
   gender: "male" | "female" | "prefer_not_to_say" | null;
   country: string | null;
+  mainGoal?: (typeof ONBOARDING_MAIN_GOALS)[number] | null;
+  gymExperience?: (typeof ONBOARDING_GYM_EXPERIENCE)[number] | null;
+  weeklyFrequency?: (typeof ONBOARDING_WEEKLY_FREQUENCY)[number] | null;
+  workoutLength?: (typeof ONBOARDING_WORKOUT_LENGTHS)[number] | null;
+  appExperience?: (typeof ONBOARDING_APP_EXPERIENCE)[number] | null;
   /** Local calendar date YYYY-MM-DD when the user taps Finish (client timezone). */
   logDate: string;
 };
@@ -504,6 +514,27 @@ export async function completeOnboarding(
       return { error: "Invalid units." };
     }
 
+    const mainGoal =
+      input.mainGoal && ONBOARDING_MAIN_GOALS.includes(input.mainGoal)
+        ? input.mainGoal
+        : null;
+    const gymExperience =
+      input.gymExperience && ONBOARDING_GYM_EXPERIENCE.includes(input.gymExperience)
+        ? input.gymExperience
+        : null;
+    const weeklyFrequency =
+      input.weeklyFrequency && ONBOARDING_WEEKLY_FREQUENCY.includes(input.weeklyFrequency)
+        ? input.weeklyFrequency
+        : null;
+    const workoutLength =
+      input.workoutLength && ONBOARDING_WORKOUT_LENGTHS.includes(input.workoutLength)
+        ? input.workoutLength
+        : null;
+    const appExperience =
+      input.appExperience && ONBOARDING_APP_EXPERIENCE.includes(input.appExperience)
+        ? input.appExperience
+        : null;
+
     const logRaw = input.logDate?.trim() ?? "";
     const setupLogDate = /^\d{4}-\d{2}-\d{2}$/.test(logRaw) ? logRaw : new Date().toISOString().slice(0, 10);
 
@@ -517,6 +548,11 @@ export async function completeOnboarding(
       units: input.units,
       gender: input.gender || null,
       country: input.country || null,
+      onboarding_main_goal: mainGoal,
+      onboarding_gym_experience: gymExperience,
+      onboarding_weekly_frequency: weeklyFrequency,
+      onboarding_workout_length: workoutLength,
+      onboarding_app_experience: appExperience,
       profile_completed: true,
       updated_at: updatedAt,
     };

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useState } from "react";
 import { Button } from "@/app/components/Button";
 import { sendFriendRequest, type SocialProfileRelationship } from "@/app/actions/social";
+import { useProAccess } from "@/app/components/ProAccessProvider";
+import { maybeShowInterstitialAfterFriendAdd } from "@/app/lib/adMob/interstitialController";
 
 type Props = {
   subjectUserId: string;
@@ -13,6 +15,7 @@ type Props = {
 export function ProfileFriendActions({ subjectUserId, initialRelationship }: Props) {
   const [relationship, setRelationship] = useState(initialRelationship);
   const [busy, setBusy] = useState(false);
+  const { ready, hasNoAds } = useProAccess();
 
   if (relationship === "friend") return null;
 
@@ -44,6 +47,9 @@ export function ProfileFriendActions({ subjectUserId, initialRelationship }: Pro
     setBusy(false);
     if (res.error) return;
     setRelationship("request_sent");
+    if (ready) {
+      void maybeShowInterstitialAfterFriendAdd(hasNoAds);
+    }
   }
 
   return (

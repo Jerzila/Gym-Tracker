@@ -7,6 +7,8 @@ import {
   sendFriendRequest,
   type SocialUserSearchResult,
 } from "@/app/actions/social";
+import { useProAccess } from "@/app/components/ProAccessProvider";
+import { maybeShowInterstitialAfterFriendAdd } from "@/app/lib/adMob/interstitialController";
 
 const inputClass =
   "w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-[rgba(255,170,0,0.6)] focus:outline-none focus:ring-0";
@@ -24,6 +26,7 @@ export function SocialSearchClient({ initialQuery }: SearchProps) {
   const [sentTo, setSentTo] = useState<Set<string>>(new Set());
   const [searchOpen, setSearchOpen] = useState(() => initial.length >= 2);
   const debounceRef = useRef<number | null>(null);
+  const { ready, hasNoAds } = useProAccess();
 
   useEffect(() => {
     const q = query.trim();
@@ -58,6 +61,9 @@ export function SocialSearchClient({ initialQuery }: SearchProps) {
     setResults((prev) =>
       prev.map((r) => (r.id === userId ? { ...r, relationship: "request_sent" } : r))
     );
+    if (ready) {
+      void maybeShowInterstitialAfterFriendAdd(hasNoAds);
+    }
   }
 
   return (

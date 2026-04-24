@@ -72,7 +72,7 @@ export function LogWorkoutForm({
   const [showSavedConfirmation, setShowSavedConfirmation] = useState(false);
   const toast = useToast();
   const cache = useWorkoutDataCache();
-  const { hasPro, hasNoAds } = useProAccess();
+  const { ready, hasPro, hasNoAds } = useProAccess();
   const lastShownMessageRef = useRef<string | null>(null);
   /** Post-save auto-collapse; must be cleared if the user reopens the form before it fires. */
   const collapseAfterSaveTimerRef = useRef<number | null>(null);
@@ -111,10 +111,12 @@ export function LogWorkoutForm({
         lastShownMessageRef.current = state.message;
         toast.show(state.message);
         hapticWorkoutSaved(!!state.hitPr);
-        void maybeShowInterstitialAfterWorkoutLog(hasNoAds);
+        if (ready) {
+          void maybeShowInterstitialAfterWorkoutLog(hasNoAds);
+        }
       }
     }
-  }, [state, toast, cache, router, hasNoAds]);
+  }, [state, toast, cache, router, ready, hasNoAds]);
 
   useEffect(() => {
     onExpandedChange?.(expanded);

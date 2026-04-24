@@ -17,6 +17,8 @@ import {
 } from "@/app/actions/social";
 import { RankCrownIcon } from "@/app/components/RankCrownIcon";
 import { showCrownForLiftlyPro } from "@/lib/showRankCrown";
+import { useProAccess } from "@/app/components/ProAccessProvider";
+import { maybeShowInterstitialAfterFriendAdd } from "@/app/lib/adMob/interstitialController";
 
 const inputClass =
   "w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[rgba(255,255,255,0.04)] px-3.5 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:border-[rgba(255,170,0,0.6)] focus:outline-none focus:ring-0";
@@ -31,6 +33,7 @@ export function SocialFriendsClient() {
   const [friends, setFriends] = useState<FriendListItem[]>([]);
   const [loadingLists, setLoadingLists] = useState(true);
   const debounceRef = useRef<number | null>(null);
+  const { ready, hasNoAds } = useProAccess();
 
   const friendIdSet = useMemo(() => new Set(friends.map((f) => f.friend_id)), [friends]);
 
@@ -99,6 +102,9 @@ export function SocialFriendsClient() {
     setResults((prev) =>
       prev.map((r) => (r.id === userId ? { ...r, relationship: "request_sent" } : r))
     );
+    if (ready) {
+      void maybeShowInterstitialAfterFriendAdd(hasNoAds);
+    }
   }
 
   async function onAccept(requestId: string) {

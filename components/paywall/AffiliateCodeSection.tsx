@@ -7,6 +7,10 @@ import { haptic } from "@/lib/haptic";
 
 const RESTORE_SAVED_CODE_MS = 550;
 
+function normalizeAffiliateCode(code: string | null | undefined): string {
+  return (code ?? "").trim().toUpperCase();
+}
+
 function AffiliateFeedbackIcon({ variant }: { variant: "success" | "error" }) {
   if (variant === "success") {
     return (
@@ -62,6 +66,7 @@ export function AffiliateCodeSection({
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<"success" | "restored" | "error" | null>(null);
   const restoreTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSuccessfulCodeRef = useRef<string | null>(null);
 
   const clearRestoreTimer = () => {
     if (restoreTimerRef.current) {
@@ -72,8 +77,12 @@ export function AffiliateCodeSection({
 
   useEffect(() => {
     clearRestoreTimer();
-    setFeedback(null);
     setValue(savedAffiliateCode ?? "");
+    setFeedback((current) => {
+      const normalizedSavedCode = normalizeAffiliateCode(savedAffiliateCode);
+      if (!normalizedSavedCode) return null;
+      return current === "success" && lastSuccessfulCodeRef.current === normalizedSavedCode ? "success" : null;
+    });
   }, [savedAffiliateCode]);
 
   useEffect(() => {
@@ -85,6 +94,7 @@ export function AffiliateCodeSection({
     setFeedback(null);
     const trimmed = value.trim();
     if (!trimmed) {
+      lastSuccessfulCodeRef.current = null;
       setFeedback("error");
       return;
     }
@@ -93,10 +103,13 @@ export function AffiliateCodeSection({
       const result = await claimAffiliateCode(trimmed);
       if (result.ok) {
         haptic();
+        lastSuccessfulCodeRef.current = normalizeAffiliateCode(trimmed);
+        setValue(trimmed);
         setFeedback("success");
         onClaimed?.();
         router.refresh();
       } else if (result.rpcError === "invalid_code_unchanged" && savedAffiliateCode) {
+        lastSuccessfulCodeRef.current = normalizeAffiliateCode(savedAffiliateCode);
         setFeedback("error");
         restoreTimerRef.current = setTimeout(() => {
           restoreTimerRef.current = null;
@@ -104,6 +117,7 @@ export function AffiliateCodeSection({
           setFeedback("restored");
         }, RESTORE_SAVED_CODE_MS);
       } else {
+        lastSuccessfulCodeRef.current = null;
         setFeedback("error");
       }
     } finally {
@@ -139,6 +153,7 @@ export function AffiliateCodeSection({
             value={value}
             onChange={(e) => {
               clearRestoreTimer();
+              lastSuccessfulCodeRef.current = null;
               setValue(e.target.value);
               setFeedback(null);
             }}

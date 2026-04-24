@@ -13,6 +13,37 @@ function buildFallbackUsername(): string {
   return `user${Math.floor(Math.random() * 100000)}`;
 }
 
+function mapSignUpErrorMessage(message: string): string {
+  const msg = message.toLowerCase();
+  if (msg.includes("already registered") || msg.includes("already been registered") || msg.includes("user already")) {
+    return "An account with this email already exists. Try signing in instead.";
+  }
+  if (msg.includes("invalid email")) {
+    return "Please enter a valid email address.";
+  }
+  if (msg.includes("password")) {
+    return "Password is too weak. Use at least 6 characters.";
+  }
+  if (msg.includes("rate limit") || msg.includes("too many")) {
+    return "Too many attempts. Please wait a minute and try again.";
+  }
+  return "Unable to create account. Please try again.";
+}
+
+function mapSignInErrorMessage(message: string): string {
+  const msg = message.toLowerCase();
+  if (msg.includes("invalid login credentials") || msg.includes("invalid credentials")) {
+    return "Incorrect email or password.";
+  }
+  if (msg.includes("email not confirmed")) {
+    return "Please verify your email first.";
+  }
+  if (msg.includes("rate limit") || msg.includes("too many")) {
+    return "Too many login attempts. Please wait and try again.";
+  }
+  return "Unable to sign in. Please check your email and password.";
+}
+
 export async function signUp(formData: FormData) {
   const email = (formData.get("email") as string)?.trim();
   const password = formData.get("password") as string;
@@ -72,7 +103,9 @@ export async function signUp(formData: FormData) {
     }
   } catch (err) {
     logServerError("signUp failed", err);
-    return { error: "Unable to create account. Please try again." };
+    const msg =
+      typeof err === "object" && err && "message" in err ? String((err as { message?: unknown }).message ?? "") : "";
+    return { error: mapSignUpErrorMessage(msg) };
   }
 
   redirect(appHref("/profile-setup"));
@@ -139,7 +172,7 @@ export async function signIn(formData: FormData) {
     }
 
     logServerError("signIn failed", err);
-    return { error: "Unable to sign in. Please check your email and password." };
+    return { error: mapSignInErrorMessage(msg) };
   }
 
   redirect(normalizeAuthRedirect(redirectTo.startsWith("/") ? redirectTo : APP_HOME));

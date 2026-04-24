@@ -123,12 +123,10 @@ function Timeline() {
             <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center" aria-hidden>
               <StepIcon size={18} className={iconClass} />
             </span>
-            <div className="min-w-0 flex-1 pt-0.5">
-              <p className="text-[11px] font-semibold leading-tight tracking-wide text-[#f59e0b] min-[390px]:text-[12px]">
-                {step.label}
-              </p>
-              <p className="mt-0.5 text-[10px] leading-snug text-zinc-500 min-[390px]:text-[11px]">{step.body}</p>
-            </div>
+            <p className="min-w-0 flex-1 pt-0.5 text-[10px] leading-snug text-zinc-400 min-[390px]:text-[11px]">
+              <span className="font-semibold tracking-wide text-[#f59e0b]">{step.label}</span>
+              <span className="text-zinc-500"> - {step.body}</span>
+            </p>
           </li>
         );
       })}

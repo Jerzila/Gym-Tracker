@@ -8,12 +8,12 @@ export const ADMOB_TEST_IOS_INTERSTITIAL_ID = "ca-app-pub-3940256099942544/44114
 const DEFAULT_IOS_APP_ID = "ca-app-pub-6904443125669508~5438781706";
 const DEFAULT_IOS_INTERSTITIAL_ID = "ca-app-pub-6904443125669508/7873373350";
 
-export function useAdMobTestMode(): boolean {
+export function isAdMobTestMode(): boolean {
   return process.env.NEXT_PUBLIC_ADMOB_USE_TEST_ADS === "1";
 }
 
 export function resolveIosInterstitialAdUnitId(): string {
-  if (useAdMobTestMode()) {
+  if (isAdMobTestMode()) {
     return ADMOB_TEST_IOS_INTERSTITIAL_ID;
   }
   return process.env.NEXT_PUBLIC_ADMOB_IOS_INTERSTITIAL_ID?.trim() || DEFAULT_IOS_INTERSTITIAL_ID;

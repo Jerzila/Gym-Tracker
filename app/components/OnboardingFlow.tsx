@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { completeOnboarding } from "@/app/actions/profile";
 import { COUNTRIES } from "@/lib/countries";
 import { haptic } from "@/lib/haptic";
@@ -12,16 +13,26 @@ import { localCalendarDateYYYYMMDD } from "@/lib/localCalendarDate";
 import { epleyEstimated1RM, strengthScoreToRank, type StrengthRankMuscle } from "@/lib/strengthRanking";
 import { RankBadge } from "@/app/components/RankBadge";
 import type { RankSlug } from "@/lib/rankBadges";
-import { FemaleIcon, MaleIcon, PreferNotToSayIcon } from "@/components/icons";
+import { FemaleIcon, MaleIcon, PreferNotToSayIcon, ScaleIcon } from "@/components/icons";
 import { FlagIcon } from "@/app/components/FlagIcon";
 import { appHref } from "@/lib/appRoutes";
+import { InAppReview } from "@capacitor-community/in-app-review";
+import { Capacitor } from "@capacitor/core";
+import type { LucideIcon } from "lucide-react";
+import { BarChart3, CalendarClock, Sparkles, Target, Timer } from "lucide-react";
 
-const TOTAL_STEPS = 5; // name+DOB+gender, units, height&weight, country, strength-rank (welcome is step 0)
+const TOTAL_STEPS = 10; // basic info, units, body metrics, country, goal, gym experience, weekly frequency, workout length, app preference, strength-rank
+const STRENGTH_RANK_STEP = TOTAL_STEPS;
 const STEP_TITLES = [
   "Basic Info",
   "Choose your units",
   "Height & weight",
   "Where are you from?",
+  "What's your main goal right now?",
+  "How long have you been going to the gym?",
+  "How often do you train each week?",
+  "What's your average workout length?",
+  "What matters most to you in Liftly?",
   "Find your strength rank",
 ];
 
@@ -60,6 +71,11 @@ type OnboardingData = {
   weightKg: number;
   units: "metric" | "imperial";
   country: string;
+  mainGoal: "build_muscle" | "lose_fat" | "get_stronger" | "stay_consistent" | null;
+  gymExperience: "just_starting" | "under_6_months" | "6_24_months" | "2_plus_years" | null;
+  weeklyFrequency: "1_2_days" | "3_days" | "4_days" | "5_plus_days" | null;
+  workoutLength: "20_30" | "30_45" | "45_60" | "60_plus" | null;
+  appExperience: "recommendations" | "analytics" | "rankings" | "history" | null;
 };
 
 type StrengthCategory = "chest" | "back" | "shoulders" | "arms" | "legs";
@@ -265,17 +281,11 @@ function UnitsKettlebellVisual({ unit }: { unit: "metric" | "imperial" }) {
       style={{ transform: `scale(${scale})` }}
     >
       <div className="relative flex h-[320px] w-[320px] flex-shrink-0 items-center justify-center rounded-2xl bg-zinc-950 p-6">
-        <div className="relative h-[260px] w-[260px] flex-shrink-0 overflow-hidden rounded-xl bg-amber-500">
-          <img
-            src="/kg.svg"
-            alt="Metric (kg)"
-            className={`absolute inset-0 h-full w-full object-cover object-center invert mix-blend-multiply transition-opacity duration-200 ${unit === "metric" ? "opacity-100" : "opacity-0"}`}
-          />
-          <img
-            src="/lbs.svg"
-            alt="Imperial (lbs)"
-            className={`absolute inset-0 h-full w-full object-cover object-center invert mix-blend-multiply transition-opacity duration-200 ${unit === "imperial" ? "opacity-100" : "opacity-0"}`}
-          />
+        <div className="relative flex h-[260px] w-[260px] flex-shrink-0 flex-col items-center justify-center text-zinc-100">
+          <ScaleIcon size={116} className="text-amber-500" aria-hidden />
+          <p className="mt-2 text-5xl font-black tracking-tight leading-none text-zinc-100">
+            {unit === "metric" ? "KG" : "LB"}
+          </p>
         </div>
       </div>
     </div>
@@ -283,6 +293,66 @@ function UnitsKettlebellVisual({ unit }: { unit: "metric" | "imperial" }) {
 }
 
 type OnboardingFlowProps = { profile: Profile | null };
+
+const GOAL_OPTIONS: {
+  value: NonNullable<OnboardingData["mainGoal"]>;
+  label: string;
+  sublabel: string;
+  Icon: LucideIcon;
+}[] = [
+  { value: "build_muscle", label: "Build muscle", sublabel: "Prioritize hypertrophy progress", Icon: Target },
+  { value: "lose_fat", label: "Lose fat", sublabel: "Train while leaning out", Icon: Sparkles },
+  { value: "get_stronger", label: "Get stronger", sublabel: "Push heavier lifts over time", Icon: BarChart3 },
+  { value: "stay_consistent", label: "Stay consistent", sublabel: "Keep a routine you can sustain", Icon: CalendarClock },
+];
+
+const WORKOUT_LENGTH_OPTIONS: {
+  value: NonNullable<OnboardingData["workoutLength"]>;
+  label: string;
+  sublabel: string;
+  Icon: LucideIcon;
+}[] = [
+  { value: "20_30", label: "20-30 min", sublabel: "Quick sessions", Icon: Timer },
+  { value: "30_45", label: "30-45 min", sublabel: "Balanced and efficient", Icon: Timer },
+  { value: "45_60", label: "45-60 min", sublabel: "Most complete sessions", Icon: Timer },
+  { value: "60_plus", label: "60+ min", sublabel: "Long focused training", Icon: Timer },
+];
+
+const GYM_EXPERIENCE_OPTIONS: {
+  value: NonNullable<OnboardingData["gymExperience"]>;
+  label: string;
+  sublabel: string;
+  Icon: LucideIcon;
+}[] = [
+  { value: "just_starting", label: "Just starting", sublabel: "Brand new to lifting", Icon: Sparkles },
+  { value: "under_6_months", label: "Less than 6 months", sublabel: "Early consistency phase", Icon: CalendarClock },
+  { value: "6_24_months", label: "6-24 months", sublabel: "Building serious momentum", Icon: BarChart3 },
+  { value: "2_plus_years", label: "2+ years", sublabel: "Experienced lifter", Icon: Target },
+];
+
+const WEEKLY_FREQUENCY_OPTIONS: {
+  value: NonNullable<OnboardingData["weeklyFrequency"]>;
+  label: string;
+  sublabel: string;
+  Icon: LucideIcon;
+}[] = [
+  { value: "1_2_days", label: "1-2 days", sublabel: "Light weekly schedule", Icon: CalendarClock },
+  { value: "3_days", label: "3 days", sublabel: "Balanced consistency", Icon: CalendarClock },
+  { value: "4_days", label: "4 days", sublabel: "High commitment", Icon: CalendarClock },
+  { value: "5_plus_days", label: "5+ days", sublabel: "Very frequent training", Icon: CalendarClock },
+];
+
+const EXPERIENCE_OPTIONS: {
+  value: NonNullable<OnboardingData["appExperience"]>;
+  label: string;
+  sublabel: string;
+  Icon: LucideIcon;
+}[] = [
+  { value: "recommendations", label: "Strength recommendations", sublabel: "Know when to increase reps or load", Icon: Sparkles },
+  { value: "analytics", label: "Progress analytics", sublabel: "Track your strength trends and 1RM", Icon: BarChart3 },
+  { value: "rankings", label: "Muscle rankings", sublabel: "Improve your rank muscle by muscle", Icon: Target },
+  { value: "history", label: "Workout history", sublabel: "Keep your full training log organized", Icon: CalendarClock },
+];
 
 export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   const router = useRouter();
@@ -295,6 +365,11 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
     const u = profile?.units ?? "metric";
     const g = profile?.gender;
     const c = profile?.country ?? "";
+    const mainGoal = profile?.onboarding_main_goal ?? null;
+    const gymExperience = profile?.onboarding_gym_experience ?? null;
+    const weeklyFrequency = profile?.onboarding_weekly_frequency ?? null;
+    const workoutLength = profile?.onboarding_workout_length ?? null;
+    const appExperience = profile?.onboarding_app_experience ?? null;
     return {
       firstName,
       birthday: b ?? "",
@@ -303,6 +378,41 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
       weightKg: w,
       units: u === "imperial" ? "imperial" : "metric",
       country: c,
+      mainGoal:
+        mainGoal === "build_muscle" ||
+        mainGoal === "lose_fat" ||
+        mainGoal === "get_stronger" ||
+        mainGoal === "stay_consistent"
+          ? mainGoal
+          : null,
+      gymExperience:
+        gymExperience === "just_starting" ||
+        gymExperience === "under_6_months" ||
+        gymExperience === "6_24_months" ||
+        gymExperience === "2_plus_years"
+          ? gymExperience
+          : null,
+      weeklyFrequency:
+        weeklyFrequency === "1_2_days" ||
+        weeklyFrequency === "3_days" ||
+        weeklyFrequency === "4_days" ||
+        weeklyFrequency === "5_plus_days"
+          ? weeklyFrequency
+          : null,
+      workoutLength:
+        workoutLength === "20_30" ||
+        workoutLength === "30_45" ||
+        workoutLength === "45_60" ||
+        workoutLength === "60_plus"
+          ? workoutLength
+          : null,
+      appExperience:
+        appExperience === "recommendations" ||
+        appExperience === "analytics" ||
+        appExperience === "rankings" ||
+        appExperience === "history"
+          ? appExperience
+          : null,
     };
   });
   const [submitting, setSubmitting] = useState(false);
@@ -310,6 +420,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   const [countrySearch, setCountrySearch] = useState("");
   const [logWorkoutPressed, setLogWorkoutPressed] = useState(false);
   const [logWorkoutLoading, setLogWorkoutLoading] = useState(false);
+  const [reviewPromptTriggered, setReviewPromptTriggered] = useState(false);
 
   // Strength rank mini-flow (step 5)
   // 0 = category, 1 = exercise+log, 2 = calculating, 3 = reveal
@@ -409,7 +520,12 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
     (step === 2 && true) ||
     (step === 3 && true) ||
     (step === 4 && data.country !== "") ||
-    (step === 5 &&
+    (step === 5 && data.mainGoal !== null) ||
+    (step === 6 && data.gymExperience !== null) ||
+    (step === 7 && data.weeklyFrequency !== null) ||
+    (step === 8 && data.workoutLength !== null) ||
+    (step === 9 && data.appExperience !== null) ||
+    (step === STRENGTH_RANK_STEP &&
       ((rankSubStep === 0 && rankCategory !== null) ||
         (rankSubStep === 1 &&
           !!rankExercise &&
@@ -417,7 +533,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
           Math.floor(Number(rankReps)) > 0) ||
         rankSubStep === 3));
 
-  const isStrengthRankStep = step === 5;
+  const isStrengthRankStep = step === STRENGTH_RANK_STEP;
   const isStrengthReveal = isStrengthRankStep && (rankSubStep === 2 || rankSubStep === 3);
   const strengthPrimaryButtonDisabled =
     submitting ||
@@ -453,14 +569,14 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
     setError(null);
 
     // Lock the user on the final strength result screen.
-    if (step === 5 && rankSubStep === 3) return;
+    if (step === STRENGTH_RANK_STEP && rankSubStep === 3) return;
 
     if (step === 0) {
       router.back();
       return;
     }
 
-    if (step === 5) {
+    if (step === STRENGTH_RANK_STEP) {
       if (rankSubStep === 3) {
         // From reveal -> back to logging
         setRankSubStep(1);
@@ -509,7 +625,19 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
   };
 
   // Only show Skip on the "Log your first workout" entry point, not within the lift logging form.
-  const showSkip = step === 5 && rankSubStep === 0;
+  const showSkip = step === STRENGTH_RANK_STEP && rankSubStep === 0;
+
+  const requestInAppReview = useCallback(async () => {
+    if (reviewPromptTriggered) return;
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "ios") return;
+    setReviewPromptTriggered(true);
+    try {
+      await InAppReview.requestReview();
+    } catch {
+      // Ignore silently: iOS may throttle and skip review UI.
+    }
+  }, [reviewPromptTriggered]);
+
   const handleSkip = async () => {
     try {
       setSubmitting(true);
@@ -522,6 +650,11 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         units: data.units,
         gender: data.gender,
         country: data.country || null,
+        mainGoal: data.mainGoal,
+        gymExperience: data.gymExperience,
+        weeklyFrequency: data.weeklyFrequency,
+        workoutLength: data.workoutLength,
+        appExperience: data.appExperience,
         logDate: localCalendarDateYYYYMMDD(),
       });
       if (result?.error) {
@@ -544,6 +677,9 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
       return;
     }
     if (step < TOTAL_STEPS) {
+      if (step === 9) {
+        void requestInAppReview();
+      }
       haptic();
       setStep((s) => s + 1);
       setError(null);
@@ -564,6 +700,11 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         units: data.units,
         gender: data.gender,
         country: data.country || null,
+        mainGoal: data.mainGoal,
+        gymExperience: data.gymExperience,
+        weeklyFrequency: data.weeklyFrequency,
+        workoutLength: data.workoutLength,
+        appExperience: data.appExperience,
         logDate: localCalendarDateYYYYMMDD(),
       });
       if (result?.error) {
@@ -596,7 +737,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
           className="relative mx-auto flex h-14 w-full max-w-3xl items-center justify-center border-b border-white/[0.05] bg-zinc-950 px-4"
           role="banner"
         >
-          {step === 0 || (step === 5 && rankSubStep === 3) ? null : (
+          {step === 0 || (step === STRENGTH_RANK_STEP && rankSubStep === 3) ? null : (
             <button
               type="button"
               onClick={handleHeaderBack}
@@ -614,7 +755,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         </header>
 
         {/* Progress bar — a bit tighter on step 5 to free vertical space on small phones */}
-        <div className={`h-1 w-full bg-zinc-800 ${step === 5 ? "mt-1.5 mb-2" : "mt-2 mb-4"}`}>
+        <div className={`h-1 w-full bg-zinc-800 ${step === STRENGTH_RANK_STEP ? "mt-1.5 mb-2" : "mt-2 mb-4"}`}>
           <div
             className="h-full bg-amber-500 transition-all duration-300"
             style={{ width: `${progress}%` }}
@@ -627,9 +768,15 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 py-4">
             {/* Logo */}
-            <p className="mb-6 text-2xl font-semibold tracking-wide text-amber-500">
-              Liftly
-            </p>
+            <div className="mb-6 h-24 w-24 overflow-hidden rounded-full">
+              <Image
+                src="/liftlyicon.jpg"
+                alt="Liftly logo"
+                width={96}
+                height={96}
+                className="h-full w-full object-cover"
+              />
+            </div>
             {/* Title */}
             <h1 className="text-center text-2xl font-bold tracking-tight text-zinc-100 sm:text-3xl">
               Welcome to Liftly
@@ -668,7 +815,7 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
       ) : (
         <>
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-            {step !== 4 && step !== 5 ? (
+            {step !== 4 && step !== STRENGTH_RANK_STEP ? (
               <div className="px-4 pt-4">
                 <div className="mb-3">
                   <h1 className="text-center text-lg font-semibold text-zinc-100 sm:text-xl">
@@ -1004,6 +1151,206 @@ export function OnboardingFlow({ profile }: OnboardingFlowProps) {
         )}
 
             {step === 5 && (
+              <div className="min-h-0 flex-1 px-3">
+                <div className="mx-auto flex h-full w-full max-w-md flex-col justify-start pt-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    {GOAL_OPTIONS.map(({ value, label, sublabel, Icon }) => {
+                      const selected = data.mainGoal === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            haptic();
+                            setData((prev) => ({ ...prev, mainGoal: value }));
+                          }}
+                          className={`tap-feedback rounded-xl border px-4 py-4 text-left transition-all ${
+                            selected
+                              ? "border-amber-500 bg-amber-500/12 shadow-[0_0_0_1px_rgba(245,158,11,0.4)]"
+                              : "border-white/[0.08] bg-zinc-900/40 hover:border-white/[0.16]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className={`inline-flex rounded-lg p-1.5 ${selected ? "bg-amber-500/15 text-amber-300" : "bg-zinc-800 text-zinc-300"}`}>
+                              <Icon size={18} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? "text-amber-200" : "text-zinc-100"}`}>{label}</p>
+                              <p className="mt-0.5 line-clamp-1 text-xs leading-tight text-zinc-400">{sublabel}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2.5 px-1 text-center text-xs font-medium leading-tight text-zinc-400">
+                    Liftly uses this to personalize your training focus and recommendations.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {step === 6 && (
+              <div className="min-h-0 flex-1 px-3">
+                <div className="mx-auto flex h-full w-full max-w-md flex-col justify-start pt-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    {GYM_EXPERIENCE_OPTIONS.map(({ value, label, sublabel, Icon }) => {
+                      const selected = data.gymExperience === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            haptic();
+                            setData((prev) => ({ ...prev, gymExperience: value }));
+                          }}
+                          className={`tap-feedback rounded-xl border px-4 py-4 text-left transition-all ${
+                            selected
+                              ? "border-amber-500 bg-amber-500/12 shadow-[0_0_0_1px_rgba(245,158,11,0.4)]"
+                              : "border-white/[0.08] bg-zinc-900/40 hover:border-white/[0.16]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className={`inline-flex rounded-lg p-1.5 ${selected ? "bg-amber-500/15 text-amber-300" : "bg-zinc-800 text-zinc-300"}`}>
+                              <Icon size={18} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? "text-amber-200" : "text-zinc-100"}`}>{label}</p>
+                              <p className="mt-0.5 line-clamp-1 text-xs leading-tight text-zinc-400">{sublabel}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2.5 px-1 text-center text-xs font-medium leading-tight text-zinc-400">
+                    Liftly adapts your plan to your training background.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {step === 7 && (
+              <div className="min-h-0 flex-1 px-3">
+                <div className="mx-auto flex h-full w-full max-w-md flex-col justify-start pt-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    {WEEKLY_FREQUENCY_OPTIONS.map(({ value, label, sublabel, Icon }) => {
+                      const selected = data.weeklyFrequency === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            haptic();
+                            setData((prev) => ({ ...prev, weeklyFrequency: value }));
+                          }}
+                          className={`tap-feedback rounded-xl border px-4 py-4 text-left transition-all ${
+                            selected
+                              ? "border-amber-500 bg-amber-500/12 shadow-[0_0_0_1px_rgba(245,158,11,0.4)]"
+                              : "border-white/[0.08] bg-zinc-900/40 hover:border-white/[0.16]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className={`inline-flex rounded-lg p-1.5 ${selected ? "bg-amber-500/15 text-amber-300" : "bg-zinc-800 text-zinc-300"}`}>
+                              <Icon size={18} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? "text-amber-200" : "text-zinc-100"}`}>{label}</p>
+                              <p className="mt-0.5 line-clamp-1 text-xs leading-tight text-zinc-400">{sublabel}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2.5 px-1 text-center text-xs font-medium leading-tight text-zinc-400">
+                    Liftly uses this to set a realistic weekly routine for you.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {step === 8 && (
+              <div className="min-h-0 flex-1 px-3">
+                <div className="mx-auto flex h-full w-full max-w-md flex-col justify-start pt-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    {WORKOUT_LENGTH_OPTIONS.map(({ value, label, sublabel, Icon }) => {
+                      const selected = data.workoutLength === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            haptic();
+                            setData((prev) => ({ ...prev, workoutLength: value }));
+                          }}
+                          className={`tap-feedback rounded-xl border px-4 py-4 text-left transition-all ${
+                            selected
+                              ? "border-amber-500 bg-amber-500/12 shadow-[0_0_0_1px_rgba(245,158,11,0.4)]"
+                              : "border-white/[0.08] bg-zinc-900/40 hover:border-white/[0.16]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className={`inline-flex rounded-lg p-1.5 ${selected ? "bg-amber-500/15 text-amber-300" : "bg-zinc-800 text-zinc-300"}`}>
+                              <Icon size={18} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? "text-amber-200" : "text-zinc-100"}`}>{label}</p>
+                              <p className="mt-0.5 line-clamp-1 text-xs leading-tight text-zinc-400">{sublabel}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2.5 px-1 text-center text-xs font-medium leading-tight text-zinc-400">
+                    Liftly tailors workout structure to the time you actually have.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {step === 9 && (
+              <div className="min-h-0 flex-1 px-3">
+                <div className="mx-auto flex h-full w-full max-w-md flex-col justify-start pt-2">
+                  <div className="grid grid-cols-1 gap-2">
+                    {EXPERIENCE_OPTIONS.map(({ value, label, sublabel, Icon }) => {
+                      const selected = data.appExperience === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => {
+                            haptic();
+                            setData((prev) => ({ ...prev, appExperience: value }));
+                          }}
+                          className={`tap-feedback rounded-xl border px-4 py-4 text-left transition-all ${
+                            selected
+                              ? "border-amber-500 bg-amber-500/12 shadow-[0_0_0_1px_rgba(245,158,11,0.4)]"
+                              : "border-white/[0.08] bg-zinc-900/40 hover:border-white/[0.16]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className={`inline-flex rounded-lg p-1.5 ${selected ? "bg-amber-500/15 text-amber-300" : "bg-zinc-800 text-zinc-300"}`}>
+                              <Icon size={18} />
+                            </span>
+                            <div className="min-w-0">
+                              <p className={`text-sm font-semibold leading-tight ${selected ? "text-amber-200" : "text-zinc-100"}`}>{label}</p>
+                              <p className="mt-0.5 line-clamp-1 text-xs leading-tight text-zinc-400">{sublabel}</p>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2.5 px-1 text-center text-xs font-medium leading-tight text-zinc-400">
+                    Liftly includes all these features to help you train smarter and stay consistent.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {step === STRENGTH_RANK_STEP && (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                 {rankSubStep === 3 ? null : (
                   <div className="shrink-0 px-5 pb-2 pt-3">

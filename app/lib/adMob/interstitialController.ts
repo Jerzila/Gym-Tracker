@@ -1,58 +1,15 @@
 import { isNativeCapacitorApp } from "@/app/lib/purchases/revenueCat";
 import {
+  isAdMobTestMode,
   resolveInterstitialAdUnitIdForCurrentPlatform,
-  useAdMobTestMode,
 } from "@/app/lib/adMob/adMobConfig";
 
-const COOLDOWN_MS = 90_000;
+const COOLDOWN_MS = 60_000;
+const EVENTS_PER_INTERSTITIAL = 3;
+const MAX_INTERSTITIALS_PER_SESSION = 5;
 const STORAGE_LAST_SHOWN = "liftly_admob_last_shown_ms";
-const STORAGE_DAILY_OPENS = "liftly_admob_daily_exercise_opens";
-
-function localDateKey(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function readDailyOpenState(): { date: string; count: number } {
-  if (typeof window === "undefined") return { date: localDateKey(), count: 0 };
-  try {
-    const raw = window.localStorage.getItem(STORAGE_DAILY_OPENS);
-    if (!raw) return { date: localDateKey(), count: 0 };
-    const parsed = JSON.parse(raw) as { date?: string; count?: number };
-    const date = typeof parsed.date === "string" ? parsed.date : localDateKey();
-    const count = typeof parsed.count === "number" && Number.isFinite(parsed.count) ? parsed.count : 0;
-    return { date, count };
-  } catch {
-    return { date: localDateKey(), count: 0 };
-  }
-}
-
-function writeDailyOpenState(state: { date: string; count: number }): void {
-  try {
-    window.localStorage.setItem(STORAGE_DAILY_OPENS, JSON.stringify(state));
-  } catch {
-    /* ignore */
-  }
-}
-
-/**
- * Increments today's exercise-open count and returns whether this open is the 3rd, 6th, … of the day.
- */
-export function recordExerciseOpenForDailyThirdRule(): boolean {
-  if (typeof window === "undefined") return false;
-  const key = localDateKey();
-  let { date, count } = readDailyOpenState();
-  if (date !== key) {
-    date = key;
-    count = 0;
-  }
-  count += 1;
-  writeDailyOpenState({ date, count });
-  return count > 0 && count % 3 === 0;
-}
+const STORAGE_EVENT_COUNT = "liftly_admob_event_count";
+const STORAGE_SESSION_IMPRESSIONS = "liftly_admob_session_impressions";
 
 function canShowByCooldown(): boolean {
   if (typeof window === "undefined") return false;
@@ -67,9 +24,42 @@ function canShowByCooldown(): boolean {
   }
 }
 
+function readFiniteNumber(raw: string | null, fallback = 0): number {
+  if (!raw) return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function consumeMeaningfulEventThirdRule(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const next = readFiniteNumber(window.localStorage.getItem(STORAGE_EVENT_COUNT), 0) + 1;
+    window.localStorage.setItem(STORAGE_EVENT_COUNT, String(next));
+    return next > 0 && next % EVENTS_PER_INTERSTITIAL === 0;
+  } catch {
+    return false;
+  }
+}
+
+function canShowBySessionCap(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const impressions = readFiniteNumber(window.sessionStorage.getItem(STORAGE_SESSION_IMPRESSIONS), 0);
+    return impressions < MAX_INTERSTITIALS_PER_SESSION;
+  } catch {
+    return true;
+  }
+}
+
 function recordInterstitialShown(): void {
   try {
     window.localStorage.setItem(STORAGE_LAST_SHOWN, String(Date.now()));
+  } catch {
+    /* ignore */
+  }
+  try {
+    const next = readFiniteNumber(window.sessionStorage.getItem(STORAGE_SESSION_IMPRESSIONS), 0) + 1;
+    window.sessionStorage.setItem(STORAGE_SESSION_IMPRESSIONS, String(next));
   } catch {
     /* ignore */
   }
@@ -93,7 +83,7 @@ export async function prepareInterstitialPrefetch(): Promise<void> {
   if (!isNativeCapacitorApp()) return;
   const adId = resolveInterstitialAdUnitIdForCurrentPlatform();
   if (!adId) return;
-  const isTesting = useAdMobTestMode();
+  const isTesting = isAdMobTestMode();
   try {
     const { AdMob } = await import("@capacitor-community/admob");
     await AdMob.prepareInterstitial({ adId, isTesting });
@@ -103,36 +93,49 @@ export async function prepareInterstitialPrefetch(): Promise<void> {
 }
 
 /**
- * After every 3rd exercise screen open today (native, non–no-ads), if cooldown allows.
+ * Free-tier policy: every 3rd meaningful event, 60s cooldown, max 5 interstitials per app session.
  */
 export async function maybeShowInterstitialAfterExerciseOpen(hasNoAds: boolean): Promise<void> {
-  if (hasNoAds || !isNativeCapacitorApp()) return;
-  const adId = resolveInterstitialAdUnitIdForCurrentPlatform();
-  if (!adId) return;
-  const should = recordExerciseOpenForDailyThirdRule();
-  if (!should) return;
-  if (!canShowByCooldown()) return;
-  await runInterstitialShow("third_open", adId);
+  await maybeShowInterstitialAfterMeaningfulEvent(hasNoAds, "exercise_open");
 }
 
 /**
- * After a workout log succeeds (native, non–no-ads), if cooldown allows.
+ * Trigger after workout log success.
  */
 export async function maybeShowInterstitialAfterWorkoutLog(hasNoAds: boolean): Promise<void> {
+  await maybeShowInterstitialAfterMeaningfulEvent(hasNoAds, "after_workout_log");
+}
+
+/** Trigger after bodyweight log success. */
+export async function maybeShowInterstitialAfterBodyweightLog(hasNoAds: boolean): Promise<void> {
+  await maybeShowInterstitialAfterMeaningfulEvent(hasNoAds, "after_bodyweight_log");
+}
+
+/** Trigger after sending a friend request successfully. */
+export async function maybeShowInterstitialAfterFriendAdd(hasNoAds: boolean): Promise<void> {
+  await maybeShowInterstitialAfterMeaningfulEvent(hasNoAds, "after_friend_add");
+}
+
+async function maybeShowInterstitialAfterMeaningfulEvent(
+  hasNoAds: boolean,
+  reason: "exercise_open" | "after_workout_log" | "after_bodyweight_log" | "after_friend_add"
+): Promise<void> {
   if (hasNoAds || !isNativeCapacitorApp()) return;
   const adId = resolveInterstitialAdUnitIdForCurrentPlatform();
   if (!adId) return;
+  if (!consumeMeaningfulEventThirdRule()) return;
   if (!canShowByCooldown()) return;
-  await runInterstitialShow("after_workout_log", adId);
+  if (!canShowBySessionCap()) return;
+  await runInterstitialShow(reason, adId);
 }
 
 async function runInterstitialShow(
-  _reason: "third_open" | "after_workout_log",
+  _reason: "exercise_open" | "after_workout_log" | "after_bodyweight_log" | "after_friend_add",
   adId: string
 ): Promise<void> {
   if (interstitialBusy) return;
   interstitialBusy = true;
-  const isTesting = useAdMobTestMode();
+  const isTesting = isAdMobTestMode();
   try {
     const { AdMob } = await import("@capacitor-community/admob");
     await AdMob.prepareInterstitial({ adId, isTesting });

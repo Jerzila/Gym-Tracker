@@ -7,6 +7,8 @@ import { DatePicker } from "@/app/components/DatePicker";
 import { buttonClass } from "@/app/components/Button";
 import { useToast } from "@/app/components/Toast";
 import { useUnits } from "@/app/components/UnitsContext";
+import { useProAccess } from "@/app/components/ProAccessProvider";
+import { maybeShowInterstitialAfterBodyweightLog } from "@/app/lib/adMob/interstitialController";
 import { lbToKg } from "@/lib/units";
 import { weightUnitLabel } from "@/lib/formatWeight";
 
@@ -22,6 +24,7 @@ export function LogBodyweightForm() {
   const [error, setError] = useState<string | null>(null);
   const spinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toast = useToast();
+  const { ready, hasNoAds } = useProAccess();
 
   useEffect(() => {
     if (!isPending) {
@@ -63,6 +66,9 @@ export function LogBodyweightForm() {
     }
     setExpanded(false);
     toast.show("Bodyweight logged");
+    if (ready) {
+      void maybeShowInterstitialAfterBodyweightLog(hasNoAds);
+    }
     router.refresh();
   };
 
